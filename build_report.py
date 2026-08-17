@@ -71,6 +71,11 @@ etf = snapshot.get("etf", []) or []
 market_state = snapshot.get("market_state", "neutral")
 matched_sectors = snapshot.get("matched_sectors", []) or []
 
+# ---- 外网资讯解析（英文源抓取 + 正文解析，Agent 总结为中文结论） ----
+import news_intel as _ni
+intel = _ni.load_intel(TODAY)
+_intel_topics = intel.get("topics", {}) if isinstance(intel, dict) else {}
+
 
 def wb_texts(name):
     return [p.get("text", "") for p in weibo_data.get(name, []) if p.get("text")]
@@ -320,6 +325,23 @@ def index_section():
         f'<tr><td>{name}</td><td>{q.get("price")}</td><td class="{up_down(q.get("chg_pct"))}">{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td></tr>'
         for name, q in quotes.items())
     return f'<table><thead><tr><th>指数</th><th>最新</th><th>涨跌幅</th></tr></thead><tbody>{rows}</tbody></table>'
+
+
+def intel_block(key):
+    """外网资讯解析块：渲染 Agent 写的中文总结（已解析英文正文后总结，不展示英文原文）。
+
+    数据来自 news_intel.py（英文源抓取 + 正文解析），绝不编造；缺口渲染占位。
+    """
+    t = _intel_topics.get(key)
+    if not t or not t.get("raw"):
+        return ('<div class="intel-wrap"><p class="muted" style="font-size:12px;">'
+                '外网资讯解析缺失（请先运行 `python news_intel.py` 抓取英文源并总结）。</p></div>')
+    summary = t.get("summary_zh", "").strip()
+    if summary:
+        body = f'<div class="intel-summary">{summary}</div>'
+    else:
+        body = '<p class="muted" style="font-size:12px;">外网资讯已抓取解析，中文结论待生成。</p>'
+    return f'<div class="intel-wrap">{body}</div>'
 
 
 def conclusion_grid():
@@ -689,6 +711,11 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .op-hold{background:#fff3e0;color:#e67e22}
 .op-sell{background:#e8f8f0;color:#00a865}
 .op-watch{background:#e8f0fe;color:#1967d2}
+
+/* 外网资讯解析（英文源·中文总结） */
+.intel-wrap{margin-top:14px;border-top:1px dashed #eef0f3;padding-top:12px}
+.intel-summary{font-size:13.5px;line-height:1.9;color:#243;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef2f7;border-radius:10px;padding:13px 15px}
+.intel-summary b{color:#1967d2}
 .disclaimer{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:18px 22px;font-size:12px;color:#666;line-height:1.8}
 .disclaimer strong{color:#d63031}
 .chain-svg{width:100%;height:auto;display:block;margin:8px 0}
@@ -729,10 +756,10 @@ html = f'''<!DOCTYPE html>
 <h2>目录</h2>
 <ol>
 <li>核心结论（实时）</li>
-<li>隔夜美股（实时）</li>
-<li>CPI与宏观（实时新闻）</li>
+<li>隔夜美股（实时 · 外网解析）</li>
+<li>CPI与宏观（实时 · 外网解析）</li>
 <li>宏观传导链监控（独立因子·实时）</li>
-<li>地缘政治与原油（事件因子·实时）</li>
+<li>地缘政治与原油（事件因子 · 外网解析）</li>
 <li>ETF资金流向（实时）</li>
 <li>微博舆情解构（唐史 / 投星 · 实时）</li>
 <li>共振信号（多源交叉·实时）</li>
@@ -749,24 +776,25 @@ html = f'''<!DOCTYPE html>
 </div>
 
 <div class="card">
-<h2>一、隔夜美股（实时）</h2>
+<h2>一、隔夜美股（实时 · 外网解析）</h2>
 {us_section()}
+{intel_block("us_market")}
 </div>
 
 <div class="card">
-<h2>二、CPI与宏观（实时新闻）</h2>
-{points(macro_items)}
+<h2>二、CPI与宏观（实时 · 外网解析）</h2>
+{intel_block("macro")}
 </div>
 
 <div class="card">
 <h2>三、宏观传导链监控（独立因子·实时）</h2>
 {chain_svg()}
-{points(japan_items)}
+{intel_block("japan")}
 </div>
 
 <div class="card">
-<h2>四、地缘政治与原油（事件因子·实时）</h2>
-{points(event_items)}
+<h2>四、地缘政治与原油（事件因子 · 外网解析）</h2>
+{intel_block("geopolitics")}
 </div>
 
 <div class="card">

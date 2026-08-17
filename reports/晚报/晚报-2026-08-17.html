@@ -67,6 +67,11 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .op-hold{background:#fff3e0;color:#e67e22}
 .op-sell{background:#e8f8f0;color:#00a865}
 .op-watch{background:#e8f0fe;color:#1967d2}
+
+/* 外网资讯解析（英文源·中文总结） */
+.intel-wrap{margin-top:14px;border-top:1px dashed #eef0f3;padding-top:12px}
+.intel-summary{font-size:13.5px;line-height:1.9;color:#243;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef2f7;border-radius:10px;padding:13px 15px}
+.intel-summary b{color:#1967d2}
 .disclaimer{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:18px 22px;font-size:12px;color:#666;line-height:1.8}
 .disclaimer strong{color:#d63031}
 .chain-svg{width:100%;height:auto;display:block;margin:8px 0}
@@ -89,7 +94,7 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 <div class="sub">微博舆情 + 全球人物 + 宏观 + 事件因子 + 行情资金 + 技术走势 + 国家队 + 自选股（盘后版）</div>
 <div class="meta">
 <span>报告日期：2026-08-17（盘后版）</span>
-<span>生成时间：2026-08-17 19:11</span>
+<span>生成时间：2026-08-17 19:27</span>
 <span>7只自选股</span>
 <span>实时指数：上证1.41%　深证成指2.44%　创业板指3.14%</span>
 </div>
@@ -99,10 +104,10 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 <h2>目录</h2>
 <ol>
 <li>核心结论（实时）</li>
-<li>隔夜美股（实时）</li>
-<li>CPI与宏观（实时新闻）</li>
+<li>隔夜美股（实时 · 外网解析）</li>
+<li>CPI与宏观（实时 · 外网解析）</li>
 <li>宏观传导链监控（独立因子·实时）</li>
-<li>地缘政治与原油（事件因子·实时）</li>
+<li>地缘政治与原油（事件因子 · 外网解析）</li>
 <li>ETF资金流向（实时）</li>
 <li>微博舆情解构（唐史 / 投星 · 实时）</li>
 <li>共振信号（多源交叉·实时）</li>
@@ -139,24 +144,29 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 </div>
 
 <div class="card">
-<h2>一、隔夜美股（实时）</h2>
+<h2>一、隔夜美股（实时 · 外网解析）</h2>
 <table><thead><tr><th>标的</th><th>涨跌</th><th>关键信号</th></tr></thead><tbody><tr><td>道琼斯</td><td class="down">-0.2%</td><td>—（53732.4102）</td></tr><tr><td>纳斯达克</td><td class="down">-0.28%</td><td>—（26729.1644）</td></tr><tr><td>标普500</td><td class="down">-0.17%</td><td>—（7785.7598）</td></tr><tr><td>费城半导体</td><td class="down">-0.31%</td><td>—（12417.0502）</td></tr><tr><td>英伟达</td><td class="down">-0.06%</td><td>—（225.1600）</td></tr><tr><td>特斯拉</td><td class="up">+0.68%</td><td>—（342.2700）</td></tr><tr><td>美光科技</td><td class="up">+2.3%</td><td>—（971.6600）</td></tr><tr><td>希捷科技</td><td class="up">+5.65%</td><td>—（973.4400）</td></tr><tr><td>西部数据</td><td class="up">+4.41%</td><td>—（508.8000）</td></tr><tr><td>闪迪</td><td class="up">+7.39%</td><td>—（1641.1100）</td></tr><tr><td>应用材料</td><td class="down">-5.12%</td><td>—（507.1800）</td></tr><tr><td>博通</td><td class="down">-5.94%</td><td>—（392.9900）</td></tr><tr><td>Lumentum</td><td class="up">+5.19%</td><td>—（926.1400）</td></tr><tr><td>康宁</td><td class="up">+4.7%</td><td>—（165.9900）</td></tr></tbody></table><div style="margin-top:12px;"><div class="bar-row"><div class="bar-name">道琼斯</div><div class="bar-wrap"><div class="bar-fill" style="width:2.7%;background:#00a865"></div></div><div class="bar-val down">-0.2%</div></div><div class="bar-row"><div class="bar-name">纳斯达克</div><div class="bar-wrap"><div class="bar-fill" style="width:3.8%;background:#00a865"></div></div><div class="bar-val down">-0.28%</div></div><div class="bar-row"><div class="bar-name">标普500</div><div class="bar-wrap"><div class="bar-fill" style="width:2.3%;background:#00a865"></div></div><div class="bar-val down">-0.17%</div></div><div class="bar-row"><div class="bar-name">费城半导体</div><div class="bar-wrap"><div class="bar-fill" style="width:4.2%;background:#00a865"></div></div><div class="bar-val down">-0.31%</div></div><div class="bar-row"><div class="bar-name">英伟达</div><div class="bar-wrap"><div class="bar-fill" style="width:0.8%;background:#00a865"></div></div><div class="bar-val down">-0.06%</div></div><div class="bar-row"><div class="bar-name">特斯拉</div><div class="bar-wrap"><div class="bar-fill" style="width:9.2%;background:#d63031"></div></div><div class="bar-val up">+0.68%</div></div><div class="bar-row"><div class="bar-name">美光科技</div><div class="bar-wrap"><div class="bar-fill" style="width:31.1%;background:#d63031"></div></div><div class="bar-val up">+2.3%</div></div><div class="bar-row"><div class="bar-name">希捷科技</div><div class="bar-wrap"><div class="bar-fill" style="width:76.5%;background:#d63031"></div></div><div class="bar-val up">+5.65%</div></div><div class="bar-row"><div class="bar-name">西部数据</div><div class="bar-wrap"><div class="bar-fill" style="width:59.7%;background:#d63031"></div></div><div class="bar-val up">+4.41%</div></div><div class="bar-row"><div class="bar-name">闪迪</div><div class="bar-wrap"><div class="bar-fill" style="width:100.0%;background:#d63031"></div></div><div class="bar-val up">+7.39%</div></div><div class="bar-row"><div class="bar-name">应用材料</div><div class="bar-wrap"><div class="bar-fill" style="width:69.3%;background:#00a865"></div></div><div class="bar-val down">-5.12%</div></div><div class="bar-row"><div class="bar-name">博通</div><div class="bar-wrap"><div class="bar-fill" style="width:80.4%;background:#00a865"></div></div><div class="bar-val down">-5.94%</div></div><div class="bar-row"><div class="bar-name">Lumentum</div><div class="bar-wrap"><div class="bar-fill" style="width:70.2%;background:#d63031"></div></div><div class="bar-val up">+5.19%</div></div><div class="bar-row"><div class="bar-name">康宁</div><div class="bar-wrap"><div class="bar-fill" style="width:63.6%;background:#d63031"></div></div><div class="bar-val up">+4.7%</div></div></div>
+<div class="intel-wrap"><div class="intel-summary">【隔夜美股·中文研判】美股风险偏好整体偏强：标普500与纳指连续第三周收涨，周一期货分化——纳指、标普期货小幅走高（约+0.5%/+0.1%）由科技股领涨，道指小幅回落。市场本周焦点转向零售股财报，被视为验证消费韧性的关键窗口。扰动项来自两方面：中东局势推升油价令投资者谨慎；9月加息概率已降至约30%，对估值偏友好。
+对A股启示：外围风险偏好偏正面、科技映射（AI/半导体）情绪可外溢；但需警惕油价上行带来的输入型通胀与避险切换，以及本周零售财报若不及预期引发的全球风险资产回吐。</div></div>
 </div>
 
 <div class="card">
-<h2>二、CPI与宏观（实时新闻）</h2>
-<div class="point"><div class="pt-body">美国7月CPI同比3.4%（前值3.5%），核心CPI 2.5%，通胀延续降温；美联储7月FOMC维持利率3.50%-3.75%，9月加息概率降至约36%-40%，7月非农意外-2.3万。</div></div><div class="point"><div class="pt-body">10Y美债收益率约4.6%（2007年来高位），长端承压；通胀仍高于2%目标，Fed鹰派基调难改，降息预期推迟。</div></div><div class="point"><div class="pt-body">中国7月PMI全面下滑，CPI加速回落；央行Q2货币政策报告明确加大逆周期调节、扩内需，市场预期Q4或有降息。</div></div>
+<h2>二、CPI与宏观（实时 · 外网解析）</h2>
+<div class="intel-wrap"><div class="intel-summary">【中美宏观与通胀·中文研判】美国7月CPI环比+0.1%、核心CPI+0.2%、同比3.4%（小幅回落），整体符合华尔街一致预期；分析师普遍认为数据不足以迫使美联储加息，市场目光已转向9月FOMC。需留意8月CPI/PPI与就业数据将在下次议息前陆续出炉，仍是关键变量。
+对A股启示：美国通胀温和回落、加息压力缓解，边际利好全球流动性与风险资产（美债收益率/美元趋弱可交易）；但国内方向最终由内需基本面与政策定力决定，外部流动性只是顺风而非主线。中国方面后续需跟踪PMI/CPI与社融验证复苏成色。</div></div>
 </div>
 
 <div class="card">
 <h2>三、宏观传导链监控（独立因子·实时）</h2>
 <svg class="chain-svg" viewBox="0 0 1036 110" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="20" width="128" height="54" rx="8" fill="#e67e22" opacity="0.92"/><text x="80.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">原油(触发)</text><text x="80.0" y="60" fill="#fff" font-size="10" text-anchor="middle">上游地缘/供需</text><line x1="148" y1="47" x2="162" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="162" y="20" width="128" height="54" rx="8" fill="#d63031" opacity="0.92"/><text x="226.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">日本加息</text><text x="226.0" y="60" fill="#fff" font-size="10" text-anchor="middle">输入型通胀→被迫加息</text><line x1="294" y1="47" x2="308" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="308" y="20" width="128" height="54" rx="8" fill="#e67e22" opacity="0.92"/><text x="372.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">抛美债压力</text><text x="372.0" y="60" fill="#fff" font-size="10" text-anchor="middle">巨额美债持仓</text><line x1="440" y1="47" x2="454" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="454" y="20" width="128" height="54" rx="8" fill="#e67e22" opacity="0.92"/><text x="518.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">FIMA回购</text><text x="518.0" y="60" fill="#fff" font-size="10" text-anchor="middle">押美债借美元干预</text><line x1="586" y1="47" x2="600" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="600" y="20" width="128" height="54" rx="8" fill="#d63031" opacity="0.92"/><text x="664.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">日元干预</text><text x="664.0" y="60" fill="#fff" font-size="10" text-anchor="middle">联合干预汇率</text><line x1="732" y1="47" x2="746" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="746" y="20" width="128" height="54" rx="8" fill="#d63031" opacity="0.92"/><text x="810.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">套息平仓</text><text x="810.0" y="60" fill="#fff" font-size="10" text-anchor="middle">unwind 黑天鹅</text><line x1="878" y1="47" x2="892" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="892" y="20" width="128" height="54" rx="8" fill="#1967d2" opacity="0.92"/><text x="956.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">A股传导</text><text x="956.0" y="60" fill="#fff" font-size="10" text-anchor="middle">风险偏好</text><defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#bbb"/></marker></defs></svg><p class="muted" style="font-size:12px;">传导链主线由日元主导；当前实时日本信号 3 条（详见下方文本）。</p>
-<div class="point"><div class="pt-body">美日联合干预（1998年来首次）后日元短暂升至157后回落，USD/JPY重回159；美财长贝森特称日元严重低估，呼吁日本加快加息（单次或50-75bp）以止住贬值。</div></div><div class="point"><div class="pt-body">日本持有约1.14万亿美元美债；日元贬值倒逼其抛售美债筹美元→推升美债收益率→压制美股估值。美方推FIMA回购工具，允许日本抵押美债换美元（借美款干预），减少直接抛售冲击。</div></div><div class="point"><div class="pt-body">日元贬值—套息加仓—再贬值的自我强化循环未破；干预仅为脉冲式买盘，真正逆转需外部事件催化套息交易平仓（如1998年俄债违约）。</div></div>
+<div class="intel-wrap"><div class="intel-summary">【日本加息与套息交易·中文研判】日本7月批发通胀近3年高位（7.2%），市场认为9月加息几乎锁定；但紧缩加速已令中小企业破产升至12年新高。日元因贸易逆差扩大跌至40年低位，市场预期日银可能更快收紧；此前'日元套息交易'平仓已多次引发全球波动，美日并确认可在必要时联合干预汇率。
+对A股启示：这是外部最大的'黑天鹅'变量——日银加息→套息交易平仓→全球流动性收紧、风险偏好承压，与本项目宏观传导链主线完全吻合。美日联合干预提供一定缓冲，但须重点盯防套息大规模平仓引发的跨市场冲击。</div></div>
 </div>
 
 <div class="card">
-<h2>四、地缘政治与原油（事件因子·实时）</h2>
-<div class="point"><div class="pt-body">美伊谈判前景不明，霍尔木兹海峡通航仍未全面恢复（周一仅6艘 vs 常态125-140艘）；胡塞武装持续袭扰航运，地缘支撑稳固。</div></div><div class="point"><div class="pt-body">截至8/14当周，布伦特88.52美元/桶（+5.95%）、WTI 82.40美元/桶（+5.40%）；伊朗拟禁敌对方通行霍尔木兹，油价维持80美元上方震荡。</div></div><div class="point"><div class="pt-body">EIA预计中东石油供应中断约60万桶/日持续至2027年底；美战略储备SPR降至2.987亿桶（低于3亿）；OPEC、IEA相继下调2026全球原油需求增长预期。</div></div>
+<h2>四、地缘政治与原油（事件因子 · 外网解析）</h2>
+<div class="intel-wrap"><div class="intel-summary">【地缘政治与原油·中文研判】原油受实质供应风险支撑：霍尔木兹海峡通行近乎停滞（near-zero crossings），构成现实供应底线，布伦特逼近90美元关口；美伊谈判突破希望减弱、油轮通行放缓使地缘溢价短期难消，而IEA/OPEC下调需求预期则压制上方空间，WTI在81美元附近前周大涨后窄幅整理。
+对A股启示：地缘溢价支撑油价高位，利好上游能源/油服板块；但油价上行推升输入型通胀、压制下游毛利与整体风险偏好，若海峡彻底中断将冲击全球通胀与权益估值。需把原油列为本周外部风险的第一观察点。</div></div>
 </div>
 
 <div class="card">
