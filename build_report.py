@@ -372,7 +372,7 @@ def header_market():
 
 
 # ================= 组装 HTML =================
-# ================= 微博舆情解构（核心结论用） =================
+# ================= 微博舆情解构（第六节用，不在核心结论展开） =================
 # 多空词库：把大V / 宏观 / 事件原文「解构」成可研判的多空信号，而非流水账
 BULL_WORDS = ["看多", "看好", "利好", "机会", "上涨", "突破", "加仓", "买入", "牛市", "底部",
               "反弹", "复苏", "景气", "超预期", "积极", "乐观", "主线", "确定性", "配置", "布局",
@@ -464,7 +464,48 @@ def deconstruct_weibo():
 
 
 def core_conclusion():
-    """核心结论：用解构后的多空信号研判大盘与个股，而非罗列原始数据。"""
+    """核心结论：一句话研判 + 状态徽章 + 数据速览。舆情解构细节见第六节。"""
+    d = deconstruct_weibo()
+    consensus_label, consensus_cls = d["consensus"]
+    idx_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+    up_n = sum(1 for q in quotes.values() if q.get("chg_pct", 0) > 0) if quotes else 0
+    idx_n = len(quotes) if quotes else 0
+
+    # 用解构结果驱动一句话研判（不在本节展开解构细节）
+    if consensus_label == "偏多" and idx_label in ("偏多", "震荡"):
+        stance = "情绪与指数共振偏多，可积极但不追高"
+    elif consensus_label == "偏空" and idx_label == "偏多":
+        stance = "指数走强但情绪偏空，注意背离与回调"
+    elif consensus_label == "偏空":
+        stance = "情绪与指数双弱，以防御为主"
+    else:
+        stance = "多空交织，震荡格局下重结构轻指数"
+
+    main_line = "、".join(matched_sectors) if matched_sectors else "板块主线信号缺失"
+    risk_label = "日本传导链有预警" if japan_items else "暂无日本传导链预警"
+    risk_cls = "b-green" if japan_items else "b-blue"
+
+    verdict = (f"综合实时指数与微博舆情解构：大盘 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨），"
+               f"大V意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b>。{stance}。"
+               f"主线聚焦「{main_line}」；{risk_label}。")
+
+    badges = (
+        f'<span class="badge {consensus_cls}">大V共识 {consensus_label}</span>'
+        f'<span class="badge b-red">指数 {idx_label}</span>'
+        f'<span class="badge b-orange">主线 {main_line}</span>'
+        f'<span class="badge {risk_cls}">风险 {risk_label}</span>'
+    )
+
+    return f'''
+    <div class="cc-body" style="font-size:14px;line-height:1.9;margin-bottom:12px">{verdict}</div>
+    <div class="cc-stocks">{badges}</div>
+    <div class="cc-grid-title">实时数据速览</div>
+    <div class="conclusion-grid">{conclusion_grid()}</div>
+    '''
+
+
+def vs_summary():
+    """第六节：微博舆情解构。把大V/宏观/事件原文解构为可研判信号（不贴原文）。"""
     d = deconstruct_weibo()
     consensus_label, consensus_cls = d["consensus"]
     idx_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
@@ -476,12 +517,15 @@ def core_conclusion():
         if not s:
             continue
         tag = "看多" if s > 0 else ("看空" if s < 0 else "中性")
-        src_bits.append(f"{name}{tag}({'+' if s > 0 else ''}{s})")
-    src_line = "；".join(src_bits) if src_bits else "大V实时观点缺失，无法解构"
+        cls = "b-red" if s > 0 else ("b-green" if s < 0 else "b-blue")
+        src_bits.append(f'<span class="badge {cls}">{name}：{tag}（{"+" if s > 0 else ""}{s}）</span>')
+    consensus_html = (f'大V整体共识 <b class="{consensus_cls}">{consensus_label}</b>；'
+                      + (" ".join(src_bits) if src_bits else "实时大V观点缺失，无法解构"))
 
-    market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨）；"
-                   f"意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b> —— {src_line}。"
-                   f"微博舆情经解构后用于研判，而非观点堆砌。")
+    diverge = (consensus_label == "偏空" and idx_label == "偏多")
+    market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 指 {up_n} 涨）与大V共识 <b class='{consensus_cls}'>{consensus_label}</b> "
+                   f"—— {'两者背离，需警惕情绪拖累' if diverge else '相互印证'}。"
+                   f"舆情已解构为研判信号，不为原文堆砌。")
 
     stock_bits = []
     for code in WATCHLIST:
@@ -515,7 +559,9 @@ def core_conclusion():
 
     return f'''
     <div class="cc-view">
-      <div class="cc-head">大盘研判（解构大V舆情 → 指数确认）</div>
+      <div class="cc-head">大V共识解构</div>
+      <div class="cc-body">{consensus_html}</div>
+      <div class="cc-head">大盘研判（解构信号 → 指数确认）</div>
       <div class="cc-body">{market_view}</div>
       <div class="cc-head">自选股解构（大V提及与多空倾向）</div>
       <div class="cc-body cc-stocks">{stock_line}</div>
@@ -523,35 +569,6 @@ def core_conclusion():
       {key_html}
       <div class="cc-head">风险预警（实时因子解构）</div>
       {risk_html}
-    </div>
-    <div class="cc-grid-title">实时数据速览</div>
-    <div class="conclusion-grid">{conclusion_grid()}</div>
-    '''
-
-
-def vs_summary():
-    """唐史 / 投星板块的解构摘要（置于原文之前，避免流水账）。"""
-    d = deconstruct_weibo()
-    consensus_label, consensus_cls = d["consensus"]
-    bits = []
-    for name, s in d["src_scores"].items():
-        if not s:
-            continue
-        tag = "看多" if s > 0 else ("看空" if s < 0 else "中性")
-        cls = "b-red" if s > 0 else ("b-green" if s < 0 else "b-blue")
-        bits.append(f'<span class="badge {cls}">{name}：{tag}（{("+" if s > 0 else "")}{s}）</span>')
-    consensus_html = (f'大V整体共识 <b class="{consensus_cls}">{consensus_label}</b>；'
-                      + (" ".join(bits) if bits else "实时大V观点缺失"))
-    key_html = "".join(
-        f'<div class="{"alert-red" if sc < 0 else "alert-green" if sc > 0 else "alert-blue"}">'
-        f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {t}…</div>'
-        for _, sc, t in d["key"]) or '<p class="muted">未提取到强多空信号。</p>'
-    return f'''
-    <div class="cc-view">
-      <div class="cc-head">大V共识解构</div>
-      <div class="cc-body">{consensus_html}</div>
-      <div class="cc-head">代表性论点（已解构，非原文堆砌）</div>
-      {key_html}
     </div>
     '''
 
@@ -651,13 +668,13 @@ html = f'''<!DOCTYPE html>
 <div class="toc">
 <h2>目录</h2>
 <ol>
-<li>核心结论（实时·舆情解构）</li>
+<li>核心结论（实时）</li>
 <li>隔夜美股（实时）</li>
 <li>CPI与宏观（实时新闻）</li>
 <li>宏观传导链监控（独立因子·实时）</li>
 <li>地缘政治与原油（事件因子·实时）</li>
 <li>ETF资金流向（实时）</li>
-<li>唐史主任 / 投星观点（实时）</li>
+<li>微博舆情解构（唐史 / 投星 · 实时）</li>
 <li>共振信号（多源交叉·实时）</li>
 <li>7只自选股操作指引（实时诊断）</li>
 <li>限时关注的重点数据解析（实时）</li>
@@ -667,7 +684,7 @@ html = f'''<!DOCTYPE html>
 </div>
 
 <div class="card">
-<h2>核心结论（实时 · 舆情解构）</h2>
+<h2>核心结论（实时）</h2>
 {core_conclusion()}
 </div>
 
@@ -698,12 +715,8 @@ html = f'''<!DOCTYPE html>
 </div>
 
 <div class="card">
-<h2>六、唐史主任 / 投星观点（实时解构）</h2>
+<h2>六、微博舆情解构（唐史主任 / 投星 · 实时）</h2>
 {vs_summary()}
-<h3>唐史主任司马迁（原文）</h3>
-{points(tangshi)}
-<h3>投星资产 / 投星大爷（原文）</h3>
-{points(touxing_asset + touxing_yeye)}
 </div>
 
 <div class="card">
