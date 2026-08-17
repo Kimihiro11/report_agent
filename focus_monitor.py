@@ -514,8 +514,13 @@ def build_analysis_summary(state):
   </div>'''
 
 
-def render_focus_html(state, standalone=False):
-    """渲染「限时关注的重点数据解析」章节（或独立页面）。"""
+def render_focus_html(state, standalone=False, embed=False):
+    """渲染「限时关注的重点数据解析」章节（或独立页面）。
+
+    standalone=True  → 完整独立 HTML 页面（含 <html>/<style>）
+    standalone=False → 可嵌入片段（<section> + 自带 h2）
+    embed=True       → 仅返回内部内容（不包 section/h2），由调用方套 .card + 标准 h2
+    """
     window = state.get("window_days", 3)
     note = state.get("note", "")
     color_up = "#d63031"  # 触发/危险 红
@@ -596,6 +601,8 @@ def render_focus_html(state, standalone=False):
   <div style="display:flex;flex-wrap:wrap;">{''.join(cards)}</div>
   {analysis}'''
 
+    if embed:
+        return inner
     if standalone:
         return f'''<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">

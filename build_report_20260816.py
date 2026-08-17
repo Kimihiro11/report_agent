@@ -322,6 +322,42 @@ def strategy_section():
     return f'<table><thead><tr><th style="width:18%">维度</th><th>策略（实时驱动）</th></tr></thead><tbody>{rows}</tbody></table>'
 
 
+def focus_section():
+    """限时关注的重点数据解析（嵌入日报，置于「今日操作策略」之前）。
+
+    数据优先级：① 当日已抓取的缓存 state（data/focus/focus_state_<DATE8>.json）；
+    ② 缺失则尝试实时运行 focus_monitor 抓取真实数据；③ 均不可用则按项目规则
+    渲染「实时数据缺失」占位，绝不出现假数据。
+    """
+    try:
+        import focus_monitor as fm
+        import json as _json
+        from html import escape as _escape
+        fm_dir = BASE_DIR / "data" / "focus"
+        cached = fm_dir / f"focus_state_{DATE8}.json"
+        state = None
+        if cached.exists():
+            try:
+                state = _json.loads(cached.read_text(encoding="utf-8"))
+            except Exception:
+                state = None
+        if state is None:
+            try:
+                state = fm.run_focus_monitor(no_fetch=False)
+            except Exception:
+                state = None
+        if state is None:
+            return ('<div class="card"><h2>限时关注的重点数据解析（实时）</h2>'
+                    '<p class="muted" style="font-size:12px;">实时数据缺失（外网/代理不可达，'
+                    '未能获取「抛美债 / FIMA工具 / 大机构日元加息」三类信号研判。'
+                    '请先运行 `python focus_monitor.py` 采集后再生成报告）。</p></div>')
+        frag = fm.render_focus_html(state, standalone=False, embed=True)
+        return f'<div class="card"><h2>限时关注的重点数据解析（实时）</h2>{frag}</div>'
+    except Exception as e:
+        return ('<div class="card"><h2>限时关注的重点数据解析（实时）</h2>'
+                f'<p class="muted" style="font-size:12px;">模块加载失败：{_escape(str(e))}</p></div>')
+
+
 # 页眉实时涨跌
 def header_market():
     if not quotes:
@@ -433,6 +469,7 @@ html = f'''<!DOCTYPE html>
 <li>唐史主任 / 投星观点（实时）</li>
 <li>共振信号（多源交叉·实时）</li>
 <li>7只自选股操作指引（实时诊断）</li>
+<li>限时关注的重点数据解析（实时）</li>
 <li>今日操作策略（实时驱动）</li>
 <li>主要指数（实时）</li>
 </ol>
@@ -488,6 +525,8 @@ html = f'''<!DOCTYPE html>
 <h2>八、7只自选股操作指引（实时诊断）</h2>
 {''.join(stock_card(c) for c in WATCHLIST)}
 </div>
+
+{focus_section()}
 
 <div class="card">
 <h2>九、今日操作策略（实时驱动）</h2>
