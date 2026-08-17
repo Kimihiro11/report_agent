@@ -154,10 +154,14 @@ def _parse_rss_items(text, max_items=6, max_len=320):
         title = re.sub(r"<!\[CDATA\[|\]\]>", "", tm.group(1)).strip() if tm else ""
         desc = re.sub(r"<!\[CDATA\[|\]\]>", "", dm.group(1)).strip() if dm else ""
         pub = pm.group(1).strip() if pm else ""
-        # 清理 HTML 实体/标签
-        title = html.unescape(re.sub(r"<[^>]+>", "", title))
-        desc = html.unescape(re.sub(r"<[^>]+>", "", desc))
-        content = f"{title}。{desc}".strip() if desc else title
+        # 先反转义再剥离 HTML 标签：Google/Bing 的 description 常以 &lt;a href=...&gt;
+        # 形式包裹原文链接，若先 strip 则匹配不到转义的 &lt;，再 unescape 会把
+        # &lt;a 还原成字面 <a href> 残留在文本里。
+        title = re.sub(r"<[^>]+>", "", html.unescape(title)).strip()
+        desc = re.sub(r"<[^>]+>", "", html.unescape(desc)).strip()
+        # 优先用 title（Google/Bing 的 title 已是干净标题，description 多为 title 的
+        # 链接包装版，拼接会产生重复噪声）
+        content = title or desc
         content = re.sub(r"\s+", " ", content).strip()
         if content and len(content) > 8:
             out.append({"text": content[:max_len], "pub": pub})
