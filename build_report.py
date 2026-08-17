@@ -401,6 +401,9 @@ def strategy_section():
 def focus_section():
     """限时关注的重点数据解析（嵌入日报，置于「今日操作策略」之前）。
 
+    模块唯一目的：研判日本央行（BOJ）加息「程度」（幅度/节奏/终点利率）——抓取各大所
+    英文研报与观点、解析正文、输出合理中文观点并合成一致预期。
+
     数据优先级：① 当日已抓取的缓存 state（data/focus/focus_state_<DATE8>.json）；
     ② 缺失则尝试实时运行 focus_monitor 抓取真实数据；③ 均不可用则按项目规则
     渲染「实时数据缺失」占位，绝不出现假数据。
@@ -425,7 +428,7 @@ def focus_section():
         if state is None:
             return ('<div class="card"><h2>限时关注的重点数据解析（实时）</h2>'
                     '<p class="muted" style="font-size:12px;">实时数据缺失（外网/代理不可达，'
-                    '未能获取「抛美债 / FIMA工具 / 大机构日元加息」三类信号研判。'
+                    '未能获取各大所日银加息研报研判。'
                     '请先运行 `python focus_monitor.py` 采集后再生成报告）。</p></div>')
         frag = fm.render_focus_html(state, standalone=False, embed=True)
         return f'<div class="card"><h2>限时关注的重点数据解析（实时）</h2>{frag}</div>'

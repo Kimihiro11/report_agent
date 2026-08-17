@@ -1,6 +1,6 @@
 # A股舆情操作指引 Agent
 
-基于实时数据生成的 A 股舆情 / 宏观传导链 / 操作指引报告系统。每日输出 9 章节分析报告（早报 / 晚报 / 周报），并内置「限时关注的重点数据解析」宏观引爆信号监测模块。
+基于实时数据生成的 A 股舆情 / 宏观传导链 / 操作指引报告系统。每日输出 9 章节分析报告（早报 / 晚报 / 周报），并内置「限时关注的重点数据解析」——专攻日本央行（BOJ）加息程度研判（抓取各大所英文研报与观点、解析正文、输出合理中文观点并合成一致预期）。
 
 ## 目录结构
 
@@ -10,7 +10,8 @@ report_agent/
 ├── build_report.py            # 报告生成器：消费快照渲染 9 章节 HTML（含焦点模块嵌入）
 ├── backtest.py               # 回测与交叉验证（1/3/5 交易日窗口）
 ├── db.py                     # PostgreSQL 封装（11 张表 + upsert + 探活 + 自愈合建表）
-├── focus_monitor.py          # 限时关注：日元主导传导链末端引爆信号监测（抛美债/FIMA/大机构加息）
+├── focus_monitor.py          # 限时关注：日本央行(BOJ)加息程度研判（抓取各大所英文研报/观点→解析正文→输出合理中文观点+一致预期）
+├── news_intel.py             # 外网资讯解析：英文源抓取 + 正文解析（Agent 总结为中文结论）
 ├── stock_diagnosis.py        # 自选股实时诊断（调用 peak_detector）
 ├── peak_detector.py          # 见顶 / 技术诊断引擎（被 stock_diagnosis 引用，须与之上同目录）
 │
@@ -36,7 +37,8 @@ report_agent/
 ├── data/                     # 运行时产物（data/ 已被 gitignore 排除）
 │   ├── snapshots/            # 数据引擎每次采集的 JSON 快照（fetched_YYYYMMDD_HHMMSS.json，**不入库**，自动清理≤2天）
 │   ├── diagnosis/            # 个股诊断缓存（diagnosis_YYYYMMDD.json，按需版本化）
-│   └── focus/                # 焦点监控状态（focus_state_YYYYMMDD.json，按需版本化）
+│   ├── focus/                # 焦点监控状态（focus_state_YYYYMMDD.json，按需版本化）
+│   └── news_intel/           # 外网资讯解析原始抓取（news_intel_YYYYMMDD.json，按需版本化）
 │
 ├── reports/                  # 产出报告（版本控制）
 │   ├── 早报/  晚报/  周报/  回测/  早期版本/  限时关注/
@@ -52,7 +54,8 @@ report_agent/
 | `build_report.py` | 实时 9 章节报告模板。读取当日 `data/snapshots/` 最新快照 + 诊断 + 焦点模块，渲染 HTML。支持 `--date` / `--type 早报\|晚报\|周报`。 |
 | `backtest.py` | 回测与交叉验证（方向命中 + 量价技术信号交叉验证）。`--all` 生成回测报告，`--seed` 解析报告 HTML 写入 `seeds/`。 |
 | `db.py` | PostgreSQL 封装：11 张表、`upsert`、探活 `test_connection`、自愈合 `init_database`。 |
-| `focus_monitor.py` | 监测三类日元主导传导链末端引爆信号（抛美债 / FIMA 工具 / 大机构日元加息），代理感知的 Google News + Bing 抓取，mention+action 排除 negation 判定；输出专业研判结论。CLI：`--no-fetch` / `--days N`。 |
+| `focus_monitor.py` | 研判日本央行（BOJ）加息「程度」（幅度/节奏/终点利率）：抓取各大所（高盛/摩根大通/摩根士丹利/瑞银/野村/三菱日联/瑞穗/大和/巴克莱/美银）英文研报与观点（Google News EN / Bing News EN，代理感知），还原 publisher 抓取正文解析内容，逐家提取加息预期并输出合理中文观点，最终合成一致预期与分歧。CLI：`--days N`（默认7）。 |
+| `news_intel.py` | 外网资讯解析模块：对隔夜美股 / 中美宏观 / 地缘政治原油 / 日本加息四类主题，**用英文 query 抓取外网源**（Bing News EN 优先→Google News EN 兜底），并把 RSS 结果还原真实 publisher 链接、**解析文章正文**（publisher 拦截时回退 RSS 领段文本）；产出 `data/news_intel/news_intel_YYYYMMDD.json`（原始英文解析），由 Agent 读取后**总结为中文结论**并经 `build_report.py` 渲染。CLI：`--date YYYY-MM-DD` / `--no-fetch`。 |
 | `stock_diagnosis.py` | 对 `config.json` 自选股做个股层面风险诊断，调用 `peak_detector`。 |
 | `peak_detector.py` | 见顶 / 技术诊断引擎，被 `stock_diagnosis` 以 `from peak_detector import ...` 引用，**须与 `stock_diagnosis.py` 同目录（根目录）**。 |
 
@@ -62,17 +65,25 @@ report_agent/
 1) 数据引擎（采集 + 强制入库）
    python a_stock_agent.py
 
-2) 生成报告（消费快照）
-   python build_report.py --date YYYY-MM-DD --type 早报|晚报|周报
-   （内置焦点模块会在当日无缓存时自动实时抓取，外网不可达则显示「实时数据缺失」占位）
+2) 外网资讯解析（英文源抓取 + 正文解析）
+   python news_intel.py --date YYYY-MM-DD
+   → 写入 data/news_intel/news_intel_YYYYMMDD.json（原始英文解析）
+   → **Agent 读取该 JSON 的 content_en，总结为中文结论并回填 summary_zh 字段**（这是优质中文研判的来源，不是简单标题搬运）
 
-3) 回测（晚报/周报之后）
+3) 生成报告（消费快照 + 外网解析）
+   python build_report.py --date YYYY-MM-DD --type 早报|晚报|周报
+   （一/二/四节与三节的日本分项会渲染 news_intel 的中文总结；内置焦点模块会在当日无缓存时自动实时抓取）
+
+4) 回测（晚报/周报之后）
    python backtest.py --all
 
-4) 限时关注监测（独立 / 已嵌入报告）
-   python focus_monitor.py            # 实时爬取 + 检测
-   python focus_monitor.py --no-fetch # 渲染上次缓存
+5) 限时关注监测：日本央行加息程度研判（独立 / 已嵌入报告，置于「今日操作策略」之前）
+   python focus_monitor.py            # 实时抓取各大所英文研报+解析正文+研判，写入 data/focus/ 与 reports/限时关注/
+   python focus_monitor.py --no-fetch # 用上次缓存 state 重渲染
+   python focus_monitor.py --days 7   # 设置近端时间窗（天，默认 7）
 ```
+
+> **外网资讯质量要求**：境外信息一律用**英文 query** 获取外网源，并**解析文章正文**（而非只读标题）；Agent 需把解析出的英文内容**总结为中文结论**，聚焦对 A 股/市场走向的研判，便于判断。该要求已落地于 `news_intel.py` + `build_report.py` 的「外网解析」章节（一/二/四节 + 三节日本分项）。
 
 ## 配置与依赖
 
