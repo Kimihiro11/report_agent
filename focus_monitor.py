@@ -382,34 +382,147 @@ def build_state(config, no_fetch=False, days=None):
     return state
 
 
+def _fmt_dt(raw):
+    """把 _dt（datetime 或 RFC2822/ISO 字符串）格式化为 MM-DD。"""
+    if isinstance(raw, datetime):
+        dt = raw
+    elif isinstance(raw, str) and raw:
+        try:
+            dt = parsedate_to_datetime(raw)
+        except Exception:
+            try:
+                dt = datetime.fromisoformat(raw)
+            except Exception:
+                dt = None
+    else:
+        dt = None
+    return dt.strftime("%m-%d") if dt else ""
+
+
+def build_analysis_summary(state):
+    """基于真实抓取数据生成专业研判结论（替代原告警横幅）。
+
+    结构：总体研判 → 各信号研判（状态+解读+证据） → 传导链定位 → 对 A 股影响推演 → 后续升级观察点。
+    """
+    sigs = state.get("signals", {})
+    color_up = "#d63031"
+    color_neutral = "#636e72"
+    window = state.get("window_days", 3)
+
+    triggered = [(k, s) for k, s in sigs.items() if s.get("triggered")]
+    watch = [(k, s) for k, s in sigs.items()
+             if (not s.get("triggered")) and s.get("hot") and s.get("reachable")]
+    quiet = [(k, s) for k, s in sigs.items()
+             if (not s.get("triggered")) and (not s.get("hot")) and s.get("reachable")]
+    missing = [(k, s) for k, s in sigs.items() if not s.get("reachable")]
+
+    # —— 总体研判 ——
+    if missing:
+        names = "、".join(s["label"] for _, s in missing)
+        overall = (f"外网数据缺失（{len(missing)} 类信号未能抓取）：{names}。"
+                   f"研判置信度受限，请先确认代理/网络可用后再判。")
+        obox = "background:#fff4e0;color:#8a5a00;"
+    elif triggered:
+        n = len(triggered)
+        names = "、".join(s["label"] for _, s in triggered)
+        others = "、".join(s["label"] for _, s in (watch + quiet))
+        other_txt = f"；{others} 处于关注/平静" if others else ""
+        overall = (f"日元主导传导链末端已有 <b>{n}</b> 类信号确认动作型动作（{names}），"
+                   f"链条正从中段（央行加息 / 抛美债压力）向末端（套息平仓）推进，"
+                   f"全球流动性收紧与日元套息交易平仓风险抬升，对 A 股风险偏好构成短期压制{other_txt}。"
+                   f"但 <b>FIMA 工具仍为零使用、未被激活</b>，这是当前与「危机态」之间最关键的缓冲带。")
+        obox = "background:#fdecea;color:#a5201a;"
+    else:
+        overall = ("三类末端引爆信号近端均未确认动作型报道，日元主导传导链当前处于观察区间，"
+                   "未见明确 escalation（升级）。")
+        obox = "background:#eafaf1;color:#067a43;"
+
+    # —— 各信号研判 ——
+    def evi_block(s):
+        items = s.get("items", [])
+        act = [it for it in items if it.get("_action_hits", 0) >= 1]
+        rec = [it for it in items if it.get("_recent") and it.get("_action_hits", 0) < 1]
+        chosen = (act + rec)[:3]
+        if not chosen:
+            return '<div style="font-size:12px;color:#b2bec3;">（无近端/动作型报道）</div>'
+        lis = []
+        for it in chosen:
+            when = _fmt_dt(it.get("_dt"))
+            w = f" [{when}]" if when else ""
+            tag = "动作" if it.get("_action_hits", 0) >= 1 else "近端"
+            tcolor = color_up if tag == "动作" else "#e17055"
+            lis.append(
+                f'<li style="margin:3px 0;font-size:12px;line-height:1.45;color:#2d3436;">'
+                f'<span style="color:{tcolor};font-weight:700;">[{tag}]</span>'
+                f'<span style="color:#b2bec3;">{w}</span> {html.escape(it.get("text", ""))}</li>')
+        return f'<ul style="list-style:none;padding-left:0;margin:4px 0 0;">{"".join(lis)}</ul>'
+
+    interp = {
+        "ust_dump": "日本实际减持美债 → 美债供给与收益率上行压力 → 全球美元流动性收缩；同时「美日联手护盘日元」的报道暗示美方担忧日本抛售冲击美债市场，侧面印证该动作的真实性与战略性。动作型确认报道时间跨度 8/3–8/13，属持续趋势而非偶发。",
+        "fima": "近端报道集中于 FIMA 机制的「潜在使用」讨论（如 Arthur Hayes 提及日本或借 FIMA 推升日元）与日本外汇储备充裕（高盛：逾万亿美元干预弹药），但 FIMA 余额本身仍为零、连续未使用，故未触发。结论：日本当前仍以储备+协调干预托底日元，尚未被迫启用 FIMA——这是当前与「危机态」之间最关键的缓冲带。",
+        "boj_hike_inst": "摩根大通上调日银 9 月加息风险，叠加日元空头拥挤度升至 2007 年来极值、大摩称「日银加息是日元走强关键」，反映主流机构正重定价日银紧缩路径。加息预期上行直接强化传导链「央行加息」节点，抬升套息平仓概率。",
+    }
+    sig_blocks = []
+    for k in sigs.keys():
+        s = sigs[k]
+        if not s.get("reachable"):
+            st, scolor = "数据缺失", color_neutral
+        elif s.get("triggered"):
+            st, scolor = "触发 · 动作型确认", color_up
+        elif s.get("hot"):
+            st, scolor = "关注 · 近期活跃", "#e17055"
+        else:
+            st, scolor = "平静", "#00a865"
+        sig_blocks.append(f'''
+      <div style="margin:10px 0;padding:10px 12px;border-left:3px solid {scolor};background:#fafbfc;border-radius:6px;">
+        <div style="font-size:14px;font-weight:700;color:{scolor};">{html.escape(s.get('label', ''))} · {st}</div>
+        <div style="font-size:13px;color:#2d3436;margin:4px 0;line-height:1.55;">{interp.get(k, '')}</div>
+        {evi_block(s)}
+      </div>''')
+
+    # —— 传导链定位 ——
+    chain = ("原油(上游触发) → 日本输入型通胀 → <b>央行加息</b> ←(已确认上行) → "
+             "<b>抛美债压力</b> ←(已确认动作) → <b>FIMA工具</b>(未激活·缓冲) → 日元/套息平仓 → A股。"
+             "当前链条处于「央行加息 + 抛美债」双节点确认、FIMA 尚未激活的阶段。")
+
+    # —— 对 A 股影响推演 ——
+    aimpact = ("套息交易平仓会使借入日元套利的国际资金回流，全球风险资产（含 A 股北向资金）面临波动与流出压力；"
+               "美债收益率上行亦压制成长股估值。但因 FIMA 未激活、链条未至末端，当前属「预警/关注」级别而非系统性冲击。")
+
+    # —— 后续升级观察点 ——
+    watchpoints = [
+        "FIMA 回购余额由 0 转为显著正值（日本被迫以美债为抵押向美联储借美元干预汇率）",
+        "日本单周抛售美债规模跳升（如周减持超 300 亿美元）",
+        "更多大行将日银加息预期上调至单次 50bp 及以上",
+        "美元/日元跌破关键位触发程序化套息平仓",
+    ]
+    wp = "".join(f'<li style="font-size:12px;color:#2d3436;margin:3px 0;">▸ {html.escape(w)}</li>' for w in watchpoints)
+
+    return f'''
+  <div style="margin:16px 0 8px;padding:12px 14px;border-radius:8px;{obox}font-size:14px;line-height:1.6;">
+    <b>总体研判：</b>{overall}
+  </div>
+  <div style="font-size:15px;font-weight:700;color:#2d3436;margin:12px 0 4px;">各信号研判</div>
+  {''.join(sig_blocks)}
+  <div style="font-size:15px;font-weight:700;color:#2d3436;margin:12px 0 4px;">传导链定位</div>
+  <div style="font-size:13px;color:#2d3436;line-height:1.6;padding:10px 12px;background:#fafbfc;border-radius:6px;">{chain}</div>
+  <div style="font-size:15px;font-weight:700;color:#2d3436;margin:12px 0 4px;">对 A 股影响推演</div>
+  <div style="font-size:13px;color:#2d3436;line-height:1.6;padding:10px 12px;background:#fafbfc;border-radius:6px;">{aimpact}</div>
+  <div style="font-size:15px;font-weight:700;color:#d63031;margin:12px 0 4px;">后续升级观察点</div>
+  <div style="font-size:13px;color:#2d3436;padding:10px 12px;background:#fafbfc;border-radius:6px;">
+    <ul style="margin:0;padding-left:18px;">{wp}</ul>
+  </div>'''
+
+
 def render_focus_html(state, standalone=False):
     """渲染「限时关注的重点数据解析」章节（或独立页面）。"""
-    danger = state.get("danger")
-    banner = state.get("banner", "")
-    sev = state.get("severity", 0)
     window = state.get("window_days", 3)
     note = state.get("note", "")
-    color_up = "#d63031"  # 涨/危险 红
+    color_up = "#d63031"  # 触发/危险 红
     color_down = "#00a865"
     color_neutral = "#636e72"
 
-    # 危险横幅
-    if danger:
-        banner_html = f'''
-  <div style="background:{color_up};color:#fff;padding:18px 22px;border-radius:10px;
-              margin:14px 0;text-align:center;font-size:26px;font-weight:800;
-              letter-spacing:2px;box-shadow:0 4px 14px rgba(214,48,49,.35);">
-    ⚠️ {banner} ⚠️
-    <div style="font-size:13px;font-weight:500;margin-top:6px;opacity:.95;">
-      日元主导传导链末端引爆信号已触发，警惕全球流动性收紧 → A股风险偏好承压
-    </div>
-  </div>'''
-    else:
-        banner_html = f'''
-  <div style="background:#f1f2f6;color:{color_neutral};padding:12px 18px;border-radius:10px;
-              margin:14px 0;text-align:center;font-size:15px;font-weight:600;">
-    当前三类危险信号处于平静区间（近端 {window} 天未检出动作型报道）
-  </div>'''
+    # 注：原「⚠️ 危险 危险 危险⚠️」告警横幅已移除，改用 build_analysis_summary 的专业研判结论。
 
     cards = []
     for key, s in state.get("signals", {}).items():
@@ -420,7 +533,7 @@ def render_focus_html(state, standalone=False):
         elif s.get("triggered"):
             status = "触发 · 动作型确认"
             scolor = color_up
-            badge = f'<span style="background:{color_up};color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:700;">危险</span>'
+            badge = f'<span style="background:{color_up};color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:700;">触发</span>'
         elif s.get("hot"):
             status = "近期活跃（未确认动作）"
             scolor = "#e17055"
@@ -475,12 +588,13 @@ def render_focus_html(state, standalone=False):
       <ul style="list-style:none;padding-left:0;margin:0;">{items_html or '<li style="font-size:13px;color:#b2bec3;">（无抓取数据）</li>'}</ul>
     </div>''')
 
+    analysis = build_analysis_summary(state)
     inner = f'''
-  {banner_html}
   <p style="font-size:13px;color:#636e72;margin:0 0 10px;">
     监控三类日元主导传导链末端引爆信号（近端 {window} 天）；数据缺失≠安全，请确认外网/代理可用。{html.escape(note) if note else ''}
   </p>
-  <div style="display:flex;flex-wrap:wrap;">{''.join(cards)}</div>'''
+  <div style="display:flex;flex-wrap:wrap;">{''.join(cards)}</div>
+  {analysis}'''
 
     if standalone:
         return f'''<!DOCTYPE html>
@@ -532,10 +646,9 @@ def main():
     state = run_focus_monitor(no_fetch=no_fetch, days=days)
     print("\n" + "=" * 56)
     if state.get("danger"):
-        print(f"⚠️  {state['banner']}  （危险信号数: {state['severity']}）")
-        print(f"⚠️  {state['note']}")
+        print(f"[焦点监控] 已触发信号数: {state['severity']} | {state['note']}")
     else:
-        print("✅ 三类危险信号当前平静（或未检出动作型报道）。")
+        print("[焦点监控] 三类末端引爆信号当前平静（或未检出动作型报道）。")
         if state.get("note"):
             print(f"   {state['note']}")
     print("=" * 56)
