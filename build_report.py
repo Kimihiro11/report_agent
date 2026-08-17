@@ -178,6 +178,53 @@ def us_bar(name, pct, val, sig):
             f'<div class="bar-val {up_down(pf)}">{sign(pf)}{pf}%</div></div>')
 
 
+# ================= 个股诊断信号渲染（第八节用） =================
+# 信号元素结构：(name, desc, score, sig_type)；sig_type 决定配色与分组
+SIG_TYPE_COLOR = {
+    '超买': '#d63031', '成交': '#e67e22', '背离': '#c0392b',
+    '衰竭': '#8e44ad', '破位': '#d63031', '见底': '#00a865',
+}
+# 见底为负分（安全缓冲），其余为正分（风险累加）；按风险→缓冲顺序排列
+SIG_TYPE_ORDER = ['超买', '成交', '背离', '衰竭', '破位', '见底']
+
+
+def render_signals(sigs):
+    """把个股诊断 signals 渲染为「按类型分组」的彩色信号块（替代原始列表倾倒）。"""
+    if not sigs:
+        return '<p class="muted" style="font-size:11px;color:#999;">无显著信号</p>'
+    groups = {}
+    for s in sigs:
+        if not (isinstance(s, (list, tuple)) and len(s) >= 4):
+            continue
+        name, desc, score, st = s[0], s[1], s[2], s[3]
+        try:
+            score = float(score)
+        except (TypeError, ValueError):
+            score = 0
+        groups.setdefault(st, []).append((str(name), str(desc), score))
+    if not groups:
+        return '<p class="muted" style="font-size:11px;color:#999;">无显著信号</p>'
+    ordered = [t for t in SIG_TYPE_ORDER if t in groups] + \
+              [t for t in groups if t not in SIG_TYPE_ORDER]
+    html = '<div class="sig-block">'
+    for st in ordered:
+        color = SIG_TYPE_COLOR.get(st, '#666')
+        lst = sorted(groups[st], key=lambda x: -abs(x[2]))
+        chips = ''
+        for name, desc, score in lst:
+            sign = '+' if score > 0 else ''
+            chips += (f'<span class="sig-chip" style="background:{color}14;color:{color};'
+                      f'border-color:{color}55;"><b>{name}</b>'
+                      f'<span class="sig-desc">{desc}</span>'
+                      f'<span class="sig-score">{sign}{score:.1f}</span></span>')
+        html += (f'<div class="sig-group">'
+                 f'<span class="sig-label" style="color:{color};background:{color}14;'
+                 f'border-color:{color}55;">{st} · {len(lst)}项</span>'
+                 f'<div class="sig-chips">{chips}</div></div>')
+    html += '</div>'
+    return html
+
+
 def stock_card(code):
     sector = SECTOR.get(code, "")
     d = diag_for(code)
@@ -187,13 +234,18 @@ def stock_card(code):
         trend = d.get("trend_status", "—")
         action, cls = action_from_diag(d)
         sig = d.get("signals", "")
-        if isinstance(sig, str):
-            sig = sig[:80]
-        logic = f"{sector}；诊断：{level}·{trend}。" + (f"信号：{sig}" if sig else "")
+        if isinstance(sig, list):
+            sig_html = render_signals(sig)
+        elif sig:
+            sig_html = f'<p class="muted" style="font-size:12px;">{sig[:120]}</p>'
+        else:
+            sig_html = ""
+        logic = f"{sector}；诊断：{level}·{trend}。"
     else:
         score, level, trend = "—", "—", "—"
         action, cls = "观望", "b-gray"
         logic = f"{sector}（实时诊断缺失）"
+        sig_html = ""
     return f'''
     <div class="stock-card">
       <div class="stock-title">
@@ -201,6 +253,7 @@ def stock_card(code):
         <span class="badge {cls}">{action}</span>
       </div>
       <p class="stock-logic">{logic}</p>
+      {sig_html}
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
     </div>'''
 
@@ -623,6 +676,13 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .stock-title .name{font-size:15px;font-weight:700;color:#1a2b4a}
 .stock-logic{font-size:13px;color:#444;margin-bottom:6px}
 .stock-meta{font-size:12px;color:#888;margin-bottom:8px}
+.sig-block{margin-top:10px;border-top:1px dashed #eef0f3;padding-top:9px}
+.sig-group{display:flex;align-items:flex-start;gap:8px;margin:6px 0;flex-wrap:wrap}
+.sig-label{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;white-space:nowrap;border:1px solid}
+.sig-chips{display:flex;flex-wrap:wrap;gap:5px;flex:1;min-width:65%}
+.sig-chip{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:11px;border:1px solid;line-height:1.5;white-space:nowrap}
+.sig-chip .sig-desc{opacity:.72;margin:0 3px}
+.sig-chip .sig-score{font-weight:700}
 .op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .op-row .op{font-size:12px;padding:3px 10px;border-radius:8px}
 .op-buy{background:#fde8e8;color:#d63031}
