@@ -372,6 +372,190 @@ def header_market():
 
 
 # ================= 组装 HTML =================
+# ================= 微博舆情解构（核心结论用） =================
+# 多空词库：把大V / 宏观 / 事件原文「解构」成可研判的多空信号，而非流水账
+BULL_WORDS = ["看多", "看好", "利好", "机会", "上涨", "突破", "加仓", "买入", "牛市", "底部",
+              "反弹", "复苏", "景气", "超预期", "积极", "乐观", "主线", "确定性", "配置", "布局",
+              "修复", "上行", "走强", "领涨", "拐点", "困境反转", "戴维斯", "净流入", "资金流入"]
+BEAR_WORDS = ["看空", "利空", "风险", "下跌", "回调", "减仓", "卖出", "熊市", "顶部", "见顶",
+              "泡沫", "警惕", "谨慎", "防御", "避险", "承压", "收缩", "降温", "拖累", "爆雷",
+              "不确定", "观望", "走弱", "下行", "破位", "杀跌", "踩踏", "净流出", "资金流出", "暴雷"]
+NEG_WORDS = ["不", "没", "没有", "无", "未", "别", "勿", "非", "未必", "不可", "不要", "难", "缺乏", "缺少", "尚未"]
+
+
+def _score_text(text):
+    """对单条文本做多空打分（含就近否定翻转），返回净分。"""
+    if not text:
+        return 0
+    score = 0
+    for w in BULL_WORDS:
+        idx = 0
+        while True:
+            i = text.find(w, idx)
+            if i < 0:
+                break
+            window = text[max(0, i - 3):i]
+            score -= 1 if any(n in window for n in NEG_WORDS) else 1
+            idx = i + len(w)
+    for w in BEAR_WORDS:
+        idx = 0
+        while True:
+            i = text.find(w, idx)
+            if i < 0:
+                break
+            window = text[max(0, i - 3):i]
+            score += 1 if any(n in window for n in NEG_WORDS) else -1
+            idx = i + len(w)
+    return score
+
+
+def deconstruct_weibo():
+    """解构微博舆情：提炼大V对大盘与个股的多空研判。返回结构化 dict。"""
+    vs_sources = {
+        "唐史主任司马迁": tangshi,
+        "投星资产": touxing_asset,
+        "投星大爷": touxing_yeye,
+    }
+    src_scores = {}
+    all_vs = []
+    for name, texts in vs_sources.items():
+        s = sum(_score_text(t) for t in texts)
+        src_scores[name] = s
+        all_vs.extend(texts)
+    total = sum(src_scores.values())
+    if total > 1:
+        consensus = ("偏多", "b-red")
+    elif total < -1:
+        consensus = ("偏空", "b-green")
+    elif total == 0:
+        consensus = ("中性", "b-blue")
+    else:
+        consensus = ("分歧", "b-orange")
+
+    # 个股 / 板块提及解构：名称或行业命中即视为被大V覆盖，记录多空净分
+    stock_mentions = {}
+    for code in WATCHLIST:
+        nm = watch_name(code)
+        sec = SECTOR.get(code, "")
+        for t in all_vs:
+            kw = (nm if (nm and nm in t) else None) or (sec if (sec and sec in t) else None)
+            if not kw:
+                continue
+            sc = _score_text(t)
+            info = stock_mentions.setdefault(code, {"name": nm, "score": 0, "snippets": []})
+            info["score"] += sc
+            i = t.find(kw)
+            info["snippets"].append(t[max(0, i - 12):i + len(kw) + 24])
+
+    # 关键论点：净分绝对值最高的代表性观点（已解构，非原文堆砌）
+    key = []
+    for t in all_vs:
+        sc = _score_text(t)
+        if sc != 0:
+            key.append((abs(sc), sc, t[:78]))
+    key.sort(key=lambda x: -x[0])
+    key = key[:3]
+
+    # 风险点：日本传导链 / 事件因子中的利空信号
+    risks = [t[:78] for t in (japan_items + event_items) if _score_text(t) <= -1][:3]
+
+    return {"src_scores": src_scores, "total": total, "consensus": consensus,
+            "stock_mentions": stock_mentions, "key": key, "risks": risks}
+
+
+def core_conclusion():
+    """核心结论：用解构后的多空信号研判大盘与个股，而非罗列原始数据。"""
+    d = deconstruct_weibo()
+    consensus_label, consensus_cls = d["consensus"]
+    idx_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+    up_n = sum(1 for q in quotes.values() if q.get("chg_pct", 0) > 0) if quotes else 0
+    idx_n = len(quotes) if quotes else 0
+
+    src_bits = []
+    for name, s in d["src_scores"].items():
+        if not s:
+            continue
+        tag = "看多" if s > 0 else ("看空" if s < 0 else "中性")
+        src_bits.append(f"{name}{tag}({'+' if s > 0 else ''}{s})")
+    src_line = "；".join(src_bits) if src_bits else "大V实时观点缺失，无法解构"
+
+    market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨）；"
+                   f"意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b> —— {src_line}。"
+                   f"微博舆情经解构后用于研判，而非观点堆砌。")
+
+    stock_bits = []
+    for code in WATCHLIST:
+        nm = watch_name(code)
+        info = d["stock_mentions"].get(code)
+        if info and info["snippets"]:
+            if info["score"] > 0:
+                cls, tone = "b-red", "偏多"
+            elif info["score"] < 0:
+                cls, tone = "b-green", "偏空"
+            else:
+                cls, tone = "b-blue", "中性"
+            stock_bits.append(f'<span class="badge {cls}">{nm}·{tone}</span>')
+        else:
+            # 大V未点名，但板块主题被舆情共振命中时标注「主题覆盖」
+            sec = SECTOR.get(code, "")
+            sec_hit = bool(sec) and any(k in sec for k in matched_sectors)
+            if sec_hit:
+                stock_bits.append(f'<span class="badge b-blue">{nm}·主题覆盖</span>')
+            else:
+                stock_bits.append(f'<span class="tag">{nm}·未提及</span>')
+    stock_line = " ".join(stock_bits)
+
+    key_html = "".join(
+        f'<div class="{"alert-red" if sc < 0 else "alert-green" if sc > 0 else "alert-blue"}">'
+        f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {t}…</div>'
+        for _, sc, t in d["key"]) or '<p class="muted">实时大V观点未提取到强多空信号。</p>'
+
+    risk_html = "".join(f'<div class="alert-red">⚠ {t}…</div>' for t in d["risks"]) or \
+        '<p class="muted">实时风险因子（日本传导链 / 事件）未提取到明确利空信号。</p>'
+
+    return f'''
+    <div class="cc-view">
+      <div class="cc-head">大盘研判（解构大V舆情 → 指数确认）</div>
+      <div class="cc-body">{market_view}</div>
+      <div class="cc-head">自选股解构（大V提及与多空倾向）</div>
+      <div class="cc-body cc-stocks">{stock_line}</div>
+      <div class="cc-head">关键论点（来自实时大V观点，已解构）</div>
+      {key_html}
+      <div class="cc-head">风险预警（实时因子解构）</div>
+      {risk_html}
+    </div>
+    <div class="cc-grid-title">实时数据速览</div>
+    <div class="conclusion-grid">{conclusion_grid()}</div>
+    '''
+
+
+def vs_summary():
+    """唐史 / 投星板块的解构摘要（置于原文之前，避免流水账）。"""
+    d = deconstruct_weibo()
+    consensus_label, consensus_cls = d["consensus"]
+    bits = []
+    for name, s in d["src_scores"].items():
+        if not s:
+            continue
+        tag = "看多" if s > 0 else ("看空" if s < 0 else "中性")
+        cls = "b-red" if s > 0 else ("b-green" if s < 0 else "b-blue")
+        bits.append(f'<span class="badge {cls}">{name}：{tag}（{("+" if s > 0 else "")}{s}）</span>')
+    consensus_html = (f'大V整体共识 <b class="{consensus_cls}">{consensus_label}</b>；'
+                      + (" ".join(bits) if bits else "实时大V观点缺失"))
+    key_html = "".join(
+        f'<div class="{"alert-red" if sc < 0 else "alert-green" if sc > 0 else "alert-blue"}">'
+        f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {t}…</div>'
+        for _, sc, t in d["key"]) or '<p class="muted">未提取到强多空信号。</p>'
+    return f'''
+    <div class="cc-view">
+      <div class="cc-head">大V共识解构</div>
+      <div class="cc-body">{consensus_html}</div>
+      <div class="cc-head">代表性论点（已解构，非原文堆砌）</div>
+      {key_html}
+    </div>
+    '''
+
+
 CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.8}
@@ -411,6 +595,12 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .conclusion-item{background:#fafbfc;border-radius:10px;padding:14px;border:1px solid #eef0f3}
 .conclusion-item .label{font-size:12px;color:#888;margin-bottom:4px}
 .conclusion-item .value{font-size:14px;font-weight:600;color:#1a2b4a}
+.cc-view{background:#fafbff;border:1px solid #e8eaf6;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.cc-head{font-size:13px;font-weight:700;color:#3C3489;margin:12px 0 6px;padding-left:8px;border-left:3px solid #534AB7}
+.cc-head:first-child{margin-top:0}
+.cc-body{font-size:13px;color:#333;line-height:1.8}
+.cc-stocks .badge,.cc-stocks .tag{margin:3px 5px 3px 0;display:inline-block}
+.cc-grid-title{font-size:12px;color:#888;margin:6px 0 8px;font-weight:600}
 .stock-card{border:1px solid #eef0f3;border-radius:10px;padding:16px;margin-bottom:12px}
 .stock-title{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 .stock-title .name{font-size:15px;font-weight:700;color:#1a2b4a}
@@ -461,7 +651,7 @@ html = f'''<!DOCTYPE html>
 <div class="toc">
 <h2>目录</h2>
 <ol>
-<li>核心结论（实时）</li>
+<li>核心结论（实时·舆情解构）</li>
 <li>隔夜美股（实时）</li>
 <li>CPI与宏观（实时新闻）</li>
 <li>宏观传导链监控（独立因子·实时）</li>
@@ -477,10 +667,8 @@ html = f'''<!DOCTYPE html>
 </div>
 
 <div class="card">
-<h2>核心结论（实时）</h2>
-<div class="conclusion-grid">
-{conclusion_grid()}
-</div>
+<h2>核心结论（实时 · 舆情解构）</h2>
+{core_conclusion()}
 </div>
 
 <div class="card">
@@ -510,10 +698,11 @@ html = f'''<!DOCTYPE html>
 </div>
 
 <div class="card">
-<h2>六、唐史主任 / 投星观点（实时）</h2>
-<h3>唐史主任司马迁</h3>
+<h2>六、唐史主任 / 投星观点（实时解构）</h2>
+{vs_summary()}
+<h3>唐史主任司马迁（原文）</h3>
 {points(tangshi)}
-<h3>投星资产 / 投星大爷</h3>
+<h3>投星资产 / 投星大爷（原文）</h3>
 {points(touxing_asset + touxing_yeye)}
 </div>
 
