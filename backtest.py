@@ -16,11 +16,10 @@ A股舆情Agent · 个股判断回测与交叉验证模块
   python backtest.py --all          # seed + run
 """
 import re
-import sys
 import json
 import argparse
 import urllib.request
-from datetime import datetime, date, timedelta
+from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
 
@@ -264,8 +263,12 @@ def load_judgments(as_of=None):
 _EM_CACHE = {}
 
 
-def fetch_kline(code: str, beg="2026-06-01", end="2026-12-31"):
-    """返回 [{date, open, close, high, low}]，按日期升序（新浪主源，东方财富兜底）"""
+def fetch_kline(code: str, beg="2026-06-01", end=None):
+    """返回 [{date, open, close, high, low}]，按日期升序（新浪主源，东方财富兜底）
+
+    end 默认为今天（实时截止），不再写死未来日期。
+    """
+    end = end or datetime.now().strftime("%Y-%m-%d")
     if code in _EM_CACHE:
         return _EM_CACHE[code]
     import time
@@ -458,7 +461,6 @@ def build_backtest_html(data):
     results = data["results"]
     agg = data["agg"]
     today = datetime.now().strftime("%Y-%m-%d %H:%M")
-    done = [r for r in results if r["status"] == "done"]
     pend = [r for r in results if r["status"] == "pending"]
 
     def cls_of(v):

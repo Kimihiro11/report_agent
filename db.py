@@ -7,7 +7,6 @@
     在 a_stock_agent.py 中导入使用
 """
 import psycopg2
-from datetime import date
 
 
 class StockAgentDB:

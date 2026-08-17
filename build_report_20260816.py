@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成 A股操作指引 9 章节报告（参数化日期与类型），并写入数据库。
+"""生成 A股操作指引 9 章节报告（参数化日期与类型），数据全部来自实时快照。
+
 用法: python build_report_20260816.py --date 2026-08-17 --type 早报|晚报|周报
+
+数据来源（全部实时，无任何写死行情/宏观/原油/ETF 数值）：
+  - 数据引擎 a_stock_agent.py 采集写入 data/fetched_YYYYMMDD.json
+    （微博/大V、宏观新闻、事件因子、日本传导链、技术、A股指数、隔夜美股、ETF资金流）
+  - 见顶诊断 stock_diagnosis.run_all(自选股) 或 diagnosis_YYYYMMDD.json
+任何数据缺口均渲染为「实时数据缺失」占位，绝不出现假数据。
 """
 import json
 import argparse
@@ -11,218 +18,316 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 
 # ---- 参数：--date 报告日期(YYYY-MM-DD) / --type 报告类型(决定写入目录) ----
-ap = argparse.ArgumentParser(description="生成 A股操作指引 9 章节报告")
-ap.add_argument("--date", default="2026-08-17", help="报告日期 YYYY-MM-DD")
+ap = argparse.ArgumentParser(description="生成 A股操作指引 9 章节报告（实时数据）")
+ap.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"), help="报告日期 YYYY-MM-DD")
 ap.add_argument("--type", default="早报", choices=["早报", "晚报", "周报"],
                 help="报告类型：早报/晚报/周报，决定写入 reports/<类型>/ 目录")
 _args = ap.parse_args()
 TODAY = _args.date
+DATE8 = TODAY.replace("-", "")
 REPORT_TYPE = _args.type
 NOW = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-# 类型 → 盘前/盘后/周度标签（用于页眉与入库状态）
 _TYPE_LABEL = {"早报": "盘前版", "晚报": "盘后版", "周报": "周度回顾"}
 _TYPE_STATE = {"早报": "盘前", "晚报": "盘后", "周报": "周报"}
 REPORT_LABEL = _TYPE_LABEL.get(REPORT_TYPE, "盘前版")
 REPORT_STATE = _TYPE_STATE.get(REPORT_TYPE, "盘前")
 
-# ---- 加载实时抓取结果 ----
-with open(BASE_DIR / "weibo_posts.json", encoding="utf-8") as f:
-    weibo_data = json.load(f)
-with open(BASE_DIR / "diagnosis_20260816.json", encoding="utf-8") as f:
-    diag_raw = json.load(f)
+# ---- 加载配置（自选股 + 大V 源，避免写死） ----
+import a_stock_agent as agent
+cfg = agent.load_config()
+WATCHLIST = cfg.get("watchlist_stocks", []) or []
+# 稳定分类元数据（行业归属，非行情数据）：code -> 行业
+SECTOR = {
+    "688668": "连接器+液冷", "688409": "半导体设备零部件", "600641": "离子注入机",
+    "000725": "面板+AI封装", "301392": "PVD设备", "688530": "靶材", "600580": "机器人电机",
+}
+VS_NAMES = [s.get("name", "") for s in cfg.get("weibo_sources", [])]
+
+# ---- 加载实时快照（数据引擎产出） ----
+PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python a_stock_agent.py` 采集后再生成报告）。</p>'
+snap_path = BASE_DIR / "data" / f"fetched_{DATE8}.json"
+snapshot = {}
+if snap_path.exists():
+    try:
+        snapshot = json.load(open(snap_path, encoding="utf-8"))
+    except Exception as e:
+        print(f"[警告] 快照解析失败 {snap_path}: {e}")
+else:
+    print(f"[警告] 未找到实时快照 {snap_path}，请先运行 `python a_stock_agent.py` 采集数据。报告仅含占位。")
+
+weibo_data = snapshot.get("weibo_data", {})
+quotes = snapshot.get("quotes", {})
+us_market = snapshot.get("us_market", []) or []
+etf = snapshot.get("etf", []) or []
+market_state = snapshot.get("market_state", "neutral")
+matched_sectors = snapshot.get("matched_sectors", []) or []
+
+
+def wb_texts(name):
+    return [p.get("text", "") for p in weibo_data.get(name, []) if p.get("text")]
+
+
+# 实时大V / 各类信源文本
+tangshi = wb_texts("唐史主任司马迁")
+touxing_asset = wb_texts("投星资产")
+touxing_yeye = wb_texts("投星大爷")
+macro_items = [t for k in weibo_data if k.startswith("[宏观]") for t in wb_texts(k)]
+event_items = [t for k in weibo_data if k.startswith("[事件]") for t in wb_texts(k)]
+japan_items = [t for k in weibo_data if k.startswith("[日本]") for t in wb_texts(k)]
+tech_items = [t for k in weibo_data if k.startswith("[技术]") for t in wb_texts(k)]
+global_items = [t for k in weibo_data if k.startswith("[全球]") for t in wb_texts(k)]
+
+# ---- 个股诊断（实时） ----
+diag_raw = []
+diag_path = BASE_DIR / f"diagnosis_{DATE8}.json"
+if diag_path.exists():
+    try:
+        diag_raw = json.load(open(diag_path, encoding="utf-8"))
+    except Exception as e:
+        print(f"[诊断] 读取 {diag_path} 失败: {e}")
+else:
+    try:
+        import stock_diagnosis as sd
+        diag_raw = sd.run_all(WATCHLIST)
+        # 缓存到当日文件，便于回溯与回测
+        with open(diag_path, "w", encoding="utf-8") as f:
+            json.dump(diag_raw, f, ensure_ascii=False, indent=2)
+        print(f"[诊断] 实时诊断完成并缓存: {diag_path}")
+    except Exception as e:
+        print(f"[诊断] 实时诊断失败: {e}")
+
 
 def diag_for(code):
     for d in diag_raw:
-        if d["code"] == code:
+        if d.get("code") == code:
             return d
     return None
 
-# ---------- 数据：隔夜美股（8/15 凌晨收盘） ----------
-us_market = [
-    ("道琼斯", -0.20, "53732.41点", "三大指数集体收跌"),
-    ("纳斯达克", -0.28, "26729.16点", "科技股涨跌不一"),
-    ("标普500", -0.17, "7785.76点", "结束连续上涨"),
-    ("费城半导体", -0.31, "—", "半导体板块整体承压"),
-    ("闪迪(SanDisk)", 7.39, "—", "存储强势延续，本周累涨35.38%"),
-    ("希捷科技", 5.65, "—", "存储链共振"),
-    ("西部数据", 4.41, "—", "存储链共振"),
-    ("美光科技", 2.30, "—", "存储链共振"),
-    ("SK海力士", 0.40, "—", "存储龙头微涨"),
-    ("博通(Broadcom)", -5.94, "—", "半导体设备/网络芯片走弱"),
-    ("应用材料", -5.12, "—", "半导体设备股走弱"),
-    ("Applied Optoelectronics", 15.00, "—", "光通信走高"),
-    ("Lumentum", 5.00, "—", "光通信走高"),
-    ("康宁(Corning)", 4.00, "—", "光通信走高"),
-    ("英伟达", -0.06, "—", "基本平收"),
-    ("特斯拉", 0.68, "—", "七巨头中少数上涨"),
-    ("中概科技龙头", 1.27, "—", "腾讯ADR+2.23% 网易+2.01% 阿里+1.30%"),
-]
 
-# ---------- 数据：宏观 ----------
-macro = [
-    ("CPI同比(7月)", "3.4%", "3.5%", "回落·符合预期", "up"),
-    ("CPI环比(7月)", "0.1%", "—", "环比恢复正增", "muted"),
-    ("核心CPI同比", "2.5%", "2.6%", "2021年来最低·偏鸽", "up"),
-    ("7月PPI", "环比持平", "预期+0.2%", "批发通胀温和", "up"),
-    ("9月维持利率不变概率", "59.9%~68%", "—", "加息紧迫性下降", "up"),
-    ("9月累计加息25bp概率", "40.1%", "—", "仍有加息风险", "down"),
-    ("央行政策", "适度宽松", "—", "降息降准预期升温", "up"),
-]
+def action_from_diag(d):
+    if not d:
+        return ("观望", "b-gray")
+    lvl = d.get("level", "")
+    if "安全" in lvl:
+        return ("持有/加仓", "b-red")
+    if "预警" in lvl or "见顶" in lvl:
+        return ("谨慎/回避", "b-green")
+    return ("持有", "b-blue")
 
-# ---------- 数据：宏观传导链（日元主导） ----------
-# 主线：原油(触发) → 日本输入型通胀 → 央行加息(50-75bp,非25bp) → 抛美债压力 → FIMA押美债借美元干预 → 日元/套息平仓 → A股
-macro_chain = [
-    ("原油(触发)", "WTI82.4/布油88.8", "震荡", "伊朗地缘推升→日本能源90%依赖进口→输入型通胀", "b-orange"),
-    ("日本加息预期", "9月76%/10月96%", "偏鹰", "三菱日联:25bp不够止跌日元,单次或50-75bp,尾端100bp", "b-red"),
-    ("日本抛美债压力", "持美债>1.1万亿", "警戒", "单边干预筹资需抛美债→10Y美债YTD+57bp,长端承压", "b-orange"),
-    ("FIMA回购工具", "押美债借美元", "启用", "8/3财务省宣布用FIMA干预,免抛美债=借美款干预汇率", "b-blue"),
-    ("日元/联合干预", "USD/JPY 159", "警戒", "7月底-8/3美日韩联合干预163.99→155.2,涨势未守回159", "b-red"),
-    ("美债收益率", "10Y 4.69%", "偏鹰", "长端上行压制科技估值;FIMA大量使用或反增美债供给", "b-green"),
-    ("VIX", "14.66", "偏鸽", "恐慌低位,但套息平仓黑天鹅尚未被定价", "b-blue"),
-]
 
-# ---------- 数据：地缘/原油 ----------
-geo = [
-    ("霍尔木兹海峡", "仍受阻·未全面恢复", "伊朗要求赔偿、特朗普称已扫雷但通航未恢复", "b-red"),
-    ("中东供应中断", "约60万桶/日", "EIA预计持续至2027年底；Q3停产或扩至660万桶/日", "b-red"),
-    ("美国SPR", "降至2.987亿桶", "低于3亿桶，战略储备持续消耗", "b-orange"),
-    ("OPEC月报(8/12)", "下调需求至58万桶/日", "2026全球石油需求增长连续第四次下调", "b-orange"),
-    ("美油/布油(8/14)", "82.4 / 88.82美元", "美油+1.42% 布油+2.01%", "b-orange"),
-]
+def watch_name(code):
+    d = diag_for(code)
+    if d and d.get("name"):
+        return d["name"]
+    return code
 
-# ---------- 数据：ETF资金流（ETF/代码/方向/方向cls/信号） ----------
-etf = [
-    ("沪深300ETF", "510300", "净赎回", "b-green", "宽基连续7日净流出超900亿，蓝筹减仓"),
-    ("芯片ETF", "159995", "净申购", "b-red", "资金逆势布局"),
-    ("半导体设备ETF国泰", "159516", "连续4日净流入超17亿", "b-red", "科技主线资金坚守"),
-    ("科创50ETF", "588280", "五日转正", "b-red", "硬科技持续吸金"),
-]
 
-# ---------- 数据：自选股 ----------
-stock_info = {
-    "688668": {"name":"鼎通科技","sector":"连接器+液冷","action":"加仓首选","cls":"b-red",
-        "logic":"1.6T连接器+液冷，终端英伟达/思科/戴尔；H1净利+59%，Q2环比+28%；外部光通信(AO+15%/Lumentum+5%)与800V催化共振。"},
-    "688409": {"name":"富创精密","sector":"半导体设备零部件","action":"持有/回调加仓","cls":"b-blue",
-        "logic":"入选MSCI中国指数；晶圆扩产带动设备/零部件需求；交付周期延长+价格提升直接受益；诊断趋势健康。"},
-    "600641": {"name":"先导基电","sector":"离子注入机","action":"持有","cls":"b-blue",
-        "logic":"半导体设备国产替代核心；中期扩产+设备订单增加。诊断评分最低(7.2)趋势健康，但个股波动大。"},
-    "000725": {"name":"京东方A","sector":"面板+AI封装","action":"谨慎","cls":"b-orange",
-        "logic":"面板周期回升+玻璃基载板对接AI先进封装；但诊断黄色预警·见顶确认，短期规避追高。"},
-    "301392": {"name":"汇成真空","sector":"PVD设备","action":"观望","cls":"b-orange",
-        "logic":"此前5日暴涨47%严重过热，非核心算力标的，独立性弱；诊断评分25.3仍安全但性价比下降。"},
-    "688530": {"name":"欧莱新材","sector":"靶材","action":"回避","cls":"b-green",
-        "logic":"题材与基本面脱节，PE远超行业；公告明确暂无磷化铟相关产品；仅题材驱动。"},
-    "600580": {"name":"卧龙电驱","sector":"机器人电机","action":"谨慎","cls":"b-orange",
-        "logic":"利好兑现阶段，投星提醒无新icon科技难涨；技术面多头但估值高，等待新催化。"},
-}
-
-# ---------- 唐史主任等微博 ----------
-tangshi_today = [
-    "【8/16 21:25】坚持AI是解决方案的观点不动摇，美国的数据开出来也是K型，后续可能越来越像Y型。越市场化，资源越向效率高的地方流动。生产关系会对生产力发展形成反扑，但无阻碍已经形成的浪潮。市场第一波普反接近尾声，后续更多需要注重阿尔法而不是寻求贝塔。",
-    "【8/16 11:07】出去学习交流的忠告：1.董事长的听一半，公司概念多的、历史上图上不厚道的，再打对折；2.不要盯着漂亮的销售，忍不住就念一遍『再看吃跌停板』；3.不要轻易下结论，回来整理消化一下。",
-]
-touxing_asset = [
-    "【8/17 10:00】全世界半导体都是周期股、AI驱动，至少2030年；三万亿外汇储备不如一把梭哈三星海力士，淡马锡就开始这么干了。",
-    "【8/17 09:00】闪迪明确了回报计划，三星海力士/镁光接下来统统要发布史上最大回购计划，推动第二波主升浪。",
-    "【8/17 07:30】台湾CCL龙头涨价20%已证实，电子布8/9月继续涨价，日本味之素ABF对华断供30%，PCB上游全产业链重新起航。",
-    "【8/13 20:08】deepseek定价暴涨十倍，最大利好算力租赁。",
-]
-touxing_yeye = [
-    "【8/15 06:10】镁光闪迪继续上涨，新云牛逼继续大涨。",
-    "【8/14 08:15】闪迪FCF占市值FY27-30累计约1240亿(53-61%)，5年现金买下整家公司——美光所说。",
-]
-
-# ---------- 共振信号 ----------
-resonance = [
-    ("存储链", "5重共振", "b-red",
-     "闪迪+7.4%/本周+35% + 美光+2.3% + 大爷『镁光闪迪继续上涨』 + 唐史AI主线不动摇 + 半导体/科创ETF持续吸金"),
-    ("CPO/光通信", "5重共振", "b-red",
-     "Applied Optoelectronics+15% + Lumentum+5% + A股CPO概念涨停(共进/亨通) + 投星『算力租赁最大利好』 + 800V/sic催化"),
-    ("国产算力/设备", "3重共振", "b-blue",
-     "富创精密入选MSCI + 先导基电国产替代 + 半导体设备ETF吸金"),
-    ("风险项", "2重风险", "b-green",
-     "半导体设备股走弱(博通-5.94%/应用材料-5.12%) + 美股三大指数收跌 + 日元159.3逼近160警戒"),
-]
-
-# ---------- A股指数（8/14 收盘） ----------
-a_share = [
-    ("上证指数", "3927.18", "0.01"),
-    ("深证成指", "14354.31", "0.45"),
-    ("创业板指", "3626.30", "1.12"),
-]
-
+# ---------- 工具函数 ----------
 def up_down(v):
-    return "up" if v > 0 else ("down" if v < 0 else "muted")
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "muted"
+    return "up" if f > 0 else ("down" if f < 0 else "muted")
+
 
 def sign(v):
-    return "+" if v > 0 else ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return ""
+    return "+" if f > 0 else ""
+
+
+def fmt(v):
+    try:
+        return f"{float(v):.2f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def points(items, maxn=10):
+    items = [t.strip() for t in (items or []) if t and t.strip()]
+    if not items:
+        return PLACEHOLDER
+    return "".join(f'<div class="point"><div class="pt-body">{t}</div></div>' for t in items[:maxn])
+
 
 def us_bar(name, pct, val, sig):
-    w = abs(pct) / 7.39 * 100
-    color = "#d63031" if pct > 0 else "#00a865"
-    if pct == 0:
+    try:
+        pf = float(pct)
+    except (TypeError, ValueError):
+        pf = 0.0
+    denom = max((abs(float(x[1])) for x in us_market if isinstance(x[1], (int, float))), default=1) or 1
+    w = abs(pf) / denom * 100 if denom else 0
+    color = "#d63031" if pf > 0 else "#00a865"
+    if pf == 0:
         color = "#888"
     return (f'<div class="bar-row"><div class="bar-name">{name}</div>'
             f'<div class="bar-wrap"><div class="bar-fill" style="width:{w:.1f}%;background:{color}"></div></div>'
-            f'<div class="bar-val {up_down(pct)}">{sign(pct)}{pct}%</div></div>')
+            f'<div class="bar-val {up_down(pf)}">{sign(pf)}{pf}%</div></div>')
+
 
 def stock_card(code):
-    info = stock_info[code]
+    sector = SECTOR.get(code, "")
     d = diag_for(code)
     if d:
-        score = f"{d['total_score']:.1f}"
-        level = d["level"]
-        trend = d["trend_status"]
+        score = fmt(d.get("total_score", "—"))
+        level = d.get("level", "—")
+        trend = d.get("trend_status", "—")
+        action, cls = action_from_diag(d)
+        sig = d.get("signals", "")
+        if isinstance(sig, str):
+            sig = sig[:80]
+        logic = f"{sector}；诊断：{level}·{trend}。" + (f"信号：{sig}" if sig else "")
     else:
         score, level, trend = "—", "—", "—"
+        action, cls = "观望", "b-gray"
+        logic = f"{sector}（实时诊断缺失）"
     return f'''
     <div class="stock-card">
       <div class="stock-title">
-        <div class="name">{info["name"]} <span class="muted">{code}</span>　<span class="tag">{info["sector"]}</span></div>
-        <span class="badge {info["cls"]}">{info["action"]}</span>
+        <div class="name">{watch_name(code)} <span class="muted">{code}</span>　<span class="tag">{sector}</span></div>
+        <span class="badge {cls}">{action}</span>
       </div>
-      <p class="stock-logic">{info["logic"]}</p>
+      <p class="stock-logic">{logic}</p>
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
     </div>'''
 
-# ---------- 宏观传导链 SVG 流程状态图（日元主导） ----------
+
 def chain_svg():
     nodes = [
-        ("原油(触发)","布油88.8","#e67e22"),
-        ("日本加息","50-75bp","#d63031"),
-        ("抛美债压力",">1.1万亿","#e67e22"),
-        ("FIMA回购","押债借美元","#1967d2"),
-        ("日元干预","159","#d63031"),
-        ("套息平仓","unwind","#d63031"),
-        ("A股传导","风险偏好","#1a2b4a"),
+        ("原油(触发)", "上游地缘/供需"),
+        ("日本加息", "输入型通胀→被迫加息"),
+        ("抛美债压力", "巨额美债持仓"),
+        ("FIMA回购", "押美债借美元干预"),
+        ("日元干预", "联合干预汇率"),
+        ("套息平仓", "unwind 黑天鹅"),
+        ("A股传导", "风险偏好"),
     ]
     n = len(nodes)
     bw, gap = 128, 18
-    w = 16 + n*bw + (n-1)*gap + 16
+    w = 16 + n * bw + (n - 1) * gap + 16
     h = 110
     x0 = 16
-    svg = [f'<svg class="chain-svg" viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg">']
-    for i,(name,val,color) in enumerate(nodes):
-        x = x0 + i*(bw+gap)
+    svg = ['<svg class="chain-svg" viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg">'.format(w=w, h=h)]
+    for i, (name, val) in enumerate(nodes):
+        x = x0 + i * (bw + gap)
+        if any(k in name for k in ("加息", "平仓", "干预")):
+            color = "#d63031"
+        elif any(k in name for k in ("原油", "美债", "FIMA")):
+            color = "#e67e22"
+        else:
+            color = "#1967d2"
         svg.append(f'<rect x="{x}" y="20" width="{bw}" height="54" rx="8" fill="{color}" opacity="0.92"/>')
-        svg.append(f'<text x="{x+bw/2}" y="44" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">{name}</text>')
-        svg.append(f'<text x="{x+bw/2}" y="62" fill="#fff" font-size="11" text-anchor="middle">{val}</text>')
-        if i < len(nodes)-1:
-            ax = x+bw+4
+        svg.append(f'<text x="{x+bw/2}" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">{name}</text>')
+        svg.append(f'<text x="{x+bw/2}" y="60" fill="#fff" font-size="10" text-anchor="middle">{val}</text>')
+        if i < len(nodes) - 1:
+            ax = x + bw + 4
             svg.append(f'<line x1="{ax}" y1="47" x2="{ax+gap-4}" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/>')
     svg.append('<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#bbb"/></marker></defs>')
     svg.append('</svg>')
-    return "".join(svg)
+    note = f'<p class="muted" style="font-size:12px;">传导链主线由日元主导；当前实时日本信号 {len(japan_items)} 条（详见下方文本）。</p>'
+    return "".join(svg) + note
+
+
+def us_section():
+    if not us_market:
+        return PLACEHOLDER
+    rows = "".join(
+        f'<tr><td>{n}</td><td class="{up_down(p)}">{sign(p)}{p}%</td><td>{sig}（{v}）</td></tr>'
+        for n, p, v, sig in us_market)
+    bars = "".join(us_bar(n, p, v, s) for n, p, v, s in us_market)
+    return f'<table><thead><tr><th>标的</th><th>涨跌</th><th>关键信号</th></tr></thead><tbody>{rows}</tbody></table><div style="margin-top:12px;">{bars}</div>'
+
+
+def etf_section():
+    if not etf:
+        return PLACEHOLDER
+    rows = "".join(
+        f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>'
+        for e in etf)
+    return f'<table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead><tbody>{rows}</tbody></table>'
+
+
+def index_section():
+    if not quotes:
+        return PLACEHOLDER
+    rows = "".join(
+        f'<tr><td>{name}</td><td>{q.get("price")}</td><td class="{up_down(q.get("chg_pct"))}">{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td></tr>'
+        for name, q in quotes.items())
+    return f'<table><thead><tr><th>指数</th><th>最新</th><th>涨跌幅</th></tr></thead><tbody>{rows}</tbody></table>'
+
+
+def conclusion_grid():
+    state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+    sectors = "、".join(matched_sectors) or "—"
+    up_us = sum(1 for x in us_market if (x[1] if isinstance(x[1], (int, float)) else 0) > 0)
+    us_txt = f"{up_us}/{len(us_market)} 上涨" if us_market else "实时数据缺失"
+    risk_txt = f"日本加息/套息平仓预警（实时信号 {len(japan_items)} 条）" if japan_items else "暂无日本传导链实时预警"
+    items = [
+        ("市场状态", state_label, "#1967d2"),
+        ("命中板块", sectors, "#d63031"),
+        ("隔夜美股", us_txt, "#e67e22"),
+        ("主线", sectors, "#d63031"),
+        ("风险", risk_txt, "#d63031" if japan_items else "#00a865"),
+    ]
+    cells = ""
+    for label, value, color in items:
+        cells += f'''<div class="conclusion-item">
+    <div class="label">{label}</div>
+    <div class="value" style="color:{color};">{value}</div>
+  </div>'''
+    return cells
+
+
+def resonance_section():
+    rows = ""
+    if matched_sectors:
+        rows += f'<tr><td><b>板块共振</b></td><td><span class="badge b-red">实时</span></td><td>{"、".join(matched_sectors)}</td></tr>'
+    up_us = [x[0] for x in us_market if (x[1] if isinstance(x[1], (int, float)) else 0) > 0]
+    if up_us:
+        rows += f'<tr><td><b>美股映射</b></td><td><span class="badge b-red">实时</span></td><td>{"、".join(up_us[:6])}</td></tr>'
+    net_etf = [e[0] for e in etf if "净申购" in e[2]]
+    if net_etf:
+        rows += f'<tr><td><b>资金确认</b></td><td><span class="badge b-red">实时</span></td><td>{"、".join(net_etf)}</td></tr>'
+    if japan_items:
+        rows += f'<tr><td><b>风险项</b></td><td><span class="badge b-green">实时</span></td><td>日本传导链 {len(japan_items)} 条信号（详见传导链章节）</td></tr>'
+    if tech_items:
+        rows += f'<tr><td><b>技术</b></td><td><span class="badge b-blue">实时</span></td><td>{len(tech_items)} 个标的量价信号</td></tr>'
+    if not rows:
+        return PLACEHOLDER
+    return f'<table><thead><tr><th>方向</th><th>共振</th><th>来源交叉（实时）</th></tr></thead><tbody>{rows}</tbody></table>'
+
+
+def strategy_section():
+    state_label = {"bullish": "偏多积极", "bearish": "防御为主", "neutral": "中性偏谨慎"}.get(market_state, "中性")
+    idx_line = "；".join(f"{n} {q.get('chg_pct')}%" for n, q in quotes.items() if q.get("chg_pct") is not None) if quotes else "指数实时数据缺失"
+    avoid = [watch_name(c) for c in WATCHLIST if diag_for(c) and ("预警" in diag_for(c).get("level", "") or "见顶" in diag_for(c).get("level", ""))]
+    rows = f'''
+    <tr><td><b>大盘</b></td><td>实时状态 {state_label}；主要指数：{idx_line}。</td></tr>
+    <tr><td><b>仓位</b></td><td>依据实时市场状态 {state_label} 调节，不追高。</td></tr>
+    <tr><td><b>主线</b></td><td>{"、".join(matched_sectors) if matched_sectors else "实时板块信号缺失"}。</td></tr>
+    <tr><td><b>风险</b></td><td>{"日本传导链有实时预警信号，关注日元/套息平仓。" if japan_items else "暂无日本传导链实时预警。"}</td></tr>
+    <tr><td><b>回避</b></td><td>{"、".join(avoid) if avoid else "当前自选股诊断无预警/见顶项。"}</td></tr>'''
+    return f'<table><thead><tr><th style="width:18%">维度</th><th>策略（实时驱动）</th></tr></thead><tbody>{rows}</tbody></table>'
+
+
+# 页眉实时涨跌
+def header_market():
+    if not quotes:
+        return "实时指数数据缺失"
+    parts = []
+    for n in ("上证指数", "深证成指", "创业板指"):
+        q = quotes.get(n)
+        if q and q.get("chg_pct") is not None:
+            parts.append(f"{n.replace('指数','')}{q['chg_pct']}%")
+    return "　".join(parts) if parts else "实时指数数据缺失"
+
 
 # ================= 组装 HTML =================
-html = f'''<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A股舆情操作指引 · 9章节 · {TODAY}（{REPORT_LABEL}）</title>
-<style>
+CSS = """
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.8}}
 .wrap{{max-width:980px;margin:0 auto;padding:24px 20px 60px}}
@@ -284,7 +389,15 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 .bar-wrap{{flex:1;background:#f0f2f5;border-radius:4px;height:16px;overflow:hidden}}
 .bar-fill{{height:100%}}
 .bar-val{{width:70px;padding-left:10px}}
-</style>
+"""
+
+html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股舆情操作指引 · 9章节 · {TODAY}（{REPORT_LABEL}）</title>
+<style>{CSS}</style>
 </head>
 <body>
 <div class="wrap">
@@ -295,178 +408,87 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 <div class="meta">
 <span>报告日期：{TODAY}（{REPORT_LABEL}）</span>
 <span>生成时间：{NOW}</span>
-<span>7只自选股</span>
-<span>今日高开：沪+0.07% 半导体领涨</span>
+<span>{len(WATCHLIST)}只自选股</span>
+<span>实时指数：{header_market()}</span>
 </div>
 </div>
 
 <div class="toc">
 <h2>目录</h2>
 <ol>
-<li>隔夜美股（8/15凌晨收盘）</li>
-<li>CPI与宏观</li>
-<li>宏观传导链监控（独立因子）</li>
-<li>地缘政治与原油（事件因子）</li>
-<li>ETF资金流向</li>
-<li>唐史主任长文分析</li>
-<li>共振信号（多源交叉验证）</li>
-<li>7只自选股操作指引</li>
-<li>今日操作策略（周一预案）</li>
+<li>核心结论（实时）</li>
+<li>隔夜美股（实时）</li>
+<li>CPI与宏观（实时新闻）</li>
+<li>宏观传导链监控（独立因子·实时）</li>
+<li>地缘政治与原油（事件因子·实时）</li>
+<li>ETF资金流向（实时）</li>
+<li>唐史主任 / 投星观点（实时）</li>
+<li>共振信号（多源交叉·实时）</li>
+<li>7只自选股操作指引（实时诊断）</li>
+<li>今日操作策略（实时驱动）</li>
+<li>主要指数（实时）</li>
 </ol>
 </div>
 
 <div class="card">
-<h2>核心结论</h2>
+<h2>核心结论（实时）</h2>
 <div class="conclusion-grid">
-  <div class="conclusion-item">
-    <div class="label">最强主线</div>
-    <div class="value" style="color:#d63031;">存储链+PCB上游共振</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">闪迪本周+35%；投星8/17称三星海力士/镁光将发史上最大回购推动第二波主升浪；台湾CCL涨价20%+味之素ABF断供30%→PCB上游起航；A股周一高开半导体拉升</div>
-  </div>
-  <div class="conclusion-item">
-    <div class="label">次强主线</div>
-    <div class="value" style="color:#e67e22;">CPO/光通信内外共振</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">AO+15%/Lumentum+5% + A股CPO概念涨停(共进/亨通) + 投星『算力租赁最大利好』</div>
-  </div>
-  <div class="conclusion-item">
-    <div class="label">操作基调</div>
-    <div class="value" style="color:#1967d2;">注重阿尔法·不追高</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">唐史『第一波普反接近尾声，后续注重阿尔法』；仓位中性偏积极，等回踩</div>
-  </div>
-  <div class="conclusion-item">
-    <div class="label">风险</div>
-    <div class="value" style="color:#d63031;">日本加息75-100bp+套息平仓</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">日本9月加息概率76%（7月仅24%），三菱日联称25bp不够或单次50-75bp；8/3美日韩联合干预并启用FIMA（押美债借美元）防日本抛>1.1万亿美债；若加息超预期叠加套息平仓→全球流动性收紧压制A股</div>
-  </div>
+{conclusion_grid()}
 </div>
 </div>
 
 <div class="card">
-<h2>一、隔夜美股（8/15凌晨收盘）</h2>
-<p style="font-size:13px;color:#666;margin-bottom:12px;">北京时间8月15日凌晨，美股三大指数集体收跌，结束连续上涨。存储板块逆势走强（闪迪本周累涨35.38%），但半导体设备股走弱，光通信走高，中概股涨跌不一。</p>
-<table>
-<thead><tr><th>标的</th><th>涨跌</th><th>关键信号</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td>{n}</td><td class="{up_down(p)}">{sign(p)}{p}%</td><td>{sig}（{v}）</td></tr>' for n,p,v,sig in [(x[0],x[1],x[2],x[3]) for x in us_market])}
-</tbody>
-</table>
-<div style="margin-top:12px;">{''.join(us_bar(n,p,v,s) for n,p,v,s in us_market)}</div>
+<h2>一、隔夜美股（实时）</h2>
+{us_section()}
 </div>
 
 <div class="card">
-<h2>二、CPI与宏观</h2>
-<table>
-<thead><tr><th>指标</th><th>最新值</th><th>前值/预期</th><th>判断</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td>{m[0]}</td><td><b>{m[1]}</b></td><td>{m[2]}</td><td class="{m[4]}">{m[3]}</td></tr>' for m in macro)}
-</tbody>
-</table>
-<div class="point" style="margin-top:14px;">
-<div class="pt-title">CPI风险解除 — 宏观面偏鸽</div>
-<div class="pt-body">7月CPI同比3.4%符合预期、核心CPI降至2.5%（2021年来最低），PPI环比持平低于预期。加息紧迫性下降，9月维持利率不变概率约60%-68%。央行适度宽松、降息降准预期升温，利好科技成长估值。</div>
-</div>
+<h2>二、CPI与宏观（实时新闻）</h2>
+{points(macro_items)}
 </div>
 
 <div class="card">
-<h2>三、宏观传导链监控（独立因子）</h2>
+<h2>三、宏观传导链监控（独立因子·实时）</h2>
 {chain_svg()}
-<table>
-<thead><tr><th>节点</th><th>当前值</th><th>方向</th><th>对A股影响</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td>{c[0]}</td><td>{c[1]}</td><td><span class="badge {c[4]}">{c[2]}</span></td><td>{c[3]}</td></tr>' for c in macro_chain)}
-</tbody>
-</table>
-<div class="point" style="margin-top:14px;">
-<div class="pt-title">综合判断</div>
-<div class="pt-body">传导链主线由日元主导：原油上行→日本输入型通胀（能源90%依赖进口）→央行被迫加息。三菱日联认为25bp不足以止跌日元，单次或50-75bp、尾端100bp。为避免抛售>1.1万亿美债冲击长端收益率（10Y YTD+57bp），8/3美日韩联合干预并启用美联储FIMA回购工具——即日本押美债向美联储借美元干预汇率（借美款干预）。若加息超预期(75-100bp)叠加套息平仓，全球流动性收紧将压制A股风险偏好；FIMA大量使用或反增美债供给。防御信号：USD/JPY跌破155或10Y美债破4.8%。</div>
-</div>
+{points(japan_items)}
 </div>
 
 <div class="card">
-<h2>四、地缘政治与原油（事件因子）</h2>
-<table>
-<thead><tr><th>事件</th><th>状态</th><th>影响</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td>{g[0]}</td><td><span class="badge {g[3]}">{g[1]}</span></td><td>{g[2]}</td></tr>' for g in geo)}
-</tbody>
-</table>
-<div class="point" style="margin-top:14px;">
-<div class="pt-title">风险定性</div>
-<div class="pt-body">地缘风险溢价仍存，霍尔木兹通航未全面恢复、中东供应中断EIA预计持续至2027年底。但美国SPR消耗+OPEC下调需求预期形成对冲，WTI维持82美元区间，对A股油化/航空/化工影响分化，不构成系统性利空。</div>
-</div>
+<h2>四、地缘政治与原油（事件因子·实时）</h2>
+{points(event_items)}
 </div>
 
 <div class="card">
-<h2>五、ETF资金流向</h2>
-<table>
-<thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>' for e in etf)}
-</tbody>
-</table>
-<div class="point" style="margin-top:14px;">
-<div class="pt-title">资金信号：宽基减仓 vs 硬科技吸金</div>
-<div class="pt-body">宽基ETF连续7日净流出超900亿（沪深300ETF净赎回），蓝筹减仓；但芯片ETF净申购、半导体设备ETF连续4日净流入超17亿、科创50五日转正——科技主线资金坚守，存量博弈下流动性向硬科技集中。</div>
-</div>
+<h2>五、ETF资金流向（实时）</h2>
+{etf_section()}
 </div>
 
 <div class="card">
-<h2>六、唐史主任长文分析</h2>
-<h3>唐史主任司马迁（8/16 今日新发）</h3>
-{''.join(f'<div class="point"><div class="pt-body">{t}</div></div>' for t in tangshi_today)}
-<h3>投星资产 / 投星大爷观点</h3>
-{''.join(f'<div class="point"><div class="pt-body">{t}</div></div>' for t in touxing_asset)}
-{''.join(f'<div class="point"><div class="pt-body">{t}</div></div>' for t in touxing_yeye)}
-<div class="point">
-<div class="pt-title">核心提炼</div>
-<div class="pt-body">唐史明确：AI是解决方案不动摇，但市场第一波普反接近尾声，后续重阿尔法轻贝塔；对外交流忠告"董事长的话听一半、不盯漂亮销售、不下轻率结论"。投星体系延续"达链（光模块/PCB/存储）最大赢家"判断，并加码算力租赁（deepseek涨价）+800V/sic（充电桩十五五）+存储（镁光闪迪继续涨）。</div>
-<div class="pt-action">操作映射：存储链、CPO/光通信、算力租赁为共振主线；纯概念小票与见顶确认个股（京东方A）规避</div>
-</div>
+<h2>六、唐史主任 / 投星观点（实时）</h2>
+<h3>唐史主任司马迁</h3>
+{points(tangshi)}
+<h3>投星资产 / 投星大爷</h3>
+{points(touxing_asset + touxing_yeye)}
 </div>
 
 <div class="card">
-<h2>七、共振信号（多源交叉验证）</h2>
-<table>
-<thead><tr><th>方向</th><th>共振重数</th><th>来源交叉</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td><b>{r[0]}</b></td><td><span class="badge {r[2]}">{r[1]}</span></td><td>{r[3]}</td></tr>' for r in resonance)}
-</tbody>
-</table>
+<h2>七、共振信号（多源交叉·实时）</h2>
+{resonance_section()}
 </div>
 
 <div class="card">
-<h2>八、7只自选股操作指引</h2>
-{''.join(stock_card(c) for c in ["688668","688409","600641","000725","301392","688530","600580"])}
+<h2>八、7只自选股操作指引（实时诊断）</h2>
+{''.join(stock_card(c) for c in WATCHLIST)}
 </div>
 
 <div class="card">
-<h2>九、今日盘前策略（周一早报）</h2>
-<table>
-<thead><tr><th style="width:18%">维度</th><th>策略</th></tr></thead>
-<tbody>
-<tr><td><b>大盘</b></td><td>隔夜美股8/14收跌(道-0.20%/纳-0.28%)但存储/光通信逆势走强；A股周一高开(沪+0.07%/深+0.31%/创业+0.18%)、半导体产业链拉升。唐史称第一波普反接近尾声、注重阿尔法。支撑3900，压力3960-3970。</td></tr>
-<tr><td><b>仓位</b></td><td>中性偏积极（约60-70%）。CPI偏鸽+科技ETF吸金，但日本加息75-100bp套息平仓黑天鹅未定价、美股收跌，不追高、等回踩确认。</td></tr>
-<tr><td><b>存储链</b></td><td>5重共振最高置信度。闪迪/美光强势延续+史上最大回购预期(投星)，关注A股存储映射，回踩加仓。</td></tr>
-<tr><td><b>CPO/光通信/PCB</b></td><td>5重共振。AO+15%/Lumentum+5%+台湾CCL涨价20%+味之素ABF断供，中际旭创/新易盛/PCB上游持有为主。</td></tr>
-<tr><td><b>鼎通科技</b></td><td>加仓首选。1.6T连接器+液冷+800V催化，H1业绩最强，诊断上涨趋势。</td></tr>
-<tr><td><b>京东方A</b></td><td>谨慎。回购57亿+玻璃基AI封装利好，但诊断黄色预警·见顶确认，等回调企稳。</td></tr>
-<tr><td><b>回避</b></td><td>白酒(茅台半年报Q2环比-36%、早盘-4%)、半导体设备高位波动(博通-6%)、纯情绪小票、题材脱节股(欧莱新材)。</td></tr>
-</tbody>
-</table>
+<h2>九、今日操作策略（实时驱动）</h2>
+{strategy_section()}
 </div>
 
 <div class="card">
-<h2>主要指数（A股 8/14收盘 · 8/17高开）</h2>
-<table>
-<thead><tr><th>指数</th><th>8/14收盘</th><th>涨跌幅</th><th>8/17高开</th></tr></thead>
-<tbody>
-{''.join(f'<tr><td>{n}</td><td>{p}</td><td class="{up_down(float(c))}">{sign(float(c))}{c}%</td><td class="muted">—</td></tr>' for n,p,c in a_share)}
-<tr><td>上证指数</td><td>3927.18</td><td class="muted">—</td><td class="up">+0.07%（3930.10）</td></tr>
-<tr><td>深证成指</td><td>14354.31</td><td class="muted">—</td><td class="up">+0.31%（14399.20）</td></tr>
-<tr><td>创业板指</td><td>3626.30</td><td class="muted">—</td><td class="up">+0.18%（3632.78）</td></tr>
-</tbody>
-</table>
-<p class="muted" style="font-size:12px;margin-top:8px;">8/17周一高开：超2600只个股飘红，半导体产业链拉升(硅片/磷化铟/玻璃纤维)，CPO活跃(中石科技20cm2连板)，存储/长鑫概念走强；白酒调整(茅台-4%，半年报Q2环比-36%)；商品端原油涨超4%、集运+10%。港股恒指+1.38%/恒科+1.68%。</p>
+<h2>主要指数（实时）</h2>
+{index_section()}
 </div>
 
 <div class="disclaimer">
@@ -487,13 +509,11 @@ print(f"报告已生成: {out} ({out.stat().st_size // 1024} KB)")
 # ---------- 写入数据库 ----------
 try:
     from db import StockAgentDB
-    import a_stock_agent as agent
-    cfg = agent.load_config()
     dc = cfg.get("database")
     if dc:
-        db = StockAgentDB(host=dc.get("host","localhost"), port=dc.get("port",5432),
-                          user=dc.get("user","postgres"), password=dc.get("password",""),
-                          dbname=dc.get("dbname","a_stock_agent"))
+        db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
+                          user=dc.get("user", "postgres"), password=dc.get("password", ""),
+                          dbname=dc.get("dbname", "a_stock_agent"))
         td = datetime.now().date()
         db.save_report(td, REPORT_STATE, "A股操作指引·9章节", html)
         db.save_sentiment_batch(td, weibo_data)

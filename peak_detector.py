@@ -29,7 +29,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import sys
-import os
 
 
 # ============================================================
@@ -314,7 +313,7 @@ def get_sector_kline(sector_code, days=120):
     """
     url = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get'
     params = {
-        'param': f'{sector_code},day,,2026-08-09,{days},qfq',
+        'param': f'{sector_code},day,,{datetime.now().strftime("%Y-%m-%d")},{days},qfq',
     }
     
     try:

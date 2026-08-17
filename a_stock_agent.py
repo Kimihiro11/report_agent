@@ -16,7 +16,6 @@ import json
 import urllib.request
 import urllib.parse
 import re
-import os
 import sys
 import socket
 import html
@@ -376,7 +375,7 @@ def fetch_index_quotes():
             continue
         name = name_map.get(code, code)
         try:
-            open_p, prev_close = float(vals[1]), float(vals[2])
+            prev_close = float(vals[2])
             price = float(vals[3])
             chg = price - prev_close
             chg_pct = (chg / prev_close * 100) if prev_close else 0
@@ -390,6 +389,79 @@ def fetch_index_quotes():
             continue
     print(f"  获取 {len(result)} 个指数")
     return result
+
+
+def fetch_us_market():
+    """隔夜美股主要指数与科技/存储龙头（新浪美股实时行情）。
+
+    返回 [(name, pct, price, signal), ...]，pct 为涨跌幅(float)。
+    网络/解析失败时返回空列表（由报告层渲染为「实时数据缺失」占位，绝不写死假数）。
+    """
+    print("[美股] 抓取隔夜美股行情（新浪美股）...")
+    # 代码 -> 中文名（稳定的代码映射，非行情数据）
+    symbols = {
+        "gb_dji": "道琼斯", "gb_ixic": "纳斯达克", "gb_inx": "标普500",
+        "gb_sox": "费城半导体", "gb_nvda": "英伟达", "gb_tsla": "特斯拉",
+        "gb_mu": "美光科技", "gb_stx": "希捷科技", "gb_wdc": "西部数据",
+        "gb_sndk": "闪迪", "gb_amat": "应用材料", "gb_avgo": "博通",
+        "gb_lite": "Lumentum", "gb_glw": "康宁",
+    }
+    url = f"https://hq.sinajs.cn/list={','.join(symbols)}"
+    text = fetch_url(url, headers={"Referer": "https://finance.sina.com.cn"})
+    if not text:
+        return []
+    results = []
+    for sym, cn in symbols.items():
+        m = re.search(r'var hq_str_%s="([^"]*)"' % re.escape(sym), text)
+        if not m:
+            continue
+        parts = m.group(1).split(",")
+        if len(parts) < 4:
+            continue
+        try:
+            price = parts[1].strip()
+            raw = parts[2].replace("%", "").strip().replace(",", "")
+            pct = float(raw) if raw not in ("", "-") else 0.0
+        except (ValueError, IndexError):
+            continue
+        results.append((cn or parts[0], pct, price, "—"))
+    print(f"  获取 {len(results)} 个美股标的")
+    return results
+
+
+def fetch_etf_flows():
+    """ETF 实时资金净流（东方财富 push2，单位：亿元）。
+
+    返回 [(name, code, direction, cls, signal), ...]。direction=净申购/净赎回，
+    cls 为徽章色（b-red 净流入 / b-green 净赎回）。失败/限流返回空列表。
+    """
+    print("[ETF] 抓取 ETF 资金净流（东方财富）...")
+    etfs = [
+        ("沪深300ETF", "510300", "1"), ("芯片ETF", "159995", "0"),
+        ("半导体设备ETF国泰", "159516", "0"), ("科创50ETF", "588280", "1"),
+    ]
+    results = []
+    for name, code, mkt in etfs:
+        secid = f"{mkt}.{code}"
+        url = f"https://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f57,f58,f62"
+        text = fetch_url(url, timeout=8)
+        if not text:
+            continue
+        try:
+            j = json.loads(text)
+            d = j.get("data") or {}
+            net = d.get("f62")  # 主力净流入（元）
+            if net is None:
+                continue
+            net_yi = net / 1e8
+            direction = "净申购" if net_yi >= 0 else "净赎回"
+            cls = "b-red" if net_yi >= 0 else "b-green"
+            signal = f"近一日{'净流入' if net_yi >= 0 else '净流出'} {abs(net_yi):.2f}亿元"
+            results.append((name, code, direction, cls, signal))
+        except Exception:
+            continue
+    print(f"  获取 {len(results)} 只 ETF 资金流")
+    return results
 
 
 def extract_keywords(text, keywords):
@@ -431,116 +503,6 @@ def analyze_sentiment(weibo_data, quotes):
         "up_count": up_count,
         "total_indices": len(quotes),
     }
-
-
-def generate_html(config, weibo_data, quotes, analysis):
-    """【已停用·2026-08-17】简版报告生成器。简版模式已取消，全功能报告走 build_report_20260816.py。
-    保留仅作历史参考，main() 不再调用。"""
-    """生成HTML报告"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}[analysis["market_state"]]
-
-    idx_rows = ""
-    for name, q in quotes.items():
-        cls = "up" if q["chg_pct"] > 0 else "down"
-        sign = "+" if q["chg_pct"] > 0 else ""
-        idx_rows += f'<tr><td>{name}</td><td>{q["price"]}</td><td class="{cls}">{sign}{q["chg_pct"]}%</td></tr>\n'
-
-    weibo_sections = ""
-    for user, posts in weibo_data.items():
-        if not posts:
-            weibo_sections += f'<div class="wb-user"><h3>{user}</h3><p class="muted">未获取到内容</p></div>'
-            continue
-        items = ""
-        for p in posts[:5]:
-            items += f'<div class="wb-item"><span class="wb-time">{p["time"]}</span><p>{p["text"]}</p></div>'
-        weibo_sections += f'<div class="wb-user"><h3>{user}</h3>{items}</div>'
-
-    sector_tags = "".join(f'<span class="tag">{s}</span>' for s in analysis["matched_sectors"])
-
-    stocks = config.get("watchlist_stocks", [])
-    stock_row = "".join(f"<td>{s}</td>" for s in stocks) if stocks else '<td colspan="4" class="muted">未配置自选股</td>'
-
-    html = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A股舆情操作指引 · {today}</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.7}}
-.wrap{{max-width:900px;margin:0 auto;padding:20px}}
-.card{{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.05)}}
-h1{{font-size:20px;color:#1a2b4a;margin-bottom:4px}}
-.sub{{font-size:12px;color:#888;margin-bottom:16px}}
-h2{{font-size:16px;color:#1a2b4a;margin-bottom:12px;padding-left:8px;border-left:3px solid #2c4a7c}}
-.up{{color:#d63031;font-weight:600}}
-.down{{color:#00a865;font-weight:600}}
-.muted{{color:#999}}
-table{{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}}
-th{{background:#f0f2f5;padding:8px;text-align:left;font-weight:600;color:#555}}
-td{{padding:8px;border-bottom:1px solid #eef0f3}}
-.tag{{display:inline-block;background:#e8f0fe;color:#1967d2;padding:2px 10px;border-radius:12px;font-size:12px;margin:2px}}
-.wb-user{{margin-bottom:16px}}
-.wb-user h3{{font-size:14px;color:#3c3489;margin-bottom:6px}}
-.wb-item{{padding:6px 0;border-bottom:1px dashed #eee}}
-.wb-time{{font-size:11px;color:#aaa}}
-.wb-item p{{font-size:13px;color:#444;margin-top:2px}}
-.state-badge{{display:inline-block;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600}}
-.state-bullish{{background:#fde8e8;color:#d63031}}
-.state-bearish{{background:#e8f8f0;color:#00a865}}
-.state-neutral{{background:#fff3e0;color:#e67e22}}
-.disclaimer{{font-size:11px;color:#999;line-height:1.6;padding:12px;background:#fafafa;border-radius:8px}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="card">
-    <h1>A股舆情操作指引报告</h1>
-    <div class="sub">生成时间: {now}</div>
-    <p>市场状态: <span class="state-badge state-{analysis["market_state"]}">{state_label}</span>
-    ({analysis["up_count"]}/{analysis["total_indices"]} 指数上涨)</p>
-    <p style="margin-top:8px;font-size:13px;">舆情提及板块: {sector_tags if sector_tags else '<span class="muted">无</span>'}</p>
-  </div>
-
-  <div class="card">
-    <h2>主要指数</h2>
-    <table>
-      <thead><tr><th>指数</th><th>收盘</th><th>涨跌幅</th></tr></thead>
-      <tbody>{idx_rows}</tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>自选股</h2>
-    <table><tbody><tr>{stock_row}</tr></tbody></table>
-    <p class="muted" style="font-size:12px;margin-top:6px;">自选股操作指引需结合大V舆情与行情交叉分析，建议在WorkBuddy中运行完整分析流程。</p>
-  </div>
-
-  <div class="card">
-    <h2>微博舆情（原始内容）</h2>
-    {weibo_sections if weibo_sections else '<p class="muted">未获取到微博内容</p>'}
-  </div>
-
-  <div class="card">
-    <h2>说明</h2>
-    <p style="font-size:13px;color:#666;">
-      本报告由 a_stock_agent.py 自动生成。微博数据通过 m.weibo.cn API 抓取，行情数据通过新浪财经API获取。
-      完整的交叉验证分析和操作指引（含大V观点提炼、共振信号识别、个股操作建议）请在WorkBuddy中运行自动化任务获取。
-    </p>
-  </div>
-
-  <div class="disclaimer">
-    免责声明：以上内容基于公开数据自动生成，仅供参考，不构成投资建议。市场有风险，投资需谨慎。
-    任何投资决策应结合个人风险承受能力独立判断，必要时咨询持牌专业机构。
-  </div>
-</div>
-</body>
-</html>"""
-    return html
 
 
 def main():
@@ -596,8 +558,11 @@ def main():
         weibo_data.update(jp_data)
 
     quotes = {}
+    us_market, etf = [], []
     if not no_fetch:
         quotes = fetch_index_quotes()
+        us_market = fetch_us_market()
+        etf = fetch_etf_flows()
 
     analysis = analyze_sentiment(weibo_data, quotes)
 
@@ -614,13 +579,15 @@ def main():
         "matched_sectors": analysis["matched_sectors"],
         "weibo_data": weibo_data,
         "quotes": quotes,
+        "us_market": us_market,
+        "etf": etf,
     }
     with open(snap_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
     print(f"\n[数据引擎] 采集完成，快照: {snap_path}")
-    print(f"  市场状态: {analysis['market_state']} | 指数 {len(quotes)} 个 | 板块信号 {len(analysis['matched_sectors'])} 个 | 舆情条目 {len(weibo_data)} 类")
-    print("  全功能 9 章节报告通过 build_report_20260816.py + WebSearch 实时拼装生成（简版模式已取消）。")
+    print(f"  市场状态: {analysis['market_state']} | 指数 {len(quotes)} 个 | 美股 {len(us_market)} 个 | ETF {len(etf)} 只 | 板块信号 {len(analysis['matched_sectors'])} 个 | 舆情条目 {len(weibo_data)} 类")
+    print("  全功能 9 章节报告通过 build_report_20260816.py + 实时快照拼装生成（简版模式已取消）。")
 
     if DB_AVAILABLE and config.get("database"):
         try:
