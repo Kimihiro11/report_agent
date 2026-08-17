@@ -123,6 +123,30 @@ class StockAgentDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(judgment_date, stock_code, window_days)
             )""",
+            """CREATE TABLE IF NOT EXISTS raw_snapshots (
+                id SERIAL PRIMARY KEY,
+                snapshot_date DATE NOT NULL,
+                payload TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS us_market_quotes (
+                id SERIAL PRIMARY KEY,
+                quote_date DATE NOT NULL,
+                name VARCHAR(50),
+                change_pct NUMERIC(8,2),
+                price VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS etf_flows (
+                id SERIAL PRIMARY KEY,
+                flow_date DATE NOT NULL,
+                name VARCHAR(50),
+                code VARCHAR(20),
+                direction VARCHAR(20),
+                amount NUMERIC(12,2),
+                signal TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
         ]
         for sql in tables:
             cur.execute(sql)
@@ -131,7 +155,17 @@ class StockAgentDB:
         conn.close()
 
     def _conn(self):
-        return psycopg2.connect(**self.conn_params, dbname=self.dbname)
+        return psycopg2.connect(**self.conn_params, dbname=self.dbname, connect_timeout=8)
+
+    def test_connection(self, timeout=5):
+        """快速探活：成功返回 True，失败抛异常（由调用方捕获并提醒）。"""
+        conn = psycopg2.connect(**self.conn_params, dbname=self.dbname, connect_timeout=timeout)
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+        return True
 
     def save_report(self, report_date, market_state, summary, html_content):
         conn = self._conn()
@@ -269,6 +303,55 @@ class StockAgentDB:
         cur.close()
         conn.close()
         print(f"[DB] 回测结果入库: {n} 条")
+
+    def save_snapshot(self, snapshot_date, payload):
+        """保存完整原始快照（所有采集数据）为 JSON，确保『全部数据入库』。"""
+        import json as _json
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO raw_snapshots (snapshot_date, payload) VALUES (%s,%s)",
+            (snapshot_date, _json.dumps(payload, ensure_ascii=False)),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DB] 原始快照入库: {snapshot_date}")
+
+    def save_us_market(self, quote_date, us_market):
+        """隔夜美股行情入库。us_market: [(name, pct, price, signal), ...]"""
+        conn = self._conn()
+        cur = conn.cursor()
+        n = 0
+        for name, pct, price, signal in us_market:
+            cur.execute(
+                "INSERT INTO us_market_quotes (quote_date, name, change_pct, price) VALUES (%s,%s,%s,%s)",
+                (quote_date, name, pct, str(price)),
+            )
+            n += 1
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DB] 美股行情入库: {n} 条")
+
+    def save_etf_flows(self, flow_date, etf):
+        """ETF 资金流入库。etf: [(name, code, direction, cls, signal), ...]"""
+        import re as _re
+        conn = self._conn()
+        cur = conn.cursor()
+        n = 0
+        for name, code, direction, cls, signal in etf:
+            m = _re.search(r"(净流入|净流出)\s*([\d.]+)\s*亿元", signal or "")
+            amount = float(m.group(2)) * (1 if m.group(1) == "净流入" else -1) if m else None
+            cur.execute(
+                "INSERT INTO etf_flows (flow_date, name, code, direction, amount, signal) VALUES (%s,%s,%s,%s,%s,%s)",
+                (flow_date, name, code, direction, amount, signal),
+            )
+            n += 1
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DB] ETF资金流入库: {n} 条")
 
 
 if __name__ == "__main__":

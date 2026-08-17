@@ -44,17 +44,25 @@ SECTOR = {
 }
 VS_NAMES = [s.get("name", "") for s in cfg.get("weibo_sources", [])]
 
-# ---- 加载实时快照（数据引擎产出） ----
+# ---- 加载实时快照（数据引擎产出，位于 data/snapshots/，取当日最新一份） ----
 PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python a_stock_agent.py` 采集后再生成报告）。</p>'
-snap_path = BASE_DIR / "data" / f"fetched_{DATE8}.json"
+_snap_dir = BASE_DIR / "data" / "snapshots"
+_candidates = sorted(_snap_dir.glob(f"fetched_{DATE8}*.json")) if _snap_dir.exists() else []
+if not _candidates:
+    # 向后兼容：旧路径 data/fetched_YYYYMMDD.json
+    _old = BASE_DIR / "data" / f"fetched_{DATE8}.json"
+    if _old.exists():
+        _candidates = [_old]
+snap_path = _candidates[-1] if _candidates else None
 snapshot = {}
-if snap_path.exists():
+if snap_path is not None and snap_path.exists():
     try:
         snapshot = json.load(open(snap_path, encoding="utf-8"))
+        print(f"[读取] 使用快照: {snap_path.name}")
     except Exception as e:
         print(f"[警告] 快照解析失败 {snap_path}: {e}")
 else:
-    print(f"[警告] 未找到实时快照 {snap_path}，请先运行 `python a_stock_agent.py` 采集数据。报告仅含占位。")
+    print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python a_stock_agent.py` 采集数据。报告仅含占位。")
 
 weibo_data = snapshot.get("weibo_data", {})
 quotes = snapshot.get("quotes", {})

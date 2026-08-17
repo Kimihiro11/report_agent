@@ -674,6 +674,74 @@ def analyze_sentiment(weibo_data, quotes):
     }
 
 
+def _persist_to_db(config, snapshot, ta_data):
+    """强制将所有采集数据写入 PostgreSQL。
+
+    返回 (ok: bool, err: str|None)。任何源失败都抛异常由调用方捕获并提醒，
+    保证『所有获取的数据必须入 postgresql』这一硬规则。
+    """
+    if not DB_AVAILABLE:
+        return False, "psycopg2 未安装（DB_AVAILABLE=False），无法连接数据库"
+    dc = config.get("database")
+    if not dc:
+        return False, "config.json 缺少 database 配置"
+    try:
+        db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
+                          user=dc.get("user", "postgres"), password=dc.get("password", ""),
+                          dbname=dc.get("dbname", "a_stock_agent"))
+        # 先快速探活，连接不通立即报错提醒
+        db.test_connection(timeout=6)
+        # 确保数据表存在（自建库自愈合，含新增的 raw_snapshots/us_market_quotes/etf_flows）
+        db.init_database()
+        td = datetime.now().date()
+        # 1) 完整原始快照（兜底：确保『所有数据』都在库里）
+        db.save_snapshot(td, snapshot)
+        # 2) 结构化表
+        if snapshot.get("quotes"):
+            db.save_index_quotes(td, snapshot["quotes"])
+        if snapshot.get("us_market"):
+            db.save_us_market(td, snapshot["us_market"])
+        if snapshot.get("etf"):
+            db.save_etf_flows(td, snapshot["etf"])
+        if snapshot.get("weibo_data"):
+            db.save_sentiment_batch(td, snapshot["weibo_data"])
+        if ta_data:
+            db.save_technical(td, ta_data)
+        return True, None
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
+def _cleanup_old_snapshots(max_age_days=2, base_dir=None):
+    """清理历史抓取快照 JSON，最多保留 max_age_days 天（含当日）。"""
+    import re as _re
+    base = Path(base_dir) if base_dir else (OUTPUT_DIR / "data" / "snapshots")
+    if not base.exists():
+        return
+    pat = _re.compile(r"^fetched_(\d{8})(?:_\d{6})?\.json$")
+    today = datetime.now()
+    kept = deleted = 0
+    for f in sorted(base.glob("fetched_*.json")):
+        m = pat.match(f.name)
+        if not m:
+            continue
+        try:
+            fdate = datetime.strptime(m.group(1), "%Y%m%d")
+        except ValueError:
+            continue
+        age = (today - fdate).days
+        if age > max_age_days:
+            try:
+                f.unlink()
+                deleted += 1
+                print(f"  [清理] 删除 {f.name}（{age} 天前，超出 {max_age_days} 天）")
+            except OSError as e:
+                print(f"  [清理] 无法删除 {f.name}: {e}")
+        else:
+            kept += 1
+    print(f"[清理] 历史快照：保留 {kept} 个，删除 {deleted} 个（> {max_age_days} 天）")
+
+
 def main():
     print("=" * 50)
     print("A股舆情操作指引 Agent")
@@ -706,6 +774,7 @@ def main():
 
     weibo_cookie = config.get("weibo_cookie", "")
     weibo_data = {}
+    ta_data = {}
     if not no_fetch:
         for src in config.get("weibo_sources", []):
             posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie)
@@ -739,9 +808,10 @@ def main():
     # a_stock_agent 作为数据引擎：采集 → 快照 → 入库；
     # 全功能报告由 build_report_20260816.py + WebSearch 实时拼装生成。
     today = datetime.now().strftime("%Y%m%d")
-    snap_dir = OUTPUT_DIR / "data"
+    snap_dir = OUTPUT_DIR / "data" / "snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)
-    snap_path = snap_dir / f"fetched_{today}.json"
+    ts = datetime.now().strftime("%H%M%S")
+    snap_path = snap_dir / f"fetched_{today}_{ts}.json"
     snapshot = {
         "date": today,
         "market_state": analysis["market_state"],
@@ -758,20 +828,21 @@ def main():
     print(f"  市场状态: {analysis['market_state']} | 指数 {len(quotes)} 个 | 美股 {len(us_market)} 个 | ETF {len(etf)} 只 | 板块信号 {len(analysis['matched_sectors'])} 个 | 舆情条目 {len(weibo_data)} 类")
     print("  全功能 9 章节报告通过 build_report_20260816.py + 实时快照拼装生成（简版模式已取消）。")
 
-    if DB_AVAILABLE and config.get("database"):
-        try:
-            dc = config["database"]
-            db = StockAgentDB(host=dc.get("host","localhost"), port=dc.get("port",5432),
-                              user=dc.get("user","postgres"), password=dc.get("password",""),
-                              dbname=dc.get("dbname","a_stock_agent"))
-            td = datetime.now().date()
-            if quotes:
-                db.save_index_quotes(td, quotes)
-            if weibo_data:
-                db.save_sentiment_batch(td, weibo_data)
-            print("[DB] 行情+舆情入库完成（全功能报告 HTML 由 build_report 生成时另存）")
-        except Exception as e:
-            print(f"[DB] 入库失败: {e}")
+    # ===== 强制入库：所有采集数据必须写入 PostgreSQL；连接不通则及时提醒 =====
+    db_ok, db_err = _persist_to_db(config, snapshot, ta_data)
+    if not db_ok:
+        print("\n" + "=" * 56)
+        print("⚠️  ⚠️  PostgreSQL 入库失败 / 数据库连接不通！  ⚠️  ⚠️")
+        print(f"⚠️  原因: {db_err}")
+        print("⚠️  请检查: 1) PostgreSQL 服务是否启动  2) config.json 中 database 配置")
+        print("⚠️  (host/port/user/password/dbname)  3) 本机能否连通该数据库")
+        print("⚠️  本次原始数据快照已保存到本地 JSON，但未入库，请尽快修复后重跑。")
+        print("=" * 56 + "\n")
+    else:
+        print("[DB] ✅ 所有采集数据已强制写入 PostgreSQL")
+
+    # ===== 历史快照清理：最多保留 2 天 =====
+    _cleanup_old_snapshots(max_age_days=2)
 
 
 if __name__ == "__main__":
