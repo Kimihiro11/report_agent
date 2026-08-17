@@ -25,8 +25,8 @@ from collections import defaultdict
 
 BASE_DIR = Path(__file__).parent
 WINDOWS = [1, 3, 5]  # 回测窗口（交易日）
-JUDG_FILE = BASE_DIR / "judgments.json"      # 个股判断本地存储（DB 不可用时的兜底）
-RES_FILE = BASE_DIR / "backtest_results.json"  # 回测结果本地存储
+JUDG_FILE = BASE_DIR / "seeds" / "judgments.json"      # 个股判断本地存储（DB 不可用时的兜底）
+RES_FILE = BASE_DIR / "seeds" / "backtest_results.json"  # 回测结果本地存储
 
 # ----------------- 方向映射 -----------------
 BULL_KW = ["加仓", "买入", "回补", "首选", "低吸", "做多", "关注", "重点"]

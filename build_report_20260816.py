@@ -88,7 +88,7 @@ global_items = [t for k in weibo_data if k.startswith("[全球]") for t in wb_te
 
 # ---- 个股诊断（实时） ----
 diag_raw = []
-diag_path = BASE_DIR / f"diagnosis_{DATE8}.json"
+diag_path = BASE_DIR / "data" / "diagnosis" / f"diagnosis_{DATE8}.json"
 if diag_path.exists():
     try:
         diag_raw = json.load(open(diag_path, encoding="utf-8"))
@@ -99,6 +99,7 @@ else:
         import stock_diagnosis as sd
         diag_raw = sd.run_all(WATCHLIST)
         # 缓存到当日文件，便于回溯与回测
+        diag_path.parent.mkdir(parents=True, exist_ok=True)
         with open(diag_path, "w", encoding="utf-8") as f:
             json.dump(diag_raw, f, ensure_ascii=False, indent=2)
         print(f"[诊断] 实时诊断完成并缓存: {diag_path}")
