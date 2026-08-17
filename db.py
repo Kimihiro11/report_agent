@@ -7,6 +7,8 @@
     在 a_stock_agent.py 中导入使用
 """
 import psycopg2
+from contextlib import contextmanager
+from psycopg2 import sql as _sql
 
 
 class StockAgentDB:
@@ -21,7 +23,7 @@ class StockAgentDB:
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (self.dbname,))
         if not cur.fetchone():
-            cur.execute(f'CREATE DATABASE {self.dbname}')
+            cur.execute(_sql.SQL('CREATE DATABASE {}').format(_sql.Identifier(self.dbname)))
             print(f"[DB] 数据库 {self.dbname} 创建成功")
         else:
             print(f"[DB] 数据库 {self.dbname} 已存在")
@@ -157,6 +159,23 @@ class StockAgentDB:
     def _conn(self):
         return psycopg2.connect(**self.conn_params, dbname=self.dbname, connect_timeout=8)
 
+    @contextmanager
+    def _cursor(self):
+        """统一连接/游标管理：正常结束 commit，异常 rollback 并上抛，最终保证关闭。"""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            try:
+                yield cur
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                cur.close()
+        finally:
+            conn.close()
+
     def test_connection(self, timeout=5):
         """快速探活：成功返回 True，失败抛异常（由调用方捕获并提醒）。"""
         conn = psycopg2.connect(**self.conn_params, dbname=self.dbname, connect_timeout=timeout)
@@ -168,110 +187,87 @@ class StockAgentDB:
         return True
 
     def save_report(self, report_date, market_state, summary, html_content):
-        conn = self._conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO daily_reports (report_date, market_state, summary, html_content) VALUES (%s,%s,%s,%s)",
-            (report_date, market_state, summary, html_content),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO daily_reports (report_date, market_state, summary, html_content) VALUES (%s,%s,%s,%s)",
+                (report_date, market_state, summary, html_content),
+            )
         print(f"[DB] 报告入库: {report_date}")
 
     def save_index_quotes(self, quote_date, quotes):
-        conn = self._conn()
-        cur = conn.cursor()
-        for name, q in quotes.items():
-            cur.execute(
-                "INSERT INTO index_quotes (quote_date, index_name, price, change_pct, volume) VALUES (%s,%s,%s,%s,%s)",
-                (quote_date, name, q.get("price"), q.get("chg_pct"), str(q.get("volume", ""))),
-            )
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for name, q in quotes.items():
+                cur.execute(
+                    "INSERT INTO index_quotes (quote_date, index_name, price, change_pct, volume) VALUES (%s,%s,%s,%s,%s)",
+                    (quote_date, name, q.get("price"), q.get("chg_pct"), str(q.get("volume", ""))),
+                )
         print(f"[DB] 指数行情入库: {len(quotes)} 条")
 
     def save_sentiment_batch(self, record_date, weibo_data):
-        conn = self._conn()
-        cur = conn.cursor()
         count = 0
-        for source_name, posts in weibo_data.items():
-            if source_name.startswith("[全球]"):
-                stype, tier, name = "global", 2, source_name.replace("[全球] ", "")
-            elif source_name.startswith("[宏观]"):
-                stype, tier, name = "macro", 0, source_name.replace("[宏观] ", "")
-            elif source_name.startswith("[事件]"):
-                stype, tier, name = "event", 0, source_name.replace("[事件] ", "")
-            elif source_name.startswith("[技术]"):
-                stype, tier, name = "technical", 0, source_name.replace("[技术] ", "")
-            else:
-                stype, tier, name = "weibo", 0, source_name
-            for post in posts:
-                cur.execute(
-                    "INSERT INTO sentiment_data (record_date, source_name, source_type, tier, content, post_time) VALUES (%s,%s,%s,%s,%s,%s)",
-                    (record_date, name, stype, tier, post.get("text", ""), post.get("time", "")),
-                )
-                count += 1
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for source_name, posts in weibo_data.items():
+                if source_name.startswith("[全球]"):
+                    stype, tier, name = "global", 2, source_name.replace("[全球] ", "")
+                elif source_name.startswith("[宏观]"):
+                    stype, tier, name = "macro", 0, source_name.replace("[宏观] ", "")
+                elif source_name.startswith("[事件]"):
+                    stype, tier, name = "event", 0, source_name.replace("[事件] ", "")
+                elif source_name.startswith("[技术]"):
+                    stype, tier, name = "technical", 0, source_name.replace("[技术] ", "")
+                else:
+                    stype, tier, name = "weibo", 0, source_name
+                for post in posts:
+                    cur.execute(
+                        "INSERT INTO sentiment_data (record_date, source_name, source_type, tier, content, post_time) VALUES (%s,%s,%s,%s,%s,%s)",
+                        (record_date, name, stype, tier, post.get("text", ""), post.get("time", "")),
+                    )
+                    count += 1
         print(f"[DB] 舆情数据入库: {count} 条")
 
     def save_technical(self, analysis_date, ta_data):
-        conn = self._conn()
-        cur = conn.cursor()
-        for symbol, kline in ta_data.items():
-            cur.execute(
-                """INSERT INTO technical_indicators
-                (analysis_date, symbol, close_price, ma5, ma10, ma20, ma60, trend, high5, low5)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (analysis_date, symbol, kline.get("close"), kline.get("ma5"), kline.get("ma10"),
-                 kline.get("ma20"), kline.get("ma60"), kline.get("trend"), kline.get("high5"), kline.get("low5")),
-            )
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for symbol, kline in ta_data.items():
+                cur.execute(
+                    """INSERT INTO technical_indicators
+                    (analysis_date, symbol, close_price, ma5, ma10, ma20, ma60, trend, high5, low5)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (analysis_date, symbol, kline.get("close"), kline.get("ma5"), kline.get("ma10"),
+                     kline.get("ma20"), kline.get("ma60"), kline.get("trend"), kline.get("high5"), kline.get("low5")),
+                )
         print(f"[DB] 技术指标入库: {len(ta_data)} 条")
 
     def save_judgments(self, judgments):
         """批量写入每日个股判断（按 report_date+stock_code upsert）"""
-        conn = self._conn()
-        cur = conn.cursor()
         n = 0
-        for j in judgments:
-            cur.execute(
-                """INSERT INTO stock_judgments
-                (report_date, stock_code, stock_name, action, direction, rationale, source_file)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (report_date, stock_code) DO UPDATE SET
-                    stock_name=EXCLUDED.stock_name, action=EXCLUDED.action,
-                    direction=EXCLUDED.direction, rationale=EXCLUDED.rationale,
-                    source_file=EXCLUDED.source_file""",
-                (j["report_date"], j["stock_code"], j["stock_name"], j["action"],
-                 j["direction"], j.get("rationale", ""), j.get("source_file", "")),
-            )
-            n += 1
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for j in judgments:
+                cur.execute(
+                    """INSERT INTO stock_judgments
+                    (report_date, stock_code, stock_name, action, direction, rationale, source_file)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (report_date, stock_code) DO UPDATE SET
+                        stock_name=EXCLUDED.stock_name, action=EXCLUDED.action,
+                        direction=EXCLUDED.direction, rationale=EXCLUDED.rationale,
+                        source_file=EXCLUDED.source_file""",
+                    (j["report_date"], j["stock_code"], j["stock_name"], j["action"],
+                     j["direction"], j.get("rationale", ""), j.get("source_file", "")),
+                )
+                n += 1
         print(f"[DB] 个股判断入库: {n} 条")
 
     def get_judgments(self, as_of=None):
         """读取个股判断；as_of 为日期字符串(YYYY-MM-DD)时只取当日"""
-        conn = self._conn()
-        cur = conn.cursor()
-        if as_of:
-            cur.execute(
-                "SELECT report_date,stock_code,stock_name,action,direction,rationale,source_file "
-                "FROM stock_judgments WHERE report_date=%s ORDER BY stock_code", (as_of,))
-        else:
-            cur.execute(
-                "SELECT report_date,stock_code,stock_name,action,direction,rationale,source_file "
-                "FROM stock_judgments ORDER BY report_date, stock_code")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            if as_of:
+                cur.execute(
+                    "SELECT report_date,stock_code,stock_name,action,direction,rationale,source_file "
+                    "FROM stock_judgments WHERE report_date=%s ORDER BY stock_code", (as_of,))
+            else:
+                cur.execute(
+                    "SELECT report_date,stock_code,stock_name,action,direction,rationale,source_file "
+                    "FROM stock_judgments ORDER BY report_date, stock_code")
+            rows = cur.fetchall()
         return [
             dict(report_date=r[0], stock_code=r[1], stock_name=r[2], action=r[3],
                  direction=r[4], rationale=r[5], source_file=r[6])
@@ -280,77 +276,61 @@ class StockAgentDB:
 
     def save_backtest_results(self, results):
         """批量写入回测结果（按 judgment_date+stock_code+window_days upsert）"""
-        conn = self._conn()
-        cur = conn.cursor()
         n = 0
-        for r in results:
-            cur.execute(
-                """INSERT INTO backtest_results
-                (judgment_date, stock_code, stock_name, action, direction, window_days,
-                 entry_close, exit_close, ret_pct, direction_hit, tech_signal, tech_agree)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (judgment_date, stock_code, window_days) DO UPDATE SET
-                    stock_name=EXCLUDED.stock_name, action=EXCLUDED.action, direction=EXCLUDED.direction,
-                    entry_close=EXCLUDED.entry_close, exit_close=EXCLUDED.exit_close,
-                    ret_pct=EXCLUDED.ret_pct, direction_hit=EXCLUDED.direction_hit,
-                    tech_signal=EXCLUDED.tech_signal, tech_agree=EXCLUDED.tech_agree""",
-                (r["judgment_date"], r["stock_code"], r["stock_name"], r["action"], r["direction"],
-                 r["window_days"], r["entry_close"], r["exit_close"], r["ret_pct"],
-                 r["direction_hit"], r["tech_signal"], r["tech_agree"]),
-            )
-            n += 1
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for r in results:
+                cur.execute(
+                    """INSERT INTO backtest_results
+                    (judgment_date, stock_code, stock_name, action, direction, window_days,
+                     entry_close, exit_close, ret_pct, direction_hit, tech_signal, tech_agree)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (judgment_date, stock_code, window_days) DO UPDATE SET
+                        stock_name=EXCLUDED.stock_name, action=EXCLUDED.action, direction=EXCLUDED.direction,
+                        entry_close=EXCLUDED.entry_close, exit_close=EXCLUDED.exit_close,
+                        ret_pct=EXCLUDED.ret_pct, direction_hit=EXCLUDED.direction_hit,
+                        tech_signal=EXCLUDED.tech_signal, tech_agree=EXCLUDED.tech_agree""",
+                    (r["judgment_date"], r["stock_code"], r["stock_name"], r["action"], r["direction"],
+                     r["window_days"], r["entry_close"], r["exit_close"], r["ret_pct"],
+                     r["direction_hit"], r["tech_signal"], r["tech_agree"]),
+                )
+                n += 1
         print(f"[DB] 回测结果入库: {n} 条")
 
     def save_snapshot(self, snapshot_date, payload):
         """保存完整原始快照（所有采集数据）为 JSON，确保『全部数据入库』。"""
         import json as _json
-        conn = self._conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO raw_snapshots (snapshot_date, payload) VALUES (%s,%s)",
-            (snapshot_date, _json.dumps(payload, ensure_ascii=False)),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO raw_snapshots (snapshot_date, payload) VALUES (%s,%s)",
+                (snapshot_date, _json.dumps(payload, ensure_ascii=False)),
+            )
         print(f"[DB] 原始快照入库: {snapshot_date}")
 
     def save_us_market(self, quote_date, us_market):
         """隔夜美股行情入库。us_market: [(name, pct, price, signal), ...]"""
-        conn = self._conn()
-        cur = conn.cursor()
         n = 0
-        for name, pct, price, signal in us_market:
-            cur.execute(
-                "INSERT INTO us_market_quotes (quote_date, name, change_pct, price) VALUES (%s,%s,%s,%s)",
-                (quote_date, name, pct, str(price)),
-            )
-            n += 1
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for name, pct, price, signal in us_market:
+                cur.execute(
+                    "INSERT INTO us_market_quotes (quote_date, name, change_pct, price) VALUES (%s,%s,%s,%s)",
+                    (quote_date, name, pct, str(price)),
+                )
+                n += 1
         print(f"[DB] 美股行情入库: {n} 条")
 
     def save_etf_flows(self, flow_date, etf):
         """ETF 资金流入库。etf: [(name, code, direction, cls, signal), ...]"""
         import re as _re
-        conn = self._conn()
-        cur = conn.cursor()
         n = 0
-        for name, code, direction, cls, signal in etf:
-            m = _re.search(r"(净流入|净流出)\s*([\d.]+)\s*亿元", signal or "")
-            amount = float(m.group(2)) * (1 if m.group(1) == "净流入" else -1) if m else None
-            cur.execute(
-                "INSERT INTO etf_flows (flow_date, name, code, direction, amount, signal) VALUES (%s,%s,%s,%s,%s,%s)",
-                (flow_date, name, code, direction, amount, signal),
-            )
-            n += 1
-        conn.commit()
-        cur.close()
-        conn.close()
+        with self._cursor() as cur:
+            for name, code, direction, cls, signal in etf:
+                m = _re.search(r"(净流入|净流出)\s*([\d.]+)\s*亿元", signal or "")
+                amount = float(m.group(2)) * (1 if m.group(1) == "净流入" else -1) if m else None
+                cur.execute(
+                    "INSERT INTO etf_flows (flow_date, name, code, direction, amount, signal) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (flow_date, name, code, direction, amount, signal),
+                )
+                n += 1
         print(f"[DB] ETF资金流入库: {n} 条")
 
 

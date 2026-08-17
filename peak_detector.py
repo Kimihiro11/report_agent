@@ -3,12 +3,13 @@
 """
 股票诊断系统 v2.0
 
-评分体系（100分制）：
-  - 超买程度   25分  (RSI/KDJ/WR/CCI/MFI/PSY + 短期涨幅)
-  - 成交活跃度 20分  (换手率 + 成交额 + 量比)
+评分体系（风险分累加，总分经见底缓冲修正后映射到 0-100）：
+  - 超买程度   35分  (RSI/KDJ/WR/CCI/MFI/PSY + 短期涨幅)
+  - 成交活跃度 15分  (换手率 + 成交额 + 量比)
   - 量价背离   15分  (价新高量未新高 + OBV背离 + VR过热)
   - 趋势衰竭   20分  (MACD顶背离 + 红柱缩短 + ADX拐头 + BIAS乖离)
-  - 形态破位   20分  (跌破5日线 + 布林中轨 + MACD/KDJ死叉 + 放量下跌)
+  - 形态破位   40分  (跌破5日线 + 布林中轨 + MACD/KDJ死叉 + 放量下跌)
+  - 见底信号  -35分  (安全缓冲，从总分中减去；维度满分见 print_diagnosis)
 
 风险等级：
   70-100分  🔴 极度危险 - 见顶确认，立即离场
@@ -249,6 +250,7 @@ def get_realtime_quote(code, adjust_for_intraday=True):
     
     try:
         resp = requests.get(url, timeout=10)
+        resp.encoding = 'gbk'  # 腾讯行情接口（qt.gtimg.cn）返回 GBK，默认 ISO-8859-1 会致中文名乱码
         data = resp.text
         
         if '=' in data and '~' in data:
@@ -268,7 +270,7 @@ def get_realtime_quote(code, adjust_for_intraday=True):
                 def safe_float(idx, default=0):
                     try:
                         return float(parts[idx]) if idx < len(parts) and parts[idx] else default
-                    except:
+                    except (ValueError, TypeError):
                         return default
                 
                 price = safe_float(3)
@@ -814,7 +816,6 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     # 1. 近期出现天量（最高4分）- 最近N天内出现过20日天量
     if len(indicators) >= 20:
         last20 = indicators.iloc[-20:]
-        max_vol_20d = last20['volume'].max()
         max_vol_idx = last20['volume'].idxmax()
         days_since_max = len(last20) - 1 - (max_vol_idx - last20.index[0])
         
@@ -1439,12 +1440,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     
     breakdown_score = min(breakdown_score, 40)
     total_score += breakdown_score
-    
-    # ============================================================
-    # 维度六：板块情绪（已移除）
-    # ============================================================
-    sector_score = 0
-    
+
     # ============================================================
     # 见底信号（减分项）- 超卖 + 底背离
     # 逻辑：出现底部信号，从总分中减去，避免下跌到底部还显示高危
@@ -1781,7 +1777,6 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
         # 找到前面一个高点（20日内，不包括最近3天）
         high_series = indicators['high'].iloc[-20:-3]
         high_idx = high_series.idxmax()
-        recent_high = high_series.max()
         current_idx = len(indicators) - 1
         days_after_high = current_idx - high_idx
         
@@ -2051,8 +2046,12 @@ def main():
             target_date = arg2.replace('.', '-')
             # 统一格式为 YYYY-MM-DD
             parts = target_date.split('-')
-            if len(parts) == 3:
-                target_date = f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+            try:
+                if len(parts) == 3:
+                    target_date = f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+            except ValueError:
+                print(f"错误：无法解析日期参数 {arg2!r}，应为 YYYY-MM-DD")
+                return
             if len(sys.argv) > 3:
                 stock_name = sys.argv[3]
         else:

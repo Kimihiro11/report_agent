@@ -6,3 +6,8 @@ numpy==2.5.2
 pandas==3.0.5
 requests==2.34.2
 psycopg2-binary==2.9.12
+
+# 东方财富「妙想」技能（mx-finance-data）子进程依赖：a_stock_agent 的 ETF/美股兜底源调用
+# ~/.workbuddy/skills/mx-finance-data/scripts/get_data.py 时需要（项目代码本身不 import）
+httpx==0.28.1
+openpyxl==3.1.5

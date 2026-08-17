@@ -33,8 +33,7 @@ import sys
 import html
 import urllib.request
 import urllib.parse
-import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -249,14 +248,6 @@ def _extract_numbers(text):
     if m:
         rate_level = m.group(1)
     return hike, rate_level, terminal
-
-
-def _extract_hike(text):
-    return _extract_numbers(text)[0]
-
-
-def _extract_terminal(text):
-    return _extract_numbers(text)[2]
 
 
 def _extract_timing(text):
@@ -559,7 +550,6 @@ def _fmt_dt(raw):
 
 def build_analysis(state):
     """基于真实抓取数据生成专业研判结论：传导链定位 → 对 A 股影响 → 后续观察点。"""
-    color_up = "#d63031"
     cons = state.get("consensus", {})
     degree = cons.get("degree_label", "—")
 
@@ -692,7 +682,7 @@ def save_outputs(state):
     return json_path, html_path
 
 
-def run_focus_monitor(config_path=None, no_fetch=False, days=None):
+def run_focus_monitor(no_fetch=False, days=None):
     """对外入口：返回 state dict。"""
     cfg = load_config()
     state = build_state(cfg, no_fetch=no_fetch, days=days)

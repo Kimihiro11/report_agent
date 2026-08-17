@@ -39,7 +39,8 @@ def load_config():
         return json.load(f)
 
 
-def fetch_url(url, headers=None, timeout=10, quiet=False):
+def fetch_url(url, headers=None, timeout=10, quiet=False, encoding="utf-8"):
+    """抓取 URL 文本。encoding 默认 utf-8；新浪行情（hq.sinajs.cn）等 GBK 源传 encoding="gbk"。"""
     req = urllib.request.Request(url)
     req.add_header("User-Agent", UA)
     if headers:
@@ -47,7 +48,7 @@ def fetch_url(url, headers=None, timeout=10, quiet=False):
             req.add_header(k, v)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", errors="replace")
+            return resp.read().decode(encoding, errors="replace")
     except Exception as e:
         if not quiet:
             print(f"  [fetch error] {url[:80]} -> {e}")
@@ -74,16 +75,6 @@ def _fetch_with_fallback(sources, label="数据"):
         except Exception as e:
             print(f"  [兜底] {name} 异常: {e}，尝试下一源")
     print(f"  [兜底] {label} 所有源均失败")
-    return None
-
-
-def _retry(fn, times=2, label="请求"):
-    """简单重试：fn() 抛异常时重试，全部失败返回 None。"""
-    for i in range(times):
-        try:
-            return fn()
-        except Exception as e:
-            print(f"  [重试] {label} 第{i + 1}次失败: {e}")
     return None
 
 
@@ -472,7 +463,7 @@ def fetch_index_quotes():
     codes = "sh000001,sz399001,sz399006,sh000688,sh000300"
     url = f"https://hq.sinajs.cn/list={codes}"
     headers = {"Referer": "https://finance.sina.com.cn"}
-    text = fetch_url(url, headers)
+    text = fetch_url(url, headers, encoding="gbk")  # 新浪行情接口返回 GBK
     if not text:
         return {}
     result = {}
@@ -516,7 +507,7 @@ def _us_sina():
         "gb_lite": "Lumentum", "gb_glw": "康宁",
     }
     url = f"https://hq.sinajs.cn/list={','.join(symbols)}"
-    text = fetch_url(url, headers={"Referer": "https://finance.sina.com.cn"})
+    text = fetch_url(url, headers={"Referer": "https://finance.sina.com.cn"}, encoding="gbk")  # 新浪行情接口返回 GBK
     if not text:
         return []
     results = []

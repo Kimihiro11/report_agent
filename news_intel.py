@@ -208,7 +208,7 @@ def run_intel(date=None, no_fetch=False):
 
     if no_fetch and out_path.exists():
         print(f"[news_intel] --no-fetch：重渲染已缓存 {out_path.name}")
-        return json.load(open(out_path, encoding="utf-8"))
+        return json.loads(out_path.read_text(encoding="utf-8"))
 
     topics = {}
     for key, cfg in TOPICS.items():
@@ -240,7 +240,7 @@ def load_intel(date=None):
     p = OUTPUT_DIR / f"news_intel_{date8}.json"
     if p.exists():
         try:
-            return json.load(open(p, encoding="utf-8"))
+            return json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             return {}
     return {}

@@ -319,12 +319,12 @@ def fetch_kline(code: str, beg="2026-06-01", end=None):
 
 
 def idx_of_date(klines, target):
-    """返回 >= target 的第一根 bar 的索引（交易日对齐）；找不到返回最后一根。target 可为 date 或 str。"""
+    """返回 >= target 的第一根 bar 的索引（交易日对齐）；target 晚于行情末端返回 -1（由调用方按 pending 处理，避免入场价静默错位）。target 可为 date 或 str。"""
     t = target.isoformat() if hasattr(target, "isoformat") else str(target)
     for i, k in enumerate(klines):
         if k["date"] >= t:
             return i
-    return len(klines) - 1 if klines else -1
+    return -1
 
 
 def ma20_at(klines, idx):
@@ -367,6 +367,19 @@ def run_backtest(window_days=WINDOWS, as_of=None):
             continue
         idx = idx_of_date(kl, j["report_date"])
         if idx < 0:
+            # 判断日晚于行情数据末端（如盘后/周末产生的判断）：入场价尚未出现，显式记为待观察，不再静默错位到最后一根 bar
+            print(f"[回测] {code} 判断日 {j['report_date']} 晚于行情末端，记为待观察")
+            for w in window_days:
+                pending += 1
+                results.append({
+                    "judgment_date": j["report_date"], "stock_code": code,
+                    "stock_name": j["stock_name"], "action": j["action"],
+                    "direction": j["direction"], "window_days": w,
+                    "entry_close": None, "exit_close": None,
+                    "ret_pct": None, "direction_hit": None,
+                    "tech_signal": "neutral", "tech_agree": None,
+                    "status": "pending",
+                })
             continue
         entry = kl[idx]["close"]
         tech_sig = tech_signal_at(kl, idx)

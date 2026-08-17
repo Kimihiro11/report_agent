@@ -9,107 +9,155 @@
     （微博/大V、宏观新闻、事件因子、日本传导链、技术、A股指数、隔夜美股、ETF资金流）
   - 见顶诊断 stock_diagnosis.run_all(自选股) 或 diagnosis_YYYYMMDD.json
 任何数据缺口均渲染为「实时数据缺失」占位，绝不出现假数据。
+
+import 本模块无副作用（不解析 argv / 不联网 / 不写盘）；执行入口为 main()，
+仅在 `python build_report.py`（__main__）时运行。
 """
 import json
 import argparse
 from datetime import datetime
+from html import escape as _esc
 from pathlib import Path
+
+import a_stock_agent as agent
+import news_intel as _ni
 
 BASE_DIR = Path(__file__).parent
 
-# ---- 参数：--date 报告日期(YYYY-MM-DD) / --type 报告类型(决定写入目录) ----
-ap = argparse.ArgumentParser(description="生成 A股操作指引 9 章节报告（实时数据）")
-ap.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"), help="报告日期 YYYY-MM-DD")
-ap.add_argument("--type", default="早报", choices=["早报", "晚报", "周报"],
-                help="报告类型：早报/晚报/周报，决定写入 reports/<类型>/ 目录")
-_args = ap.parse_args()
-TODAY = _args.date
-DATE8 = TODAY.replace("-", "")
-REPORT_TYPE = _args.type
-NOW = datetime.now().strftime("%Y-%m-%d %H:%M")
-
 _TYPE_LABEL = {"早报": "盘前版", "晚报": "盘后版", "周报": "周度回顾"}
 _TYPE_STATE = {"早报": "盘前", "晚报": "盘后", "周报": "周报"}
-REPORT_LABEL = _TYPE_LABEL.get(REPORT_TYPE, "盘前版")
-REPORT_STATE = _TYPE_STATE.get(REPORT_TYPE, "盘前")
 
-# ---- 加载配置（自选股 + 大V 源，避免写死） ----
-import a_stock_agent as agent
-cfg = agent.load_config()
-WATCHLIST = cfg.get("watchlist_stocks", []) or []
 # 稳定分类元数据（行业归属，非行情数据）：code -> 行业
 SECTOR = {
     "688668": "连接器+液冷", "688409": "半导体设备零部件", "600641": "离子注入机",
     "000725": "面板+AI封装", "301392": "PVD设备", "688530": "靶材", "600580": "机器人电机",
 }
-VS_NAMES = [s.get("name", "") for s in cfg.get("weibo_sources", [])]
 
-# ---- 加载实时快照（数据引擎产出，位于 data/snapshots/，取当日最新一份） ----
+# 数据缺口统一占位（绝不编造数值）
 PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python a_stock_agent.py` 采集后再生成报告）。</p>'
-_snap_dir = BASE_DIR / "data" / "snapshots"
-_candidates = sorted(_snap_dir.glob(f"fetched_{DATE8}*.json")) if _snap_dir.exists() else []
-if not _candidates:
-    # 向后兼容：旧路径 data/fetched_YYYYMMDD.json
-    _old = BASE_DIR / "data" / f"fetched_{DATE8}.json"
-    if _old.exists():
-        _candidates = [_old]
-snap_path = _candidates[-1] if _candidates else None
+
+# ---- 模块级状态：由 load_context() 填充；import 本模块无副作用（不解析 argv / 不联网 / 不写盘） ----
+TODAY = datetime.now().strftime("%Y-%m-%d")
+DATE8 = TODAY.replace("-", "")
+REPORT_TYPE = "早报"
+NOW = ""
+REPORT_LABEL = _TYPE_LABEL[REPORT_TYPE]
+REPORT_STATE = _TYPE_STATE[REPORT_TYPE]
+cfg = {}
+WATCHLIST = []
+VS_NAMES = []
+snap_path = None
 snapshot = {}
-if snap_path is not None and snap_path.exists():
-    try:
-        snapshot = json.load(open(snap_path, encoding="utf-8"))
-        print(f"[读取] 使用快照: {snap_path.name}")
-    except Exception as e:
-        print(f"[警告] 快照解析失败 {snap_path}: {e}")
-else:
-    print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python a_stock_agent.py` 采集数据。报告仅含占位。")
+weibo_data = {}
+quotes = {}
+us_market = []
+etf = []
+market_state = "neutral"
+matched_sectors = []
+intel = {}
+_intel_topics = {}
+tangshi = []
+touxing_asset = []
+touxing_yeye = []
+macro_items = []
+event_items = []
+japan_items = []
+tech_items = []
+global_items = []
+diag_raw = []
 
-weibo_data = snapshot.get("weibo_data", {})
-quotes = snapshot.get("quotes", {})
-us_market = snapshot.get("us_market", []) or []
-etf = snapshot.get("etf", []) or []
-market_state = snapshot.get("market_state", "neutral")
-matched_sectors = snapshot.get("matched_sectors", []) or []
 
-# ---- 外网资讯解析（英文源抓取 + 正文解析，Agent 总结为中文结论） ----
-import news_intel as _ni
-intel = _ni.load_intel(TODAY)
-_intel_topics = intel.get("topics", {}) if isinstance(intel, dict) else {}
+def load_context():
+    """解析命令行参数，并加载全部实时数据上下文（配置/快照/外网解析/个股诊断）到模块全局。"""
+    global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE
+    global cfg, WATCHLIST, VS_NAMES
+    global snap_path, snapshot, weibo_data, quotes, us_market, etf, market_state, matched_sectors
+    global intel, _intel_topics
+    global tangshi, touxing_asset, touxing_yeye
+    global macro_items, event_items, japan_items, tech_items, global_items
+    global diag_raw
+
+    # ---- 参数：--date 报告日期(YYYY-MM-DD) / --type 报告类型(决定写入目录) ----
+    ap = argparse.ArgumentParser(description="生成 A股操作指引 9 章节报告（实时数据）")
+    ap.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"), help="报告日期 YYYY-MM-DD")
+    ap.add_argument("--type", default="早报", choices=["早报", "晚报", "周报"],
+                    help="报告类型：早报/晚报/周报，决定写入 reports/<类型>/ 目录")
+    _args = ap.parse_args()
+    TODAY = _args.date
+    DATE8 = TODAY.replace("-", "")
+    REPORT_TYPE = _args.type
+    NOW = datetime.now().strftime("%Y-%m-%d %H:%M")
+    REPORT_LABEL = _TYPE_LABEL.get(REPORT_TYPE, "盘前版")
+    REPORT_STATE = _TYPE_STATE.get(REPORT_TYPE, "盘前")
+
+    # ---- 加载配置（自选股 + 大V 源，避免写死） ----
+    cfg = agent.load_config()
+    WATCHLIST = cfg.get("watchlist_stocks", []) or []
+    VS_NAMES = [s.get("name", "") for s in cfg.get("weibo_sources", [])]
+
+    # ---- 加载实时快照（数据引擎产出，位于 data/snapshots/，取当日最新一份） ----
+    _snap_dir = BASE_DIR / "data" / "snapshots"
+    _candidates = sorted(_snap_dir.glob(f"fetched_{DATE8}*.json")) if _snap_dir.exists() else []
+    if not _candidates:
+        # 向后兼容：旧路径 data/fetched_YYYYMMDD.json
+        _old = BASE_DIR / "data" / f"fetched_{DATE8}.json"
+        if _old.exists():
+            _candidates = [_old]
+    snap_path = _candidates[-1] if _candidates else None
+    snapshot = {}
+    if snap_path is not None and snap_path.exists():
+        try:
+            snapshot = json.loads(snap_path.read_text(encoding="utf-8"))
+            print(f"[读取] 使用快照: {snap_path.name}")
+        except Exception as e:
+            print(f"[警告] 快照解析失败 {snap_path}: {e}")
+    else:
+        print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python a_stock_agent.py` 采集数据。报告仅含占位。")
+
+    weibo_data = snapshot.get("weibo_data", {})
+    quotes = snapshot.get("quotes", {})
+    us_market = snapshot.get("us_market", []) or []
+    etf = snapshot.get("etf", []) or []
+    market_state = snapshot.get("market_state", "neutral")
+    matched_sectors = snapshot.get("matched_sectors", []) or []
+
+    # ---- 外网资讯解析（英文源抓取 + 正文解析，Agent 总结为中文结论） ----
+    intel = _ni.load_intel(TODAY)
+    _intel_topics = intel.get("topics", {}) if isinstance(intel, dict) else {}
+
+    # 实时大V / 各类信源文本
+    tangshi = wb_texts("唐史主任司马迁")
+    touxing_asset = wb_texts("投星资产")
+    touxing_yeye = wb_texts("投星大爷")
+    macro_items = [t for k in weibo_data if k.startswith("[宏观]") for t in wb_texts(k)]
+    event_items = [t for k in weibo_data if k.startswith("[事件]") for t in wb_texts(k)]
+    japan_items = [t for k in weibo_data if k.startswith("[日本]") for t in wb_texts(k)]
+    tech_items = [t for k in weibo_data if k.startswith("[技术]") for t in wb_texts(k)]
+    global_items = [t for k in weibo_data if k.startswith("[全球]") for t in wb_texts(k)]
+
+    # ---- 个股诊断（实时） ----
+    diag_raw = []
+    diag_path = BASE_DIR / "data" / "diagnosis" / f"diagnosis_{DATE8}.json"
+    if diag_path.exists():
+        try:
+            diag_raw = json.loads(diag_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[诊断] 读取 {diag_path} 失败: {e}")
+    else:
+        try:
+            import stock_diagnosis as sd
+            diag_raw = sd.run_all(WATCHLIST)
+            # 缓存到当日文件，便于回溯与回测
+            diag_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(diag_path, "w", encoding="utf-8") as f:
+                json.dump(diag_raw, f, ensure_ascii=False, indent=2)
+            print(f"[诊断] 实时诊断完成并缓存: {diag_path}")
+        except Exception as e:
+            print(f"[诊断] 实时诊断失败: {e}")
 
 
 def wb_texts(name):
     return [p.get("text", "") for p in weibo_data.get(name, []) if p.get("text")]
-
-
-# 实时大V / 各类信源文本
-tangshi = wb_texts("唐史主任司马迁")
-touxing_asset = wb_texts("投星资产")
-touxing_yeye = wb_texts("投星大爷")
-macro_items = [t for k in weibo_data if k.startswith("[宏观]") for t in wb_texts(k)]
-event_items = [t for k in weibo_data if k.startswith("[事件]") for t in wb_texts(k)]
-japan_items = [t for k in weibo_data if k.startswith("[日本]") for t in wb_texts(k)]
-tech_items = [t for k in weibo_data if k.startswith("[技术]") for t in wb_texts(k)]
-global_items = [t for k in weibo_data if k.startswith("[全球]") for t in wb_texts(k)]
-
-# ---- 个股诊断（实时） ----
-diag_raw = []
-diag_path = BASE_DIR / "data" / "diagnosis" / f"diagnosis_{DATE8}.json"
-if diag_path.exists():
-    try:
-        diag_raw = json.load(open(diag_path, encoding="utf-8"))
-    except Exception as e:
-        print(f"[诊断] 读取 {diag_path} 失败: {e}")
-else:
-    try:
-        import stock_diagnosis as sd
-        diag_raw = sd.run_all(WATCHLIST)
-        # 缓存到当日文件，便于回溯与回测
-        diag_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(diag_path, "w", encoding="utf-8") as f:
-            json.dump(diag_raw, f, ensure_ascii=False, indent=2)
-        print(f"[诊断] 实时诊断完成并缓存: {diag_path}")
-    except Exception as e:
-        print(f"[诊断] 实时诊断失败: {e}")
 
 
 def diag_for(code):
@@ -119,14 +167,24 @@ def diag_for(code):
     return None
 
 
+# peak_detector 风险等级（数值越大越危险）：安全=1 < 蓝/黄/红色预警=2 < 高危=3 < 极度危险=4
+_LEVEL_RANK = {"安全": 1, "蓝色预警": 2, "黄色预警": 2, "红色预警": 2, "高危": 3, "极度危险": 4}
+
+
+def _level_rank(d):
+    return _LEVEL_RANK.get((d or {}).get("level", ""), 0)
+
+
 def action_from_diag(d):
     if not d:
         return ("观望", "b-gray")
-    lvl = d.get("level", "")
-    if "安全" in lvl:
+    r = _level_rank(d)
+    if r >= 3:      # 高危 / 极度危险：最高风险，回避
+        return ("回避", "b-green")
+    if r == 2:      # 蓝/黄/红色预警：谨慎减仓
+        return ("谨慎/减仓", "b-green")
+    if r == 1:      # 安全
         return ("持有/加仓", "b-red")
-    if "预警" in lvl or "见顶" in lvl:
-        return ("谨慎/回避", "b-green")
     return ("持有", "b-blue")
 
 
@@ -159,13 +217,6 @@ def fmt(v):
         return f"{float(v):.2f}"
     except (TypeError, ValueError):
         return str(v)
-
-
-def points(items, maxn=10):
-    items = [t.strip() for t in (items or []) if t and t.strip()]
-    if not items:
-        return PLACEHOLDER
-    return "".join(f'<div class="point"><div class="pt-body">{t}</div></div>' for t in items[:maxn])
 
 
 def us_bar(name, pct, val, sig):
@@ -388,13 +439,13 @@ def resonance_section():
 def strategy_section():
     state_label = {"bullish": "偏多积极", "bearish": "防御为主", "neutral": "中性偏谨慎"}.get(market_state, "中性")
     idx_line = "；".join(f"{n} {q.get('chg_pct')}%" for n, q in quotes.items() if q.get("chg_pct") is not None) if quotes else "指数实时数据缺失"
-    avoid = [watch_name(c) for c in WATCHLIST if diag_for(c) and ("预警" in diag_for(c).get("level", "") or "见顶" in diag_for(c).get("level", ""))]
+    avoid = [watch_name(c) for c in WATCHLIST if _level_rank(diag_for(c)) >= 2]
     rows = f'''
     <tr><td><b>大盘</b></td><td>实时状态 {state_label}；主要指数：{idx_line}。</td></tr>
     <tr><td><b>仓位</b></td><td>依据实时市场状态 {state_label} 调节，不追高。</td></tr>
     <tr><td><b>主线</b></td><td>{"、".join(matched_sectors) if matched_sectors else "实时板块信号缺失"}。</td></tr>
     <tr><td><b>风险</b></td><td>{"日本传导链有实时预警信号，关注日元/套息平仓。" if japan_items else "暂无日本传导链实时预警。"}</td></tr>
-    <tr><td><b>回避</b></td><td>{"、".join(avoid) if avoid else "当前自选股诊断无预警/见顶项。"}</td></tr>'''
+    <tr><td><b>回避</b></td><td>{"、".join(avoid) if avoid else "当前自选股诊断无预警及以上风险项。"}</td></tr>'''
     return f'<table><thead><tr><th style="width:18%">维度</th><th>策略（实时驱动）</th></tr></thead><tbody>{rows}</tbody></table>'
 
 
@@ -629,10 +680,10 @@ def vs_summary():
 
     key_html = "".join(
         f'<div class="{"alert-red" if sc < 0 else "alert-green" if sc > 0 else "alert-blue"}">'
-        f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {t}…</div>'
+        f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {_esc(t)}…</div>'
         for _, sc, t in d["key"]) or '<p class="muted">实时大V观点未提取到强多空信号。</p>'
 
-    risk_html = "".join(f'<div class="alert-red">⚠ {t}…</div>' for t in d["risks"]) or \
+    risk_html = "".join(f'<div class="alert-red">⚠ {_esc(t)}…</div>' for t in d["risks"]) or \
         '<p class="muted">实时风险因子（日本传导链 / 事件）未提取到明确利空信号。</p>'
 
     return f'''
@@ -733,7 +784,8 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .bar-val{width:70px;padding-left:10px}
 """
 
-html = f'''<!DOCTYPE html>
+def _render_html():
+    return f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -840,26 +892,34 @@ html = f'''<!DOCTYPE html>
 </body>
 </html>'''
 
-out_dir = BASE_DIR / "reports" / REPORT_TYPE
-out_dir.mkdir(parents=True, exist_ok=True)
-out = out_dir / f"{REPORT_TYPE}-{TODAY}.html"
-with open(out, "w", encoding="utf-8") as f:
-    f.write(html)
-print(f"报告已生成: {out} ({out.stat().st_size // 1024} KB)")
+def main():
+    load_context()
+    html = _render_html()
 
-# ---------- 写入数据库 ----------
-try:
-    from db import StockAgentDB
-    dc = cfg.get("database")
-    if dc:
-        db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
-                          user=dc.get("user", "postgres"), password=dc.get("password", ""),
-                          dbname=dc.get("dbname", "a_stock_agent"))
-        td = datetime.now().date()
-        db.save_report(td, REPORT_STATE, "A股操作指引·9章节", html)
-        db.save_sentiment_batch(td, weibo_data)
-        print("[DB] 舆情数据与报告入库完成")
-    else:
-        print("[DB] 未配置 database，跳过入库")
-except Exception as e:
-    print(f"[DB] 入库失败: {e}")
+    out_dir = BASE_DIR / "reports" / REPORT_TYPE
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{REPORT_TYPE}-{TODAY}.html"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"报告已生成: {out} ({out.stat().st_size // 1024} KB)")
+
+    # ---------- 写入数据库 ----------
+    try:
+        from db import StockAgentDB
+        dc = cfg.get("database")
+        if dc:
+            db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
+                              user=dc.get("user", "postgres"), password=dc.get("password", ""),
+                              dbname=dc.get("dbname", "a_stock_agent"))
+            td = datetime.now().date()
+            db.save_report(td, REPORT_STATE, "A股操作指引·9章节", html)
+            db.save_sentiment_batch(td, weibo_data)
+            print("[DB] 舆情数据与报告入库完成")
+        else:
+            print("[DB] 未配置 database，跳过入库")
+    except Exception as e:
+        print(f"[DB] 入库失败: {e}")
+
+
+if __name__ == "__main__":
+    main()
