@@ -18,6 +18,7 @@ import urllib.parse
 import re
 import sys
 import socket
+import subprocess
 import html
 from datetime import datetime
 from pathlib import Path
@@ -54,7 +55,116 @@ def fetch_url(url, headers=None, timeout=10, quiet=False):
 
 
 # ----------------------------------------------------------------------------
-# 外网连通性探测 + 搜索引擎（Google 优先，Bing 兜庫）
+# 通用兜底：多源切换 + 重试
+# ----------------------------------------------------------------------------
+
+def _fetch_with_fallback(sources, label="数据"):
+    """按优先级尝试多个抓取源，返回第一个非空结果；全部失败返回 None。
+
+    sources: [(名称, callable), ...]，callable 返回 list/dict（空=falsy 视为失败）。
+    任一源抛异常不影响后续源；最终打印命中来源，便于排查哪一层生效。
+    """
+    for name, fn in sources:
+        try:
+            data = fn()
+            if data:
+                print(f"  [兜底] {label} 命中来源: {name}（{len(data)} 条）")
+                return data
+            print(f"  [兜底] {name} 返回空，尝试下一源")
+        except Exception as e:
+            print(f"  [兜底] {name} 异常: {e}，尝试下一源")
+    print(f"  [兜底] {label} 所有源均失败")
+    return None
+
+
+def _retry(fn, times=2, label="请求"):
+    """简单重试：fn() 抛异常时重试，全部失败返回 None。"""
+    for i in range(times):
+        try:
+            return fn()
+        except Exception as e:
+            print(f"  [重试] {label} 第{i + 1}次失败: {e}")
+    return None
+
+
+# ----------------------------------------------------------------------------
+# 东方财富「妙想」金融数据技能（结构化实时数据兜底源，需用户授权 EM_API_KEY）
+#   路径随用户主目录变化，运行时探测；未授权/未安装时返回 None，由上游继续兜底。
+# ----------------------------------------------------------------------------
+
+def _mx_skill_script():
+    """探测妙想技能脚本路径（~/.workbuddy/skills/mx-finance-data/scripts/get_data.py）。"""
+    cand = Path.home() / ".workbuddy" / "skills" / "mx-finance-data" / "scripts" / "get_data.py"
+    return cand if cand.exists() else None
+
+
+def _run_mx_skill(query, indicators, timeout=120):
+    """调用东方财富妙想技能取结构化实时数据，返回 Markdown 文本或 None。
+
+    - 未安装/未授权 -> 返回 None（不抛异常，交由上层兜底）。
+    - 成功 -> 读取技能输出的 .md 文件并返回其文本。
+    """
+    script = _mx_skill_script()
+    if not script:
+        return None
+    py = sys.executable
+    cmd = [py, str(script), "--query", query, "--indicators", indicators]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              cwd=str(script.parent.parent))
+    except Exception as e:
+        print(f"  [妙想] 调用失败: {e}")
+        return None
+    out = proc.stdout or ""
+    if "need_auth" in out or "尚未完成授权" in out:
+        print("  [妙想] 尚未授权 EM_API_KEY，跳过（请在东方财富妙想授权后重跑）。")
+        return None
+    m = re.search(r"Markdown:\s*(\S+)", out)
+    if not m:
+        return None
+    md_path = m.group(1)
+    try:
+        return Path(md_path).read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+
+def _parse_mx_amount(md, name):
+    """从妙想 md 中定位 name 所在段落，提取净流入金额（亿元，可为负）。返回 float 或 None。"""
+    lines = md.splitlines()
+    for i, line in enumerate(lines):
+        if name in line:
+            window = "\n".join(lines[i:i + 6])
+            for pat in (r"主力净流入[^\d\-]*?(-?[\d,]+\.?\d*)\s*亿",
+                        r"净流入[^\d\-]*?(-?[\d,]+\.?\d*)\s*亿",
+                        r"净流入[^\d\-]*?(-?[\d,]+\.?\d*)\s*万"):
+                mm = re.search(pat, window)
+                if mm:
+                    val = float(mm.group(1).replace(",", ""))
+                    if "万" in pat:
+                        val /= 1e4
+                    return val
+    return None
+
+
+def _parse_mx_quote(md, name):
+    """从妙想 md 中定位 name 所在行，提取 (涨跌幅%, 最新价)。任一缺失返回 (None, None)。"""
+    for line in md.splitlines():
+        if name in line:
+            pm = re.search(r"(-?\d+\.?\d*)%", line)
+            pct = float(pm.group(1)) if pm else None
+            price = None
+            for n in re.findall(r"-?\d+\.\d+", line):
+                if pm and n == pm.group(1):
+                    continue
+                price = n
+                break
+            return pct, price
+    return None, None
+
+
+# ----------------------------------------------------------------------------
+# 外网连通性探测 + 搜索引擎（Google 优先，Bing 兜底，必应国际版补充）
 # ----------------------------------------------------------------------------
 _NETWORK_OK = None  # 网络探测结果缓存，避免重复建连
 
@@ -87,6 +197,7 @@ def collect_depth():
 # Google News RSS 优先；必应 News RSS 兜底（对「最新」类词易返回空频道）
 GOOGLE_NEWS_RSS = "https://news.google.com/rss/search?q={q}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
 BING_NEWS_RSS = "https://www.bing.com/news/search?q={q}&format=rss"
+BING_NEWS_RSS_INT = "https://www.bing.com/news/search?q={q}&format=rss&setlang=en-us&cc=US"
 
 
 def _clean_rss_text(s):
@@ -126,23 +237,26 @@ def _parse_rss(text, max_items=5, max_len=300):
 
 
 def search_news(query, max_items=5):
-    """外网新闻搜索：优先 Google News RSS，失败/空结果回退 Bing News RSS。
+    """外网新闻搜索：Google News RSS 优先，回退 必应（国内版）-> 必应国际版。
 
     - query 建议为干净短语；Google 通道对「最新」类词无碍，Bing 通道可能返回空频道。
     - 返回 [{"text":..., "time":""}, ...]，统一结构供下游消费。
     - Google 尝试静默（quiet=True）：它在受限网络常失败，且有 Bing 兜底，
       避免每次都刷 [fetch error] 噪音；Bing 失败仍正常打印以便排查。
+    - 沙箱常屏蔽 Google，必应国际版（en-us/cc=US）可作为第三层兜底，提高新闻命中率。
     """
     q = urllib.parse.quote(query)
-    text = fetch_url(GOOGLE_NEWS_RSS.format(q=q), quiet=True)
-    if text:
-        res = _parse_rss(text, max_items)
-        if res:
-            return res
-    # Google 不可达或空 -> 回退必应
-    text = fetch_url(BING_NEWS_RSS.format(q=q))
-    if text:
-        return _parse_rss(text, max_items)
+    sources = [
+        ("Google", GOOGLE_NEWS_RSS.format(q=q), True),
+        ("必应", BING_NEWS_RSS.format(q=q), False),
+        ("必应国际版", BING_NEWS_RSS_INT.format(q=q), False),
+    ]
+    for name, url, quiet in sources:
+        text = fetch_url(url, quiet=quiet)
+        if text:
+            res = _parse_rss(text, max_items)
+            if res:
+                return res
     return []
 
 
@@ -391,13 +505,8 @@ def fetch_index_quotes():
     return result
 
 
-def fetch_us_market():
-    """隔夜美股主要指数与科技/存储龙头（新浪美股实时行情）。
-
-    返回 [(name, pct, price, signal), ...]，pct 为涨跌幅(float)。
-    网络/解析失败时返回空列表（由报告层渲染为「实时数据缺失」占位，绝不写死假数）。
-    """
-    print("[美股] 抓取隔夜美股行情（新浪美股）...")
+def _us_sina():
+    """隔夜美股（新浪美股实时行情），返回 [(name, pct, price, signal), ...]。"""
     # 代码 -> 中文名（稳定的代码映射，非行情数据）
     symbols = {
         "gb_dji": "道琼斯", "gb_ixic": "纳斯达克", "gb_inx": "标普500",
@@ -425,17 +534,44 @@ def fetch_us_market():
         except (ValueError, IndexError):
             continue
         results.append((cn or parts[0], pct, price, "—"))
-    print(f"  获取 {len(results)} 个美股标的")
     return results
 
 
-def fetch_etf_flows():
-    """ETF 实时资金净流（东方财富 push2，单位：亿元）。
+def _us_mx():
+    """隔夜美股（东方财富妙想兜底源），解析 md 为 [(name, pct, price, signal), ...]。"""
+    md = _run_mx_skill(
+        "查询道琼斯、纳斯达克、标普500、费城半导体、英伟达、特斯拉、美光科技、"
+        "希捷科技、西部数据、闪迪、应用材料、博通、Lumentum、康宁的实时行情、涨跌幅",
+        "实时行情、涨跌幅")
+    if not md:
+        return []
+    names = ["道琼斯", "纳斯达克", "标普500", "费城半导体", "英伟达", "特斯拉",
+             "美光科技", "希捷科技", "西部数据", "闪迪", "应用材料", "博通",
+             "Lumentum", "康宁"]
+    out = []
+    for cn in names:
+        pct, price = _parse_mx_quote(md, cn)
+        if pct is None:
+            continue
+        out.append((cn, pct, price or "—", "—"))
+    return out
 
-    返回 [(name, code, direction, cls, signal), ...]。direction=净申购/净赎回，
-    cls 为徽章色（b-red 净流入 / b-green 净赎回）。失败/限流返回空列表。
+
+def fetch_us_market():
+    """隔夜美股主要指数与科技/存储龙头。新浪优先，东方财富妙想兜底。
+
+    返回 [(name, pct, price, signal), ...]，pct 为涨跌幅(float)。
+    所有源失败返回空列表（由报告层渲染为「实时数据缺失」占位，绝不写死假数）。
     """
-    print("[ETF] 抓取 ETF 资金净流（东方财富）...")
+    print("[美股] 抓取隔夜美股行情（新浪优先，妙想兜底）...")
+    res = _fetch_with_fallback([("新浪美股", _us_sina), ("东方财富妙想", _us_mx)], label="美股")
+    res = res or []
+    print(f"  获取 {len(res)} 个美股标的")
+    return res
+
+
+def _etf_push2():
+    """ETF 实时资金净流（东方财富 push2，单位：亿元）。返回 [(name,code,direction,cls,signal),...]。"""
     etfs = [
         ("沪深300ETF", "510300", "1"), ("芯片ETF", "159995", "0"),
         ("半导体设备ETF国泰", "159516", "0"), ("科创50ETF", "588280", "1"),
@@ -460,8 +596,41 @@ def fetch_etf_flows():
             results.append((name, code, direction, cls, signal))
         except Exception:
             continue
-    print(f"  获取 {len(results)} 只 ETF 资金流")
     return results
+
+
+def _etf_mx():
+    """ETF 资金流（东方财富妙想兜底源），解析 md 主力净流入。返回同结构元组列表。"""
+    md = _run_mx_skill(
+        "查询沪深300ETF、芯片ETF、半导体设备ETF国泰、科创50ETF最新资金流向、"
+        "主力净流入、涨跌幅", "资金流向、主力净流入、涨跌幅")
+    if not md:
+        return []
+    etfs = [("沪深300ETF", "510300"), ("芯片ETF", "159995"),
+            ("半导体设备ETF国泰", "159516"), ("科创50ETF", "588280")]
+    out = []
+    for name, code in etfs:
+        net = _parse_mx_amount(md, name)  # 亿元，可为负
+        if net is None:
+            continue
+        direction = "净申购" if net >= 0 else "净赎回"
+        cls = "b-red" if net >= 0 else "b-green"
+        signal = f"近一日{'净流入' if net >= 0 else '净流出'} {abs(net):.2f}亿元"
+        out.append((name, code, direction, cls, signal))
+    return out
+
+
+def fetch_etf_flows():
+    """ETF 实时资金净流。东方财富 push2 优先，妙想兜底。
+
+    返回 [(name, code, direction, cls, signal), ...]。direction=净申购/净赎回，
+    cls 为徽章色（b-red 净流入 / b-green 净赎回）。所有源失败返回空列表。
+    """
+    print("[ETF] 抓取 ETF 资金净流（东方财富 push2 优先，妙想兜底）...")
+    res = _fetch_with_fallback([("东方财富push2", _etf_push2), ("东方财富妙想", _etf_mx)], label="ETF资金流")
+    res = res or []
+    print(f"  获取 {len(res)} 只 ETF 资金流")
+    return res
 
 
 def extract_keywords(text, keywords):
