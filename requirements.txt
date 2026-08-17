@@ -1,0 +1,8 @@
+# A股舆情操作指引 Agent 依赖清单
+# 安装：pip install -r requirements.txt
+# 推荐在隔离 venv 中安装（如 C:\Users\cjass\.workbuddy\binaries\python\envs\default）
+
+numpy==2.5.2
+pandas==3.0.5
+requests==2.34.2
+psycopg2-binary==2.9.12

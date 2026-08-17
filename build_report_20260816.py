@@ -1,13 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成 2026-08-16（周日）A股操作指引 9 章节报告，并写入数据库。"""
+"""生成 A股操作指引 9 章节报告（参数化日期与类型），并写入数据库。
+用法: python build_report_20260816.py --date 2026-08-17 --type 早报|晚报|周报
+"""
 import json
+import argparse
 from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-TODAY = "2026-08-16"
+
+# ---- 参数：--date 报告日期(YYYY-MM-DD) / --type 报告类型(决定写入目录) ----
+ap = argparse.ArgumentParser(description="生成 A股操作指引 9 章节报告")
+ap.add_argument("--date", default="2026-08-17", help="报告日期 YYYY-MM-DD")
+ap.add_argument("--type", default="早报", choices=["早报", "晚报", "周报"],
+                help="报告类型：早报/晚报/周报，决定写入 reports/<类型>/ 目录")
+_args = ap.parse_args()
+TODAY = _args.date
+REPORT_TYPE = _args.type
 NOW = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+# 类型 → 盘前/盘后/周度标签（用于页眉与入库状态）
+_TYPE_LABEL = {"早报": "盘前版", "晚报": "盘后版", "周报": "周度回顾"}
+_TYPE_STATE = {"早报": "盘前", "晚报": "盘后", "周报": "周报"}
+REPORT_LABEL = _TYPE_LABEL.get(REPORT_TYPE, "盘前版")
+REPORT_STATE = _TYPE_STATE.get(REPORT_TYPE, "盘前")
 
 # ---- 加载实时抓取结果 ----
 with open(BASE_DIR / "weibo_posts.json", encoding="utf-8") as f:
@@ -53,14 +70,16 @@ macro = [
     ("央行政策", "适度宽松", "—", "降息降准预期升温", "up"),
 ]
 
-# ---------- 数据：宏观传导链 ----------
+# ---------- 数据：宏观传导链（日元主导） ----------
+# 主线：原油(触发) → 日本输入型通胀 → 央行加息(50-75bp,非25bp) → 抛美债压力 → FIMA押美债借美元干预 → 日元/套息平仓 → A股
 macro_chain = [
-    ("原油", "WTI 82.4 / 布油 88.82", "震荡", "霍尔木兹仍受阻，EIA预计中断持续至2027", "b-orange"),
-    ("美国CPI", "同比3.4% / 核心2.5%", "偏鸽", "加息预期降温", "b-blue"),
-    ("美债收益率", "10Y 4.690% / 2Y 4.169%", "偏鹰", "长端集体上行+5bp，压制科技估值", "b-green"),
-    ("加息概率", "9月维持~60%", "偏鸽", "较前周降温", "b-blue"),
-    ("日元", "USD/JPY 159.33", "警戒", "逼近160，套利平仓黑天鹅", "b-red"),
-    ("VIX", "14.66", "偏鸽", "恐慌指数低位，风险偏好稳定", "b-blue"),
+    ("原油(触发)", "WTI82.4/布油88.8", "震荡", "伊朗地缘推升→日本能源90%依赖进口→输入型通胀", "b-orange"),
+    ("日本加息预期", "9月76%/10月96%", "偏鹰", "三菱日联:25bp不够止跌日元,单次或50-75bp,尾端100bp", "b-red"),
+    ("日本抛美债压力", "持美债>1.1万亿", "警戒", "单边干预筹资需抛美债→10Y美债YTD+57bp,长端承压", "b-orange"),
+    ("FIMA回购工具", "押美债借美元", "启用", "8/3财务省宣布用FIMA干预,免抛美债=借美款干预汇率", "b-blue"),
+    ("日元/联合干预", "USD/JPY 159", "警戒", "7月底-8/3美日韩联合干预163.99→155.2,涨势未守回159", "b-red"),
+    ("美债收益率", "10Y 4.69%", "偏鹰", "长端上行压制科技估值;FIMA大量使用或反增美债供给", "b-green"),
+    ("VIX", "14.66", "偏鸽", "恐慌低位,但套息平仓黑天鹅尚未被定价", "b-blue"),
 ]
 
 # ---------- 数据：地缘/原油 ----------
@@ -72,13 +91,12 @@ geo = [
     ("美油/布油(8/14)", "82.4 / 88.82美元", "美油+1.42% 布油+2.01%", "b-orange"),
 ]
 
-# ---------- 数据：ETF资金流 ----------
+# ---------- 数据：ETF资金流（ETF/代码/方向/方向cls/信号） ----------
 etf = [
-    ("沪深300ETF华泰柏瑞(510300)", "+7.06亿", "主力净流入·止跌转流入", "b-red"),
-    ("沪深300ETF华夏(510330)", "+11.96亿", "主力净流入", "b-red"),
-    ("沪深300ETF易方达(510310)", "+1.48亿", "主力净流入", "b-red"),
-    ("半导体设备/科创50ETF", "持续净流入", "科技主线资金确认", "b-red"),
-    ("股票ETF(8/10)", "-137亿", "此前连续净流出·宽基减仓", "b-orange"),
+    ("沪深300ETF", "510300", "净赎回", "b-green", "宽基连续7日净流出超900亿，蓝筹减仓"),
+    ("芯片ETF", "159995", "净申购", "b-red", "资金逆势布局"),
+    ("半导体设备ETF国泰", "159516", "连续4日净流入超17亿", "b-red", "科技主线资金坚守"),
+    ("科创50ETF", "588280", "五日转正", "b-red", "硬科技持续吸金"),
 ]
 
 # ---------- 数据：自选股 ----------
@@ -105,12 +123,14 @@ tangshi_today = [
     "【8/16 11:07】出去学习交流的忠告：1.董事长的听一半，公司概念多的、历史上图上不厚道的，再打对折；2.不要盯着漂亮的销售，忍不住就念一遍『再看吃跌停板』；3.不要轻易下结论，回来整理消化一下。",
 ]
 touxing_asset = [
-    "【8/13 20:08】deepseek定价暴涨十倍，最大利好还是算力租赁。",
-    "【8/13 19:32】除英伟达800V催化外，中国充电桩升级令sic行业彻底翻转；十五五规划到2030年全国充电桩干到4000万个以上（现2000万出头，四年翻一倍）。",
+    "【8/17 10:00】全世界半导体都是周期股、AI驱动，至少2030年；三万亿外汇储备不如一把梭哈三星海力士，淡马锡就开始这么干了。",
+    "【8/17 09:00】闪迪明确了回报计划，三星海力士/镁光接下来统统要发布史上最大回购计划，推动第二波主升浪。",
+    "【8/17 07:30】台湾CCL龙头涨价20%已证实，电子布8/9月继续涨价，日本味之素ABF对华断供30%，PCB上游全产业链重新起航。",
+    "【8/13 20:08】deepseek定价暴涨十倍，最大利好算力租赁。",
 ]
 touxing_yeye = [
-    "【8/16 14:12】周末继续壮阳，周一继续暴涨。",
     "【8/15 06:10】镁光闪迪继续上涨，新云牛逼继续大涨。",
+    "【8/14 08:15】闪迪FCF占市值FY27-30累计约1240亿(53-61%)，5年现金买下整家公司——美光所说。",
 ]
 
 # ---------- 共振信号 ----------
@@ -166,17 +186,21 @@ def stock_card(code):
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
     </div>'''
 
-# ---------- 宏观传导链 SVG 流程状态图 ----------
+# ---------- 宏观传导链 SVG 流程状态图（日元主导） ----------
 def chain_svg():
     nodes = [
-        ("原油","82.4/88.8","#e67e22"),
-        ("美国CPI","3.4%/2.5%","#1967d2"),
-        ("美债收益率","10Y 4.69%","#00a865"),
-        ("加息概率","维持60%","#1967d2"),
-        ("日元","159.3","#d63031"),
-        ("VIX","14.66","#1967d2"),
+        ("原油(触发)","布油88.8","#e67e22"),
+        ("日本加息","50-75bp","#d63031"),
+        ("抛美债压力",">1.1万亿","#e67e22"),
+        ("FIMA回购","押债借美元","#1967d2"),
+        ("日元干预","159","#d63031"),
+        ("套息平仓","unwind","#d63031"),
+        ("A股传导","风险偏好","#1a2b4a"),
     ]
-    w, h, gap, bw = 940, 110, 18, 128
+    n = len(nodes)
+    bw, gap = 128, 18
+    w = 16 + n*bw + (n-1)*gap + 16
+    h = 110
     x0 = 16
     svg = [f'<svg class="chain-svg" viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg">']
     for i,(name,val,color) in enumerate(nodes):
@@ -197,7 +221,7 @@ html = f'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A股舆情操作指引 · 9章节 · 2026-08-16（周日版）</title>
+<title>A股舆情操作指引 · 9章节 · {TODAY}（{REPORT_LABEL}）</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.8}}
@@ -267,12 +291,12 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 
 <div class="header">
 <h1>A股舆情操作指引 · 9章节完整报告</h1>
-<div class="sub">微博舆情 + 全球人物 + 宏观 + 事件因子 + 行情资金 + 技术走势 + 国家队 + 自选股（周末版）</div>
+<div class="sub">微博舆情 + 全球人物 + 宏观 + 事件因子 + 行情资金 + 技术走势 + 国家队 + 自选股（{REPORT_LABEL}）</div>
 <div class="meta">
-<span>报告日期：{TODAY}（周日）</span>
+<span>报告日期：{TODAY}（{REPORT_LABEL}）</span>
 <span>生成时间：{NOW}</span>
 <span>7只自选股</span>
-<span>CPI已公布：3.4%偏鸽</span>
+<span>今日高开：沪+0.07% 半导体领涨</span>
 </div>
 </div>
 
@@ -296,8 +320,8 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 <div class="conclusion-grid">
   <div class="conclusion-item">
     <div class="label">最强主线</div>
-    <div class="value" style="color:#d63031;">存储链延续强势</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">闪迪本周+35.38%、8/15再涨7.4%；大爷『镁光闪迪继续上涨』；CPI偏鸽+科技ETF吸金共振</div>
+    <div class="value" style="color:#d63031;">存储链+PCB上游共振</div>
+    <div style="font-size:12px;color:#666;margin-top:4px;">闪迪本周+35%；投星8/17称三星海力士/镁光将发史上最大回购推动第二波主升浪；台湾CCL涨价20%+味之素ABF断供30%→PCB上游起航；A股周一高开半导体拉升</div>
   </div>
   <div class="conclusion-item">
     <div class="label">次强主线</div>
@@ -311,8 +335,8 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
   </div>
   <div class="conclusion-item">
     <div class="label">风险</div>
-    <div class="value" style="color:#00a865;">美股收跌+日元159.3</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">8/15三大指数收跌、半导体设备走弱；日元逼近160套利平仓黑天鹅；10Y美债升至4.69%</div>
+    <div class="value" style="color:#d63031;">日本加息75-100bp+套息平仓</div>
+    <div style="font-size:12px;color:#666;margin-top:4px;">日本9月加息概率76%（7月仅24%），三菱日联称25bp不够或单次50-75bp；8/3美日韩联合干预并启用FIMA（押美债借美元）防日本抛>1.1万亿美债；若加息超预期叠加套息平仓→全球流动性收紧压制A股</div>
   </div>
 </div>
 </div>
@@ -349,12 +373,12 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 <table>
 <thead><tr><th>节点</th><th>当前值</th><th>方向</th><th>对A股影响</th></tr></thead>
 <tbody>
-{''.join(f'<tr><td>{c[0]}</td><td>{c[1]}</td><td><span class="badge {c[3]}">{c[2]}</span></td><td>{c[4]}</td></tr>' for c in macro_chain)}
+{''.join(f'<tr><td>{c[0]}</td><td>{c[1]}</td><td><span class="badge {c[4]}">{c[2]}</span></td><td>{c[3]}</td></tr>' for c in macro_chain)}
 </tbody>
 </table>
 <div class="point" style="margin-top:14px;">
 <div class="pt-title">综合判断</div>
-<div class="pt-body">CPI落地后宏观链整体偏鸽，但双变量仍需警惕：①10Y美债收益率升至4.69%（长端集体+5bp）不降反升=科技估值最大隐忧；②日元159.3逼近160=套息平仓黑天鹅。两变量同时恶化时触发防御信号。</div>
+<div class="pt-body">传导链主线由日元主导：原油上行→日本输入型通胀（能源90%依赖进口）→央行被迫加息。三菱日联认为25bp不足以止跌日元，单次或50-75bp、尾端100bp。为避免抛售>1.1万亿美债冲击长端收益率（10Y YTD+57bp），8/3美日韩联合干预并启用美联储FIMA回购工具——即日本押美债向美联储借美元干预汇率（借美款干预）。若加息超预期(75-100bp)叠加套息平仓，全球流动性收紧将压制A股风险偏好；FIMA大量使用或反增美债供给。防御信号：USD/JPY跌破155或10Y美债破4.8%。</div>
 </div>
 </div>
 
@@ -363,7 +387,7 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 <table>
 <thead><tr><th>事件</th><th>状态</th><th>影响</th></tr></thead>
 <tbody>
-{''.join(f'<tr><td>{g[0]}</td><td><span class="badge {g[2]}">{g[1]}</span></td><td>{g[3]}</td></tr>' for g in geo)}
+{''.join(f'<tr><td>{g[0]}</td><td><span class="badge {g[3]}">{g[1]}</span></td><td>{g[2]}</td></tr>' for g in geo)}
 </tbody>
 </table>
 <div class="point" style="margin-top:14px;">
@@ -375,14 +399,14 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 <div class="card">
 <h2>五、ETF资金流向</h2>
 <table>
-<thead><tr><th>标的</th><th>数据</th><th>信号</th></tr></thead>
+<thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead>
 <tbody>
-{''.join(f'<tr><td>{e[0]}</td><td><b>{e[1]}</b></td><td><span class="badge {e[2]}">{e[3]}</span></td></tr>' for e in etf)}
+{''.join(f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>' for e in etf)}
 </tbody>
 </table>
 <div class="point" style="margin-top:14px;">
-<div class="pt-title">国家队信号：宽基止跌转流入</div>
-<div class="pt-body">8/14沪深300系列ETF主力资金由此前连续净流出转为净流入（华泰柏瑞+7.06亿、华夏+11.96亿），为存量博弈中的流动性输送信号；半导体设备/科创50ETF持续吸金，科技主线资金确认。</div>
+<div class="pt-title">资金信号：宽基减仓 vs 硬科技吸金</div>
+<div class="pt-body">宽基ETF连续7日净流出超900亿（沪深300ETF净赎回），蓝筹减仓；但芯片ETF净申购、半导体设备ETF连续4日净流入超17亿、科创50五日转正——科技主线资金坚守，存量博弈下流动性向硬科技集中。</div>
 </div>
 </div>
 
@@ -416,30 +440,33 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 </div>
 
 <div class="card">
-<h2>九、今日操作策略（周一预案）</h2>
+<h2>九、今日盘前策略（周一早报）</h2>
 <table>
 <thead><tr><th style="width:18%">维度</th><th>策略</th></tr></thead>
 <tbody>
-<tr><td><b>大盘</b></td><td>A股8/14收平微涨（沪+0.01%/深+0.45%/创业+1.12%），成交逾2.1万亿；唐史称第一波普反接近尾声，注重阿尔法。支撑3900，压力3960-3970。</td></tr>
-<tr><td><b>仓位</b></td><td>中性偏积极（约60-70%）。CPI风险解除、宏观偏鸽，但美股收跌+个股跌多涨少（8/14约2970只下跌），不追高、等回踩确认。</td></tr>
-<tr><td><b>存储链</b></td><td>5重共振最高置信度。闪迪/美光强势延续，关注A股存储映射（江波龙/太极实业等），回踩加仓。</td></tr>
-<tr><td><b>CPO/光通信</b></td><td>5重共振。中际旭创/新易盛/永鼎受益，持有为主；外部AO+15%/Lumentum+5%提供情绪支撑。</td></tr>
+<tr><td><b>大盘</b></td><td>隔夜美股8/14收跌(道-0.20%/纳-0.28%)但存储/光通信逆势走强；A股周一高开(沪+0.07%/深+0.31%/创业+0.18%)、半导体产业链拉升。唐史称第一波普反接近尾声、注重阿尔法。支撑3900，压力3960-3970。</td></tr>
+<tr><td><b>仓位</b></td><td>中性偏积极（约60-70%）。CPI偏鸽+科技ETF吸金，但日本加息75-100bp套息平仓黑天鹅未定价、美股收跌，不追高、等回踩确认。</td></tr>
+<tr><td><b>存储链</b></td><td>5重共振最高置信度。闪迪/美光强势延续+史上最大回购预期(投星)，关注A股存储映射，回踩加仓。</td></tr>
+<tr><td><b>CPO/光通信/PCB</b></td><td>5重共振。AO+15%/Lumentum+5%+台湾CCL涨价20%+味之素ABF断供，中际旭创/新易盛/PCB上游持有为主。</td></tr>
 <tr><td><b>鼎通科技</b></td><td>加仓首选。1.6T连接器+液冷+800V催化，H1业绩最强，诊断上涨趋势。</td></tr>
-<tr><td><b>京东方A</b></td><td>谨慎。诊断黄色预警·见顶确认，短期规避追高，等回调企稳。</td></tr>
-<tr><td><b>回避</b></td><td>半导体设备高位波动（博通/应用材料走弱）、纯情绪小票、题材脱节股（欧莱新材）。</td></tr>
+<tr><td><b>京东方A</b></td><td>谨慎。回购57亿+玻璃基AI封装利好，但诊断黄色预警·见顶确认，等回调企稳。</td></tr>
+<tr><td><b>回避</b></td><td>白酒(茅台半年报Q2环比-36%、早盘-4%)、半导体设备高位波动(博通-6%)、纯情绪小票、题材脱节股(欧莱新材)。</td></tr>
 </tbody>
 </table>
 </div>
 
 <div class="card">
-<h2>主要指数（A股 8月14日收盘）</h2>
+<h2>主要指数（A股 8/14收盘 · 8/17高开）</h2>
 <table>
-<thead><tr><th>指数</th><th>收盘</th><th>涨跌幅</th></tr></thead>
+<thead><tr><th>指数</th><th>8/14收盘</th><th>涨跌幅</th><th>8/17高开</th></tr></thead>
 <tbody>
-{''.join(f'<tr><td>{n}</td><td>{p}</td><td class="{up_down(float(c))}">{sign(float(c))}{c}%</td></tr>' for n,p,c in a_share)}
+{''.join(f'<tr><td>{n}</td><td>{p}</td><td class="{up_down(float(c))}">{sign(float(c))}{c}%</td><td class="muted">—</td></tr>' for n,p,c in a_share)}
+<tr><td>上证指数</td><td>3927.18</td><td class="muted">—</td><td class="up">+0.07%（3930.10）</td></tr>
+<tr><td>深证成指</td><td>14354.31</td><td class="muted">—</td><td class="up">+0.31%（14399.20）</td></tr>
+<tr><td>创业板指</td><td>3626.30</td><td class="muted">—</td><td class="up">+0.18%（3632.78）</td></tr>
 </tbody>
 </table>
-<p class="muted" style="font-size:12px;margin-top:8px;">沪深两市成交额逾2.1万亿元；全市场约2400只上涨、2970只下跌；涨停64只、跌停13只。通信设备/CPO、稀土、互联网板块涨幅居前；电力、文化传媒、港口、券商跌幅居前。</p>
+<p class="muted" style="font-size:12px;margin-top:8px;">8/17周一高开：超2600只个股飘红，半导体产业链拉升(硅片/磷化铟/玻璃纤维)，CPO活跃(中石科技20cm2连板)，存储/长鑫概念走强；白酒调整(茅台-4%，半年报Q2环比-36%)；商品端原油涨超4%、集运+10%。港股恒指+1.38%/恒科+1.68%。</p>
 </div>
 
 <div class="disclaimer">
@@ -450,9 +477,9 @@ td{{padding:8px 10px;border-bottom:1px solid #eef0f3}}
 </body>
 </html>'''
 
-out_dir = BASE_DIR / "reports" / "晚报"
+out_dir = BASE_DIR / "reports" / REPORT_TYPE
 out_dir.mkdir(parents=True, exist_ok=True)
-out = out_dir / f"晚报-{TODAY}.html"
+out = out_dir / f"{REPORT_TYPE}-{TODAY}.html"
 with open(out, "w", encoding="utf-8") as f:
     f.write(html)
 print(f"报告已生成: {out} ({out.stat().st_size // 1024} KB)")
@@ -468,7 +495,7 @@ try:
                           user=dc.get("user","postgres"), password=dc.get("password",""),
                           dbname=dc.get("dbname","a_stock_agent"))
         td = datetime.now().date()
-        db.save_report(td, "盘后", "A股操作指引·9章节", html)
+        db.save_report(td, REPORT_STATE, "A股操作指引·9章节", html)
         db.save_sentiment_batch(td, weibo_data)
         print("[DB] 舆情数据与报告入库完成")
     else:

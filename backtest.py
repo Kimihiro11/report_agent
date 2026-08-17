@@ -223,6 +223,10 @@ def seed_judgments(report_dir: Path = None):
     if not all_j:
         print("[seed] 未从报告中解析到任何个股判断")
         return []
+    # 空 stock_name 用自选股名单回填（早期报告卡片格式差异导致解析为空）
+    for j in all_j:
+        if not j.get("stock_name"):
+            j["stock_name"] = WATCHLIST_NAME.get(j["stock_code"], "")
     # 本地 JSON 为主存储
     JUDG_FILE.write_text(json.dumps(all_j, ensure_ascii=False, indent=2), encoding="utf-8")
     # 同步写库（可选）

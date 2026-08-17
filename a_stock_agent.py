@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-A股舆情操作指引 Agent
-读取 config.json，抓取指定微博用户内容 + A股行情，生成HTML操作指引报告。
+A股舆情操作指引 Agent（数据引擎）
+读取 config.json，抓取微博舆情 + 全球宏观 + 日本传导链 + A股行情，写入 JSON 快照与可选 PostgreSQL。
+全功能 9 章节报告由 build_report_20260816.py + WebSearch 实时拼装生成（简版模式已取消）。
 
 用法:
-    python a_stock_agent.py            # 抓取并生成报告
-    python a_stock_agent.py --no-fetch # 仅用缓存数据生成报告
+    python a_stock_agent.py            # 采集数据 → 快照 → 入库（全功能报告另由 build_report 生成）
+    python a_stock_agent.py --no-fetch # 仅用缓存数据生成快照
+    python a_stock_agent.py --backtest # 回测模式（独立，生成回测报告）
 
 依赖: 仅需Python标准库（urllib/json/re），无需pip安装
 """
@@ -16,6 +18,8 @@ import urllib.parse
 import re
 import os
 import sys
+import socket
+import html
 from datetime import datetime
 from pathlib import Path
 
@@ -35,7 +39,7 @@ def load_config():
         return json.load(f)
 
 
-def fetch_url(url, headers=None, timeout=10):
+def fetch_url(url, headers=None, timeout=10, quiet=False):
     req = urllib.request.Request(url)
     req.add_header("User-Agent", UA)
     if headers:
@@ -45,8 +49,102 @@ def fetch_url(url, headers=None, timeout=10):
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="replace")
     except Exception as e:
-        print(f"  [fetch error] {url[:80]} -> {e}")
+        if not quiet:
+            print(f"  [fetch error] {url[:80]} -> {e}")
         return None
+
+
+# ----------------------------------------------------------------------------
+# 外网连通性探测 + 搜索引擎（Google 优先，Bing 兜庫）
+# ----------------------------------------------------------------------------
+_NETWORK_OK = None  # 网络探测结果缓存，避免重复建连
+
+
+def check_network(host="news.google.com", port=443, timeout=4):
+    """快速探测外网是否连通（连接 Google News 443）。结果缓存。
+
+    返回 True 表示外网可达，采集路径进入「深度」模式（搜集更多关键信息）；
+    返回 False 则退守「浅度」模式，仅做必要查询。
+    """
+    global _NETWORK_OK
+    if _NETWORK_OK is not None:
+        return _NETWORK_OK
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)  # 仅作用于本 socket，避免污染全局默认超时
+        s.connect((host, port))
+        s.close()
+        _NETWORK_OK = True
+    except Exception:
+        _NETWORK_OK = False
+    return _NETWORK_OK
+
+
+def collect_depth():
+    """返回采集深度：网络通 -> 'deep'（搜集更多关键信息），不通 -> 'shallow'。"""
+    return "deep" if check_network() else "shallow"
+
+
+# Google News RSS 优先；必应 News RSS 兜底（对「最新」类词易返回空频道）
+GOOGLE_NEWS_RSS = "https://news.google.com/rss/search?q={q}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+BING_NEWS_RSS = "https://www.bing.com/news/search?q={q}&format=rss"
+
+
+def _clean_rss_text(s):
+    """反复 html.unescape（Bing 常把实体二次转义为 &amp;nbsp; 等，单次还原不彻底），
+    再去标签、合并空白。"""
+    prev = None
+    for _ in range(3):
+        prev = s
+        s = html.unescape(s)
+        if s == prev:
+            break
+    s = re.sub(r"<[^>]+>", "", s)
+    s = s.replace("\xa0", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _parse_rss(text, max_items=5, max_len=300):
+    """解析 RSS <item>，统一提取 title/description 文本。
+
+    Google News RSS 的 description 常为 HTML 转义片段（&lt;a href=...&gt;），
+    Bing RSS 则会把实体二次转义（&amp;nbsp;）；统一走 _clean_rss_text 处理。
+    """
+    items = re.findall(r"<item>(.*?)</item>", text, re.S)
+    out = []
+    for it in items[:max_items]:
+        tm = re.search(r"<title>(.*?)</title>", it, re.S)
+        dm = re.search(r"<description>(.*?)</description>", it, re.S)
+        title = re.sub(r"<!\[CDATA\[|\]\]>", "", tm.group(1)).strip() if tm else ""
+        desc = re.sub(r"<!\[CDATA\[|\]\]>", "", dm.group(1)).strip() if dm else ""
+        title = _clean_rss_text(title)
+        desc = _clean_rss_text(desc)
+        content = f"{title}。{desc}" if desc else title
+        if content and len(content) > 10:
+            out.append({"text": content[:max_len], "time": ""})
+    return out
+
+
+def search_news(query, max_items=5):
+    """外网新闻搜索：优先 Google News RSS，失败/空结果回退 Bing News RSS。
+
+    - query 建议为干净短语；Google 通道对「最新」类词无碍，Bing 通道可能返回空频道。
+    - 返回 [{"text":..., "time":""}, ...]，统一结构供下游消费。
+    - Google 尝试静默（quiet=True）：它在受限网络常失败，且有 Bing 兜底，
+      避免每次都刷 [fetch error] 噪音；Bing 失败仍正常打印以便排查。
+    """
+    q = urllib.parse.quote(query)
+    text = fetch_url(GOOGLE_NEWS_RSS.format(q=q), quiet=True)
+    if text:
+        res = _parse_rss(text, max_items)
+        if res:
+            return res
+    # Google 不可达或空 -> 回退必应
+    text = fetch_url(BING_NEWS_RSS.format(q=q))
+    if text:
+        return _parse_rss(text, max_items)
+    return []
 
 
 def fetch_weibo(user_id, name, cookie=""):
@@ -90,77 +188,63 @@ def fetch_weibo(user_id, name, cookie=""):
 
 
 def fetch_global_source(name, signal_type):
-    """通过必应新闻搜索抓取全球人物最新动态（X发言/新闻转载）
+    """搜索全球人物/机构的外网动态（X发言、新闻转载）。
 
-    注意：必应新闻 RSS 对查询中的「最新/最新发言/最新动态」等词会返回空频道，
-    故查询仅保留「{name} 中国 股市」这类干净短语，确保能拿到新闻条目。
+    优先 Google News RSS，失败回退 Bing News RSS。
+    网络通时额外补充「最新表态」类查询，搜集更多关键信息。
     """
-    print(f"[全球] 搜索 {name} 最新动态...")
-    query = urllib.parse.quote(f"{name} 中国 股市")
-    url = f"https://www.bing.com/news/search?q={query}&format=rss"
-    text = fetch_url(url)
-    if not text:
-        return []
-    items = re.findall(r"<item>(.*?)</item>", text, re.S)
-    results = []
-    for item in items[:5]:
-        title_m = re.search(r"<title>(.*?)</title>", item, re.S)
-        desc_m = re.search(r"<description>(.*?)</description>", item, re.S)
-        title = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip() if title_m else ""
-        desc = re.sub(r"<!\[CDATA\[|\]\]>", "", desc_m.group(1)).strip() if desc_m else ""
-        desc = re.sub(r"<[^>]+>", "", desc).strip()
-        content = f"{title}。{desc}" if desc else title
-        if content and len(content) > 10:
-            results.append({"text": content[:300], "time": ""})
+    print(f"[全球] 搜索 {name} 动态...")
+    deep = collect_depth() == "deep"
+    results = search_news(f"{name} 中国 股市", max_items=8 if deep else 3)
+    if deep:
+        # 网络通：Google 通道支持「最新」类词，补充关键信息
+        results += search_news(f"{name} 最新表态 A股", max_items=5)
     print(f"  获取 {len(results)} 条")
     return results
 
 
 def fetch_macro_data(macro_config):
-    """通过新闻搜索获取最新宏观经济数据动态（中美GDP/CPI/非农/利率等）"""
+    """通过新闻搜索获取最新宏观经济数据动态（中美GDP/CPI/非农/利率等）。
+    优先 Google，回退 Bing；网络通时增加采集条目与补充指标（社融/M2/进出口）。
+    """
     print("[宏观] 搜索最新宏观数据...")
-    results = {}
+    deep = collect_depth() == "deep"
     search_pairs = [
         ("中国", "CPI"), ("中国", "GDP"), ("中国", "PMI"),
         ("美国", "CPI"), ("美国", "非农就业"), ("美国", "美联储利率"),
     ]
+    if deep:
+        search_pairs += [("中国", "社融 M2"), ("美国", "GDP"), ("中国", "进出口")]
+    results = {}
     for country, indicator in search_pairs:
-        query = urllib.parse.quote(f"{country} {indicator} {datetime.now().strftime('%Y年%m月')}")
-        url = f"https://www.bing.com/news/search?q={query}&format=rss"
-        text = fetch_url(url, timeout=8)
-        if not text:
-            continue
-        items = re.findall(r"<item>(.*?)</item>", text, re.S)
+        query = f"{country} {indicator} {datetime.now().strftime('%Y年%m月')}"
+        items = search_news(query, max_items=5 if deep else 3)
         if items:
-            title_m = re.search(r"<title>(.*?)</title>", items[0], re.S)
-            if title_m:
-                title = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip()
-                results[f"[宏观] {country}{indicator}"] = [{"text": title[:300], "time": ""}]
+            results[f"[宏观] {country}{indicator}"] = items
     print(f"  获取 {len(results)} 条宏观数据")
     return results
 
 
 def fetch_event_factors(factors_config):
-    """通过新闻搜索获取全球事件因子动态（地缘战争/原油/自然灾害）"""
+    """通过新闻搜索获取全球事件因子动态（地缘战争/原油/自然灾害）。
+    优先 Google，回退 Bing；网络通时扩充事件维度与条目数。
+    """
     print("[事件] 搜索全球事件因子...")
-    results = {}
+    deep = collect_depth() == "deep"
     search_pairs = [
         ("地缘", "中东局势"), ("地缘", "俄乌冲突"),
         ("原油", "WTI原油价格"), ("原油", "OPEC决议"),
         ("灾害", "台风"), ("灾害", "地震"),
     ]
+    if deep:
+        search_pairs += [("地缘", "红海航运"), ("原油", "布伦特原油"),
+                         ("灾害", "洪水"), ("贸易", "中美关税")]
+    results = {}
     for category, keyword in search_pairs:
-        query = urllib.parse.quote(f"{keyword} {datetime.now().strftime('%Y年%m月')}")
-        url = f"https://www.bing.com/news/search?q={query}&format=rss"
-        text = fetch_url(url, timeout=8)
-        if not text:
-            continue
-        items = re.findall(r"<item>(.*?)</item>", text, re.S)
+        query = f"{keyword} {datetime.now().strftime('%Y年%m月')}"
+        items = search_news(query, max_items=5 if deep else 3)
         if items:
-            title_m = re.search(r"<title>(.*?)</title>", items[0], re.S)
-            if title_m:
-                title = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip()
-                results[f"[事件] {category}{keyword}"] = [{"text": title[:300], "time": ""}]
+            results[f"[事件] {category}{keyword}"] = items
     print(f"  获取 {len(results)} 条事件因子")
     return results
 
@@ -218,24 +302,54 @@ def fetch_technical_analysis(ta_config):
 
 
 def fetch_national_team(nt_config):
-    """通过新闻搜索获取国家队资金流向动态（汇金/证金/国新/诚通/社保）"""
+    """通过新闻搜索获取国家队资金流向动态（汇金/证金/国新/诚通/社保）。
+    优先 Google，回退 Bing；网络通时扩充关键词与条目数。
+    """
     if not nt_config.get("enabled"):
         return {}
     print("[国家队] 搜索国家队资金动态...")
+    deep = collect_depth() == "deep"
+    keywords = ["汇金 ETF 增持", "国家队 ETF 净流入", "社保基金 加仓"]
+    if deep:
+        keywords += ["国新投资 增持", "证金公司 维稳", "中央汇金 买入"]
     results = {}
-    for keyword in ["汇金 ETF 增持", "国家队 ETF 净流入", "社保基金 加仓"]:
-        query = urllib.parse.quote(f"{keyword} {datetime.now().strftime('%Y年%m月')}")
-        url = f"https://www.bing.com/news/search?q={query}&format=rss"
-        text = fetch_url(url, timeout=8)
-        if not text:
-            continue
-        items = re.findall(r"<item>(.*?)</item>", text, re.S)
+    for keyword in keywords:
+        query = f"{keyword} {datetime.now().strftime('%Y年%m月')}"
+        items = search_news(query, max_items=5 if deep else 3)
         if items:
-            title_m = re.search(r"<title>(.*?)</title>", items[0], re.S)
-            if title_m:
-                title = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip()
-                results[f"[国家队] {keyword}"] = [{"text": title[:300], "time": ""}]
+            results[f"[国家队] {keyword}"] = items
     print(f"  获取 {len(results)} 条国家队动态")
+    return results
+
+
+def fetch_japan_carry(jc_config=None):
+    """日本传导链四要素搜索：加息预期/抛美债/FIMA/干预汇率借款（借美款干预）。
+
+    传导链主线：原油→日本输入型通胀→央行加息(50-75bp,非25bp)→抛美债压力
+    →FIMA 押美债借美元干预→日元/套息平仓→A股。
+    优先 Google News RSS（支持「最新」类词），回退 Bing；网络通时深度采集。
+    """
+    if jc_config is not None and not jc_config.get("enabled", True):
+        return {}
+    print("[日本传导链] 搜索 日本加息/抛美债/FIMA/干预汇率...")
+    deep = collect_depth() == "deep"
+    queries = [
+        ("[日本]加息预期", "日本央行 加息 50bp 75bp 2026年9月"),
+        ("[日本]抛售美债", "日本 抛售 美国国债 干预日元 2026年8月"),
+        ("[日本]FIMA回购", "美联储 FIMA 回购工具 日本 干预汇率"),
+        ("[日本]借美款干预", "日本 借美元 干预汇率 FIMA"),
+    ]
+    if deep:
+        queries += [
+            ("[日本]套息平仓", "日元 套息交易 平仓 2026"),
+            ("[日本]美债持仓", "日本 美国国债 持仓 1.1万亿"),
+        ]
+    results = {}
+    for label, q in queries:
+        items = search_news(q, max_items=5 if deep else 3)
+        if items:
+            results[label] = items
+    print(f"  获取 {len(results)} 类日本传导链信息")
     return results
 
 
@@ -320,6 +434,8 @@ def analyze_sentiment(weibo_data, quotes):
 
 
 def generate_html(config, weibo_data, quotes, analysis):
+    """【已停用·2026-08-17】简版报告生成器。简版模式已取消，全功能报告走 build_report_20260816.py。
+    保留仅作历史参考，main() 不再调用。"""
     """生成HTML报告"""
     today = datetime.now().strftime("%Y-%m-%d")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -434,6 +550,8 @@ def main():
 
     config = load_config()
     print(f"配置加载完成: {len(config.get('weibo_sources', []))} 个微博源, {len(config.get('watchlist_stocks', []))} 只自选股")
+    net = "通(深度采集)" if check_network() else "不通(浅度采集)"
+    print(f"[网络] 外网状态: {net} — 外网搜索优先 Google News，回退 Bing")
 
     # 回测模式：对历史报告中的个股判断做回测与交叉验证
     if "--backtest" in sys.argv:
@@ -474,6 +592,8 @@ def main():
             weibo_data[f"[技术] {sym}"] = [{"text": desc, "time": ""}]
         nt_data = fetch_national_team(config.get("national_team", {}))
         weibo_data.update(nt_data)
+        jp_data = fetch_japan_carry(config.get("japan_carry", {}))
+        weibo_data.update(jp_data)
 
     quotes = {}
     if not no_fetch:
@@ -481,16 +601,26 @@ def main():
 
     analysis = analyze_sentiment(weibo_data, quotes)
 
-    html = generate_html(config, weibo_data, quotes, analysis)
-
+    # 简版模式已取消（2026-08-17）：除回测外一律跑全功能 9 章节报告。
+    # a_stock_agent 作为数据引擎：采集 → 快照 → 入库；
+    # 全功能报告由 build_report_20260816.py + WebSearch 实时拼装生成。
     today = datetime.now().strftime("%Y%m%d")
-    draft_dir = OUTPUT_DIR / "reports" / "简版"
-    draft_dir.mkdir(parents=True, exist_ok=True)
-    output_path = draft_dir / f"A股舆情操作指引-{today}.html"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html)
-    print(f"\n报告已生成: {output_path}")
-    print(f"文件大小: {output_path.stat().st_size // 1024} KB")
+    snap_dir = OUTPUT_DIR / "data"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    snap_path = snap_dir / f"fetched_{today}.json"
+    snapshot = {
+        "date": today,
+        "market_state": analysis["market_state"],
+        "matched_sectors": analysis["matched_sectors"],
+        "weibo_data": weibo_data,
+        "quotes": quotes,
+    }
+    with open(snap_path, "w", encoding="utf-8") as f:
+        json.dump(snapshot, f, ensure_ascii=False, indent=2)
+
+    print(f"\n[数据引擎] 采集完成，快照: {snap_path}")
+    print(f"  市场状态: {analysis['market_state']} | 指数 {len(quotes)} 个 | 板块信号 {len(analysis['matched_sectors'])} 个 | 舆情条目 {len(weibo_data)} 类")
+    print("  全功能 9 章节报告通过 build_report_20260816.py + WebSearch 实时拼装生成（简版模式已取消）。")
 
     if DB_AVAILABLE and config.get("database"):
         try:
@@ -499,12 +629,11 @@ def main():
                               user=dc.get("user","postgres"), password=dc.get("password",""),
                               dbname=dc.get("dbname","a_stock_agent"))
             td = datetime.now().date()
-            db.save_report(td, analysis["market_state"], "A股舆情操作指引", html)
             if quotes:
                 db.save_index_quotes(td, quotes)
             if weibo_data:
                 db.save_sentiment_batch(td, weibo_data)
-            print("[DB] 数据入库完成")
+            print("[DB] 行情+舆情入库完成（全功能报告 HTML 由 build_report 生成时另存）")
         except Exception as e:
             print(f"[DB] 入库失败: {e}")
 

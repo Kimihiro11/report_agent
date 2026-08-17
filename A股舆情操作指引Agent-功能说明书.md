@@ -20,7 +20,7 @@
 | # | 功能 | 模块/入口 | 说明 |
 |---|------|-----------|------|
 | 1 | 微博大 V 舆情抓取 | `a_stock_agent.py: fetch_weibo` | m.weibo.cn API，需 `config.json` 的 `weibo_cookie`；必带 `X-Requested-With` 头；`ok!=1` 提示 cookie 失效 |
-| 2 | 全球人物动态抓取 | `a_stock_agent.py: fetch_global_source` | 必应新闻 RSS，**查询词禁带"最新/最新发言"等词**（会导致空频道），固定用 `{name} 中国 股市` |
+| 2 | 全球人物动态抓取 | `a_stock_agent.py: fetch_global_source` | **外网搜索优先 Google News RSS，失败回退 Bing News RSS**（`search_news`）；网络通时进入「深度」模式补充「最新表态」类查询。Bing 通道查询仍禁带"最新"类词（空频道），Google 通道无此限制 |
 | 3 | 宏观数据抓取 | `fetch_macro_data` | 中美 GDP/CPI/PMI/非农/利率/社融/M2 等 |
 | 4 | 事件因子抓取 | `fetch_event_factors` | 地缘/原油/灾害 |
 | 5 | 指数行情 | `fetch_index_quotes` | 新浪 `hq.sinajs.cn`，5 大指数 |
@@ -31,10 +31,11 @@
 | 10 | 舆情数据 + 报告入库 | `db.py: StockAgentDB` | PostgreSQL（库 `a_stock_agent`），本地 JSON 兜底 |
 | 11 | 个股判断回测与交叉验证 | `backtest.py` | 从报告提取判断 → 新浪日 K 回测 1/3/5 日 → 独立技术信号对照 |
 | 12 | 报告上传资料库 | 资料库技能（connect_open_platform + import_html） | 上传「我的文档」，JSON 校验无外链 |
+| 13 | 日本传导链采集 | `a_stock_agent.py: fetch_japan_carry` | **传导链主线=日元主导**：加息预期(50-75bp,非25bp)/抛美债(>1.1万亿)/FIMA押美债借美元/借美款干预汇率；Google 优先+Bing 兜底，深度模式追加套息平仓+美债持仓 |
 
 **命令行入口**
 ```bash
-python a_stock_agent.py              # 基础抓取 + 简版报告 + 可选入库
+python a_stock_agent.py              # 数据引擎：采集→JSON快照→可选入库（简版已取消，全功能报告走 build_report）
 python a_stock_agent.py --no-fetch   # 仅用缓存/配置出报告
 python a_stock_agent.py --backtest   # 跑回测（seed + run + 生成回测报告）
 python generate_full_report.py       # ⚠️ 注意：内含硬编码历史数据，仅作样式参考，不可用于实时
@@ -123,7 +124,7 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
 ## 六、文件结构与职责
 
 ```
-a_stock_agent.py          # 基础抓取+简版报告+ --backtest 入口；被 generate/backtest/build 复用
+a_stock_agent.py          # 数据引擎：采集→JSON快照→入库 + --backtest 入口；被 generate/backtest/build 复用（简版模式已取消）
 config.json               # 全部配置：微博源/自选股/全球源/宏观/事件/技术/国家队/数据库/cookie
 db.py                     # PostgreSQL 封装 StockAgentDB（8 张表 + upsert 方法）
 generate_full_report.py   # ⚠️ 含硬编码历史数据，仅供样式参考
@@ -167,8 +168,9 @@ reports/                  # 产出物按类型分目录：早报/晚报/周报/�
 | 数据 | 主源 | 兜底 | 备注 |
 |------|------|------|------|
 | 微博大 V | m.weibo.cn API | WebSearch（自动化任务用） | 需 cookie |
-| 全球人物 | 必应新闻 RSS | — | 查询禁带"最新" |
+| 全球人物 | **Google News RSS**（`news.google.com/rss/search`，`search_news` 优先） | Bing News RSS | 网络探测 `check_network()` 连通→「深度」模式（扩充关键词+条目，补充「最新表态」类查询）；不通→「浅度」仅必要查询。Bing 通道查询仍禁带"最新" |
 | 美股/宏观 | WebSearch | — | 实时拼装 |
+| 日本传导链 | **Google News RSS**（`search_news`） | Bing News RSS | `fetch_japan_carry`：加息预期/抛美债/FIMA/借美款干预四要素；深度追加套息平仓+美债持仓 |
 | A股指数 | 新浪 `hq.sinajs.cn` | — | — |
 | 个股日 K | 新浪 `money.finance.sina` | 东方财富 `push2his` | 新浪优先 |
 | 见顶诊断 | peak_detector 本地计算 | — | numpy/pandas |
@@ -216,7 +218,7 @@ reports/                  # 产出物按类型分目录：早报/晚报/周报/�
 
 ## 十二、历史故障与修复记录（避免重蹈）
 
-- **全球抓不到**：必应对"最新发言/最新动态"返回空频道 → 查询改为 `{name} 中国 股市`。
+- **全球抓不到**：必应对"最新发言/最新动态"返回空频道 → 查询改为 `{name} 中国 股市`；后升级为 **Google News RSS 优先 + Bing 兜底**（`search_news`），Google 通道支持"最新"类词，并新增 `check_network()` 网络探测：通→深度采集（更多关键词/条目），不通→浅度仅必要查询。
 - **微博抓不到**：cookie 失效（`ok=-100`）+ 缺 `X-Requested-With` 头 → 加头 + 检测 `ok==1` 并打印失效提示。
 - **报告差距大**：原 `a_stock_agent.py` 仅轻量 → 引入 `peak_detector`/`stock_diagnosis` + 新建 9 章节生成器。
 - **东方财富限流**：`push2his` 高频阻塞超时 → 改新浪为主源。
