@@ -7,7 +7,7 @@
 ```
 report_agent/
 ├── a_stock_agent.py          # 数据引擎：实时采集 → data/snapshots 快照 → 强制入库 PostgreSQL
-├── build_report_20260816.py  # 报告生成器：消费快照渲染 9 章节 HTML（含焦点模块嵌入）
+├── build_report.py            # 报告生成器：消费快照渲染 9 章节 HTML（含焦点模块嵌入）
 ├── backtest.py               # 回测与交叉验证（1/3/5 交易日窗口）
 ├── db.py                     # PostgreSQL 封装（11 张表 + upsert + 探活 + 自愈合建表）
 ├── focus_monitor.py          # 限时关注：日元主导传导链末端引爆信号监测（抛美债/FIMA/大机构加息）
@@ -49,7 +49,7 @@ report_agent/
 | 文件 | 职责 |
 |------|------|
 | `a_stock_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 日本传导链实时采集 → 写 `data/snapshots/` 快照 → 强制全量入库 PostgreSQL（连接不通打印醒目 ⚠️ 告警）。含多源兜底框架与东方财富妙想技能包装。 |
-| `build_report_20260816.py` | 实时 9 章节报告模板。读取当日 `data/snapshots/` 最新快照 + 诊断 + 焦点模块，渲染 HTML。支持 `--date` / `--type 早报\|晚报\|周报`。 |
+| `build_report.py` | 实时 9 章节报告模板。读取当日 `data/snapshots/` 最新快照 + 诊断 + 焦点模块，渲染 HTML。支持 `--date` / `--type 早报\|晚报\|周报`。 |
 | `backtest.py` | 回测与交叉验证（方向命中 + 量价技术信号交叉验证）。`--all` 生成回测报告，`--seed` 解析报告 HTML 写入 `seeds/`。 |
 | `db.py` | PostgreSQL 封装：11 张表、`upsert`、探活 `test_connection`、自愈合 `init_database`。 |
 | `focus_monitor.py` | 监测三类日元主导传导链末端引爆信号（抛美债 / FIMA 工具 / 大机构日元加息），代理感知的 Google News + Bing 抓取，mention+action 排除 negation 判定；输出专业研判结论。CLI：`--no-fetch` / `--days N`。 |
@@ -63,7 +63,7 @@ report_agent/
    python a_stock_agent.py
 
 2) 生成报告（消费快照）
-   python build_report_20260816.py --date YYYY-MM-DD --type 早报|晚报|周报
+   python build_report.py --date YYYY-MM-DD --type 早报|晚报|周报
    （内置焦点模块会在当日无缓存时自动实时抓取，外网不可达则显示「实时数据缺失」占位）
 
 3) 回测（晚报/周报之后）

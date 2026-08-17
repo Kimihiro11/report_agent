@@ -1,7 +1,7 @@
 # A股舆情操作指引 Agent · 功能说明书
 
 > 版本：2026-08-16 锁定版 ｜ 用途：功能总纲 + 防偏移基线
-> 工作区：`C:\Users\cjass\WorkBuddy\2026-08-13-14-52-10\`
+> 工作区：`C:\Users\cjass\WorkBuddy\report_agent\`
 
 本文件是 Agent 的**权威功能说明书**。任何后续修改、扩展、重建报告，都必须以本文件定义的"核心不变式（Invariants）"为基线，防止功能漂移。
 
@@ -26,7 +26,7 @@
 | 5 | 指数行情 | `fetch_index_quotes` | 新浪 `hq.sinajs.cn`，5 大指数 |
 | 6 | 个股技术面 | `fetch_kline` + `fetch_technical_analysis` | 新浪日 K，MA5/10/20/60 + 多空排列判断 |
 | 7 | 国家队/资金流 | `fetch_national_team` + `build_report` 的 ETF 章节 | 宽基 ETF 净流 + 半导体/科创 ETF 逆势吸金 |
-| 8 | 9 章节完整报告生成 | `build_report_20260816.py`（实时模板） | 见第四节结构；**必须用 WebSearch 实时数据拼装** |
+| 8 | 9 章节完整报告生成 | `build_report.py`（实时模板） | 见第四节结构；**必须用 WebSearch 实时数据拼装** |
 | 9 | 个股见顶诊断引擎 | `peak_detector.py` + `stock_diagnosis.py` | 5 维度评分 + 见底缓冲，输出评分/等级/趋势，嵌入自选股卡片 |
 | 10 | 舆情数据 + 报告入库 | `db.py: StockAgentDB` | PostgreSQL（库 `a_stock_agent`），本地 JSON 兜底 |
 | 11 | 个股判断回测与交叉验证 | `backtest.py` | 从报告提取判断 → 新浪日 K 回测 1/3/5 日 → 独立技术信号对照 |
@@ -39,7 +39,7 @@ python a_stock_agent.py              # 数据引擎：采集→JSON快照→可�
 python a_stock_agent.py --no-fetch   # 仅用缓存/配置出报告
 python a_stock_agent.py --backtest   # 跑回测（seed + run + 生成回测报告）
 python generate_full_report.py       # ⚠️ 注意：内含硬编码历史数据，仅作样式参考，不可用于实时
-python build_report_20260816.py      # ✅ 实时报告生成模板（WebSearch 数据），后续每日报告沿用此模式
+python build_report.py      # ✅ 实时报告生成模板（WebSearch 数据），后续每日报告沿用此模式
 python backtest.py --seed            # 解析工作区报告 HTML → judgments.json
 python backtest.py --run             # 拉行情回测 → backtest_results.json + 回测报告 HTML
 python backtest.py --all             # seed + run
@@ -61,12 +61,12 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
    │
    ├─[诊断层] stock_diagnosis.run_all(7只代码) → 见顶诊断评分
    │
-   ├─[生成层] build_report_20260816.py(实时模板)
+   ├─[生成层] build_report.py(实时模板)
    │         → A股操作指引-9章节-{YYYY-MM-DD}.html
    │         → 同时 save_report + save_sentiment_batch 入库
    │
    ├─[回测层] backtest.py --all
-   │         → 解析报告个股判断 → 新浪日K回测 → 回测报告-{YYYYMMDD}.html
+   │         → 解析报告个股判断 → 新浪日K回测 → 回测报告-{YYYY-MM-DD}.html
    │
    └─[归档层] 上传资料库「我的文档」(+ JSON 本地兜底)
 ```
@@ -105,9 +105,9 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
    - 中性/持平 = 灰色 `.muted`
    - 回测报告、共振、操作 badge 全部沿用此语义。
 
-2. **实时报告必须用实时数据**：`generate_full_report.py` 内含 8/13 硬编码数据，**禁止**直接用于每日生产；每日报告应沿用 `build_report_20260816.py` 的"WebSearch 拉取 → 拼装"模式。
+2. **实时报告必须用实时数据**：`generate_full_report.py` 内含 8/13 硬编码数据，**禁止**直接用于每日生产；每日报告应沿用 `build_report.py` 的"WebSearch 拉取 → 拼装"模式。
 
-3. **报告文件名带横线**：`A股操作指引-9章节-2026-08-16.html`、`回测报告-20260816.html`。因中文 + 横线在 shell 易出错，**上传必须走 Python 子进程传绝对路径**。
+3. **报告文件名带横线**：`A股操作指引-9章节-2026-08-16.html`、`回测报告-2026-08-16.html`。因中文 + 横线在 shell 易出错，**上传必须走 Python 子进程传绝对路径**。
 
 4. **行情源优先级**：新浪日 K（`money.finance.sina.com.cn`）为主源；东方财富 `push2his` 仅作兜底（高频被限流/阻塞）。回测同理。
 
@@ -128,7 +128,7 @@ a_stock_agent.py          # 数据引擎：采集→JSON快照→入库 + --back
 config.json               # 全部配置：微博源/自选股/全球源/宏观/事件/技术/国家队/数据库/cookie
 db.py                     # PostgreSQL 封装 StockAgentDB（8 张表 + upsert 方法）
 generate_full_report.py   # ⚠️ 含硬编码历史数据，仅供样式参考
-build_report_20260816.py  # ✅ 实时 9 章节报告生成模板（后续每日沿用）
+build_report.py  # ✅ 实时 9 章节报告生成模板（后续每日沿用）
 backtest.py               # 个股判断回测与交叉验证模块
 peak_detector.py          # 见顶诊断引擎（5 维评分）
 stock_diagnosis.py        # 自选股诊断集成（调用 peak_detector）
@@ -138,7 +138,7 @@ init_db.sql               # 建库建表 SQL（与 db.py 对应）
 judgments.json            # 个股判断本地主存储（回测用）
 backtest_results.json     # 回测结果本地主存储
 weibo_posts.json          # 微博抓取缓存（实时报告数据源之一）
-diagnosis_20260816.json   # 个股诊断缓存
+diagnosis_YYYYMMDD.json   # 个股诊断缓存
 archive/                  # 历史快照（按日期归档 src/reports/data/README）
 reports/                  # 产出物按类型分目录：早报/晚报/周报/回测（见手动运行规范）
 报告类型与手动运行规范.md # 早报/晚报/周报 触发时机、章节结构、命名、目录与手动流程
@@ -198,7 +198,7 @@ reports/                  # 产出物按类型分目录：早报/晚报/周报/�
 
 **流程**
 1. `--seed`：递归扫描 `reports/`（含 `早报-*.html` / `晚报-*.html` / `周报-*.html` 及历史 `A股操作指引*9章节*.html`），**排除 `archive/` 历史副本**；从 `stock-card` 提取判断；兼容 `badge` 与 `op-row` 两种卡片格式；同日期同代码冲突时优先保留非中性判断；写入 `judgments.json`（并可选同步 DB）。
-2. `--run`：读判断 → 新浪日 K（东方财富兜底）→ 算判断日后 1/3/5 交易日实际涨跌 → 方向命中（bullish 看涨、bearish 看跌）→ 独立技术信号（价格 vs MA20 + MA20 斜率）→ 一致率；写入 `backtest_results.json` + 生成 `回测报告-{YYYYMMDD}.html`。
+2. `--run`：读判断 → 新浪日 K（东方财富兜底）→ 算判断日后 1/3/5 交易日实际涨跌 → 方向命中（bullish 看涨、bearish 看跌）→ 独立技术信号（价格 vs MA20 + MA20 斜率）→ 一致率；写入 `backtest_results.json` + 生成 `回测报告-{YYYY-MM-DD}.html`。
 3. 未到交易日的窗口标记为 `pending`（待回测）。
 
 **指标**

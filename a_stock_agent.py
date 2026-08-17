@@ -3,7 +3,7 @@
 """
 A股舆情操作指引 Agent（数据引擎）
 读取 config.json，抓取微博舆情 + 全球宏观 + 日本传导链 + A股行情，写入 JSON 快照与可选 PostgreSQL。
-全功能 9 章节报告由 build_report_20260816.py + WebSearch 实时拼装生成（简版模式已取消）。
+全功能 9 章节报告由 build_report.py + WebSearch 实时拼装生成（简版模式已取消）。
 
 用法:
     python a_stock_agent.py            # 采集数据 → 快照 → 入库（全功能报告另由 build_report 生成）
@@ -806,7 +806,7 @@ def main():
 
     # 简版模式已取消（2026-08-17）：除回测外一律跑全功能 9 章节报告。
     # a_stock_agent 作为数据引擎：采集 → 快照 → 入库；
-    # 全功能报告由 build_report_20260816.py + WebSearch 实时拼装生成。
+    # 全功能报告由 build_report.py + WebSearch 实时拼装生成。
     today = datetime.now().strftime("%Y%m%d")
     snap_dir = OUTPUT_DIR / "data" / "snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -826,7 +826,7 @@ def main():
 
     print(f"\n[数据引擎] 采集完成，快照: {snap_path}")
     print(f"  市场状态: {analysis['market_state']} | 指数 {len(quotes)} 个 | 美股 {len(us_market)} 个 | ETF {len(etf)} 只 | 板块信号 {len(analysis['matched_sectors'])} 个 | 舆情条目 {len(weibo_data)} 类")
-    print("  全功能 9 章节报告通过 build_report_20260816.py + 实时快照拼装生成（简版模式已取消）。")
+    print("  全功能 9 章节报告通过 build_report.py + 实时快照拼装生成（简版模式已取消）。")
 
     # ===== 强制入库：所有采集数据必须写入 PostgreSQL；连接不通则及时提醒 =====
     db_ok, db_err = _persist_to_db(config, snapshot, ta_data)
