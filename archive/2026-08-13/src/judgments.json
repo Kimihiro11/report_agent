@@ -1,0 +1,65 @@
+[
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "688668",
+    "stock_name": "",
+    "action": "加仓首选",
+    "direction": "bullish",
+    "rationale": "1.6T连接器+液冷，终端英伟达/思科/戴尔；H1净利+59%，Q2环比+28%。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  },
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "688409",
+    "stock_name": "",
+    "action": "持有/回调加仓",
+    "direction": "bullish",
+    "rationale": "入选MSCI中国指数；晶圆扩产带动设备/零部件需求；交付周期延长+价格提升直接受益。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  },
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "600641",
+    "stock_name": "",
+    "action": "持有",
+    "direction": "neutral",
+    "rationale": "半导体设备国产替代核心；8/12涨停，短期波动大，中期扩产+设备订单增加。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  },
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "000725",
+    "stock_name": "",
+    "action": "持有",
+    "direction": "neutral",
+    "rationale": "面板周期回升+玻璃基载板对接AI先进封装；CPI偏鸽利好，但技术面偏弱。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  },
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "301392",
+    "stock_name": "",
+    "action": "观望",
+    "direction": "neutral",
+    "rationale": "5日暴涨47%严重过热，非核心算力标的，独立性弱。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  },
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "688530",
+    "stock_name": "",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "题材与基本面脱节，PE远超行业；公告明确暂无磷化铟相关产品。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  },
+  {
+    "report_date": "2026-08-16",
+    "stock_code": "600580",
+    "stock_name": "",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "利好兑现阶段，投星提醒没有新icon科技难涨；技术面多头排列但估值高。",
+    "source_file": "A股舆情操作指引-9维度-20260816.html"
+  }
+]

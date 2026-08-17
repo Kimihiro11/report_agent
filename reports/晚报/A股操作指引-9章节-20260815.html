@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股舆情操作指引 · 9章节 · 2026-08-15（周末版）</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.8}
+.wrap{max-width:980px;margin:0 auto;padding:24px 20px 60px}
+.header{background:linear-gradient(135deg,#3C3489 0%,#534AB7 100%);color:#fff;border-radius:14px;padding:28px 30px;margin-bottom:22px}
+.header h1{font-size:24px;font-weight:700;margin-bottom:6px}
+.header .sub{font-size:13px;opacity:.85}
+.header .meta{display:flex;gap:12px;margin-top:14px;font-size:12px;flex-wrap:wrap}
+.header .meta span{background:rgba(255,255,255,.16);padding:4px 14px;border-radius:20px}
+.card{background:#fff;border-radius:12px;padding:22px 24px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.card h2{font-size:16px;font-weight:700;color:#3C3489;margin-bottom:14px;padding-left:10px;border-left:4px solid #534AB7}
+.card h3{font-size:14px;font-weight:600;color:#333;margin:16px 0 8px}
+.card p{font-size:13px;color:#444;margin-bottom:8px}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;margin:2px}
+.b-red{background:#fde8e8;color:#d63031}
+.b-blue{background:#e8f0fe;color:#1967d2}
+.b-orange{background:#fff3e0;color:#e67e22}
+.b-green{background:#e8f8f0;color:#00a865}
+.b-gray{background:#f0f2f5;color:#666}
+.tag{display:inline-block;background:#f0f2f5;color:#555;padding:2px 8px;border-radius:10px;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0}
+th{background:#f0f2f5;color:#555;font-weight:600;padding:8px 10px;text-align:left;border-bottom:2px solid #e0e3e8}
+td{padding:8px 10px;border-bottom:1px solid #eef0f3}
+.up{color:#d63031;font-weight:600}
+.down{color:#00a865;font-weight:600}
+.muted{color:#999}
+.point{padding:12px 14px;background:#f8f7ff;border-radius:8px;margin-bottom:10px;border-left:3px solid #AFA9EC}
+.point .pt-title{font-size:14px;font-weight:600;color:#3C3489;margin-bottom:4px}
+.point .pt-body{font-size:13px;color:#444}
+.point .pt-action{font-size:12px;color:#e67e22;margin-top:4px;font-weight:500}
+.alert{padding:12px 14px;border-radius:8px;margin-bottom:10px;font-size:13px}
+.alert-red{background:#fde8e8;border-left:3px solid #d63031;color:#b03a2e}
+.alert-orange{background:#fff3e0;border-left:3px solid #e67e22;color:#b3541a}
+.alert-green{background:#e8f8f0;border-left:3px solid #00a865;color:#1e8449}
+.alert-blue{background:#e8f0fe;border-left:3px solid #1967d2;color:#1f4e8c}
+.conclusion-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.conclusion-item{background:#fafbfc;border-radius:10px;padding:14px;border:1px solid #eef0f3}
+.conclusion-item .label{font-size:12px;color:#888;margin-bottom:4px}
+.conclusion-item .value{font-size:14px;font-weight:600;color:#1a2b4a}
+.stock-card{border:1px solid #eef0f3;border-radius:10px;padding:16px;margin-bottom:12px}
+.stock-title{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.stock-title .name{font-size:15px;font-weight:700;color:#1a2b4a}
+.stock-logic{font-size:13px;color:#444;margin-bottom:6px}
+.stock-meta{font-size:12px;color:#888;margin-bottom:8px}
+.op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.op-row .op{font-size:12px;padding:3px 10px;border-radius:8px}
+.op-buy{background:#fde8e8;color:#d63031}
+.op-hold{background:#fff3e0;color:#e67e22}
+.op-sell{background:#e8f8f0;color:#00a865}
+.op-watch{background:#e8f0fe;color:#1967d2}
+.disclaimer{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:18px 22px;font-size:12px;color:#666;line-height:1.8}
+.disclaimer strong{color:#d63031}
+.chain-svg{width:100%;height:auto;display:block;margin:8px 0}
+.toc{background:#fff;border-radius:12px;padding:18px 24px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.toc h3{font-size:14px;color:#3C3489;margin-bottom:10px}
+.toc ol{padding-left:20px;font-size:13px;color:#444;line-height:2}
+.toc a{color:#534AB7;text-decoration:none}
+.toc a:hover{text-decoration:underline}
+.section-anchor{scroll-margin-top:16px}
+.weekend-note{background:#fffbe6;border-left:3px solid #e6a700;color:#8a6d00;font-size:12px;padding:10px 14px;border-radius:8px;margin-bottom:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="header">
+<h1>A股舆情操作指引 · 9章节（周末版）</h1>
+<div class="sub">周末复盘 · 微博舆情 · 全球人物 · 宏观传导链 · 事件因子 · ETF资金 · 唐史长文 · 共振信号 · 自选股 · 下周一策略</div>
+<div class="meta">
+<span>报告日期：2026-08-15（周六·周末版）</span>
+<span>数据基准：8/14（周五）收盘 + 周末最新</span>
+<span>隔夜美股8/14转跌 道指-0.20% 纳指-0.28%</span>
+<span>10Y美债回升至4.690% 油价周涨6%</span>
+<span>⚠ 日元159.37仍逼近160</span>
+<span>✅ 北向净买64.29亿 央行放水2.4万亿 外资扫货508亿美元</span>
+</div>
+</div>
+
+<div class="weekend-note">
+<strong>周末版说明：</strong>今日（8/15，周六）A股休市，本报告以最近一个交易日<strong>8/14（周五）收盘</strong>为市场基准，整合周末最新宏观/舆情/地缘数据，作为<strong>下周一（8/17）开盘前</strong>的预判与策略参考。相比8/14盘前早报，隔夜美股已由涨转跌、美债收益率重新回升，宏观格局较周五早盘偏谨慎。
+</div>
+
+<div class="toc">
+<h3>报告目录</h3>
+<ol>
+<li><a href="#ch1">一、隔夜美股（8/14转跌·博通债务警报）</a></li>
+<li><a href="#ch2">二、CPI/PPI与宏观（零售意外转负·央行放水）</a></li>
+<li><a href="#ch3">三、宏观传导链监控（独立因子）</a></li>
+<li><a href="#ch4">四、地缘政治与原油（事件因子）</a></li>
+<li><a href="#ch5">五、ETF资金流向（东方财富）</a></li>
+<li><a href="#ch6">六、唐史主任长文分析</a></li>
+<li><a href="#ch7">七、共振信号（多源交叉验证）</a></li>
+<li><a href="#ch8">八、7只自选股操作指引</a></li>
+<li><a href="#ch9">九、下周一操作策略（仓位/大盘/板块/回避）</a></li>
+</ol>
+</div>
+
+<div class="card">
+<h2>核心结论</h2>
+<div class="conclusion-grid">
+<div class="conclusion-item">
+<div class="label">最强主线</div>
+<div class="value" style="color:#d63031;">算力硬件链（CPO/光通信/半导体设备/存储）</div>
+<div style="font-size:12px;color:#666;margin-top:4px;">8/14 A股CPO逆势最强（多股20cm涨停）；美股存储逆势涨（闪迪+7%/美光+2%）；半导体设备ETF单日暴增222亿；长鑫市值3.69万亿；外资508亿美元扫货中国</div>
+</div>
+<div class="conclusion-item">
+<div class="label">新增强化支撑</div>
+<div class="value" style="color:#00a865;">增量资金三箭齐发</div>
+<div style="font-size:12px;color:#666;margin-top:4px;">北向8/14净买64.29亿（终结4周净卖）· 央行4天净投放2.4万亿 · 外资近月508亿美元净流入中国股票基金</div>
+</div>
+<div class="conclusion-item">
+<div class="label">操作基调</div>
+<div class="value" style="color:#e67e22;">仓位降至55-60% 防守</div>
+<div style="font-size:12px;color:#666;margin-top:4px;">隔夜美股转跌+美债回升至4.69%+原油周涨6%+博通债务警报+缩量4080亿+高位股退潮。强支撑在，但短线回踩压力大于8/14盘前</div>
+</div>
+<div class="conclusion-item">
+<div class="label">双黑天鹅监控</div>
+<div class="value" style="color:#d63031;">美债4.69%不降反升 + 日元159.37</div>
+<div style="font-size:12px;color:#666;margin-top:4px;">①10Y美债降了又升→科技估值隐忧再抬头（科创50 PE高首当其冲）；②日元仍逼近160→套利平仓黑天鹅未除</div>
+</div>
+</div>
+</div>
+
+<!-- ============ 一、隔夜美股 ============ -->
+<div class="card section-anchor" id="ch1">
+<h2>一、隔夜美股（8/14转跌 · 博通债务警报）</h2>
+<p>美东时间8月14日（周五），美股三大指数全线小幅收跌，与此前PPI降温后的反弹形成反差。市场出现明显分化：<strong>博通因3700亿美元AI基础设施债务担忧重挫近6%</strong>，拖累科技板块；但存储、光通信、无人机逆势走强。油价上涨与美债供给压力推动美债收益率回升，科技估值承压。</p>
+<table>
+<thead><tr><th>标的</th><th>涨跌</th><th>关键信号</th></tr></thead>
+<tbody>
+<tr><td>道琼斯</td><td class="down">-0.20%</td><td>报53732.41</td></tr>
+<tr><td>标普500</td><td class="down">-0.17%</td><td>报7785.76，仍接近周四纪录高位</td></tr>
+<tr><td>纳斯达克</td><td class="down">-0.28%</td><td>报26729.16，科技股多数走弱</td></tr>
+<tr><td>博通（AVGO）</td><td class="down">-6%</td><td>⚠️ 美银估算AI芯片融资项目到2029年或形成3700亿美元高级债务，AI基础设施融资信用风险引发重估</td></tr>
+<tr><td>特斯拉</td><td class="up">+0.68%</td><td>大型科技中少数上涨</td></tr>
+<tr><td>英伟达</td><td class="down">-0.06%</td><td>基本持平，CPO交换机量产消息落地</td></tr>
+<tr><td>闪迪（SNDK）</td><td class="up">+7%</td><td>存储逆势走强，AI数据中心存储需求预期</td></tr>
+<tr><td>希捷/西部数据/美光</td><td class="up">+5%/+4%/+2%</td><td>存储链延续景气</td></tr>
+<tr><td>SK海力士</td><td class="up">+0.4%</td><td>董事长称"价格涨太快很抱歉"，供给侧紧张</td></tr>
+<tr><td>应用光电/ Lumentum / 康宁</td><td class="up">+15%/+5%/+4%</td><td>光通信逆势大涨，A股CPO映射正向</td></tr>
+<tr><td>Unusual Machines / Red Cat</td><td class="up">+25%/+8%</td><td>无人机概念暴涨（特朗普100%关税反促本土替代预期）</td></tr>
+<tr><td>WTI原油</td><td class="up">+1.42%</td><td>报82.40美元，周涨5.4%</td></tr>
+<tr><td>布伦特原油</td><td class="up">+2.01%</td><td>报88.82美元，周涨6.3%</td></tr>
+<tr><td>美元指数</td><td class="down">-0.32%</td><td>报99.64（零售弱打压美元）</td></tr>
+<tr><td>黄金</td><td class="up">+0.26%</td><td>COMEX报4432美元</td></tr>
+</tbody>
+</table>
+<div class="alert alert-orange">
+<strong>传导判断：</strong>隔夜美股结构关键信号有二：①<strong>博通-6%暴露AI基础设施"融资—债务"隐忧</strong>，可能压制全球科技/算力链估值（尤其高估值科创方向）；②<strong>存储、光通信、无人机逆势走强</strong>，与A股8/14当日CPO/存储领涨形成共振。油价周涨6%推升通胀与成本端压力。<strong>对A股下周一：</strong>算力硬件（CPO/光通信/半导体设备/存储）产业逻辑未破、资金聚焦，但需警惕博通债务叙事对高位科技股的估值扰动；原油涨+美债升构成成本与流动性双重压制。
+</div>
+</div>
+
+<!-- ============ 二、CPI/PPI与宏观 ============ -->
+<div class="card section-anchor" id="ch2">
+<h2>二、CPI/PPI与宏观</h2>
+<h3>1. 通胀双降温延续 + 零售意外转负</h3>
+<table>
+<thead><tr><th>指标</th><th>7月值</th><th>预期/前值</th><th>方向</th></tr></thead>
+<tbody>
+<tr><td>美国CPI同比</td><td>3.4%</td><td>预期3.4% / 前3.5%</td><td>↓ 符合预期偏鸽</td></tr>
+<tr><td>美国PPI同比</td><td>4.7%</td><td>预期4.9% / 前5.5%</td><td>↓ 大幅低于预期</td></tr>
+<tr><td><strong>美国7月零售销售</strong></td><td><strong>环比-0.6%</strong></td><td><strong>预期+0.1% / 前+1.0%</strong></td><td><strong>↓ 一年来最大跌幅</strong></td></tr>
+<tr><td>密歇根消费者信心（8月初值）</td><td>51</td><td>预期55.2</td><td>↓ 消费疲软</td></tr>
+</tbody>
+</table>
+<div class="point">
+<div class="pt-title">零售转负 — 经济走弱信号，但被油价/美债供给抵消</div>
+<div class="pt-body">7月零售销售环比-0.6%（预期+0.1%），为2025年5月以来最大降幅，主因汽车（-1.8%）、线上（-2.2%）、加油站（-0.9%）拖累（亚马逊Prime Day提前至6月透支需求）。数据本应强化降息预期、打压美元与美债收益率，但同日<strong>油价周涨6% + 博通债务引发美债供给担忧 + 财政部发债压力</strong>，推动美债收益率不降反升（10Y回升至4.690%）。形成"经济弱→应降息"与"油价涨+供给→收益率升"的拉锯。</div>
+<div class="pt-action">对A股：零售弱利好降息预期（中期利好成长），但短期美债收益率回升直接压制科技估值，且原油涨抬升成本。净效应偏中性偏弱</div>
+</div>
+<h3>2. 中国宏观：金融数据偏弱 + 央行强力放水</h3>
+<table>
+<thead><tr><th>指标/事件</th><th>数据</th><th>判断</th></tr></thead>
+<tbody>
+<tr><td>7月新增社融</td><td>1.41万亿元</td><td>前七月累计22.25万亿，同比少增1.74万亿，实体信贷偏弱</td></tr>
+<tr><td>M2 / M1</td><td>+7.7% / +4%</td><td>M2-M1剪刀差收窄至3.7pct，活化程度边际改善</td></tr>
+<tr><td>央行买断式逆回购</td><td>8/14落地1万亿（6个月期）</td><td>等量续做，锁定中期流动性</td></tr>
+<tr><td>央行隔夜逆回购</td><td>4天合计上限2.4万亿元</td><td>8/14、8/17-19每日6000亿，史上首次月中开展，精准滴灌对冲税期</td></tr>
+</tbody>
+</table>
+<div class="alert alert-green">
+<strong>中国流动性定调：</strong>金融数据延续弱势（对实体信贷明显减少），但<strong>央行以2.4万亿净投放强力托底</strong>，国债期货走暖、现券收益率下行。宽松底色明确，为A股提供"流动性安全垫"。资金面不是问题，问题是风险偏好与板块轮动节奏。
+</div>
+<h3>3. 下周（8/17-8/22）待公布/影响数据</h3>
+<table>
+<thead><tr><th>事件</th><th>时间</th><th>影响</th></tr></thead>
+<tbody>
+<tr><td>美国7月新屋开工/营建许可、工业产出</td><td>8/18（周二）</td><td>房地产与工业景气参考</td></tr>
+<tr><td><strong>FOMC会议纪要</strong></td><td><strong>8/19（周三）18:00/20:00</strong></td><td><strong>关键</strong>：定调9月利率路径与缩表，影响全球风险偏好</td></tr>
+<tr><td>沃尔玛财报</td><td>8/20（周四）</td><td>美国消费风向标（零售弱背景下受关注）</td></tr>
+<tr><td>初请失业金（8/15当周）</td><td>8/20（周四）</td><td>就业韧性参考</td></tr>
+<tr><td>杰克逊霍尔全球央行年会</td><td>8月下旬</td><td>美联储主席讲话或定调政策拐点</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============ 三、宏观传导链监控 ============ -->
+<div class="card section-anchor" id="ch3">
+<h2>三、宏观传导链监控（独立因子）</h2>
+<p>监控链条：<strong>原油 → CPI/PPI → 加息概率/美债收益率 → 日元 → 风险偏好/VIX → A股</strong>。周末复盘显示格局较8/14盘前<strong>明显转差</strong>：PPI降温的利好被<strong>油价周涨6% + 美债收益率回升至4.690%</strong>抵消；日元仍159.37逼近160。唯一边际缓和是零售弱致美元走弱（99.64）。<strong>当前格局：3红（原油↑、美债↑、日元↑）+ 2绿（通胀↓、降息预期↑）+ VIX橙</strong>，较8/14早报"5绿1红"偏谨慎。</p>
+
+<h3>链条状态流程图</h3>
+<svg class="chain-svg" viewBox="0 0 940 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#999"/>
+    </marker>
+  </defs>
+  <rect x="10" y="70" width="130" height="60" rx="8" fill="#fde8e8" stroke="#d63031" stroke-width="1.5"/>
+  <text x="75" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#b03a2e">原油</text>
+  <text x="75" y="110" text-anchor="middle" font-size="11" fill="#b03a2e">WTI 82.40 布油88.82</text>
+  <text x="75" y="125" text-anchor="middle" font-size="10" fill="#d63031">↑ 周涨6% 加压</text>
+  <line x1="140" y1="100" x2="170" y2="100" stroke="#999" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="170" y="70" width="130" height="60" rx="8" fill="#e8f8f0" stroke="#00a865" stroke-width="1.5"/>
+  <text x="235" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#1e8449">CPI/PPI</text>
+  <text x="235" y="110" text-anchor="middle" font-size="11" fill="#1e8449">CPI 3.4% PPI 4.7%</text>
+  <text x="235" y="125" text-anchor="middle" font-size="10" fill="#00a865">↓↓ 双降温 偏鸽</text>
+  <line x1="300" y1="100" x2="330" y2="100" stroke="#999" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="330" y="70" width="140" height="60" rx="8" fill="#fde8e8" stroke="#d63031" stroke-width="1.5"/>
+  <text x="400" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#b03a2e">10Y美债收益率</text>
+  <text x="400" y="110" text-anchor="middle" font-size="11" fill="#b03a2e">4.690%（回升5bp）</text>
+  <text x="400" y="125" text-anchor="middle" font-size="10" fill="#d63031">↑ 不降反升 隐忧再起</text>
+  <line x1="470" y1="100" x2="500" y2="100" stroke="#999" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="500" y="70" width="130" height="60" rx="8" fill="#e8f8f0" stroke="#00a865" stroke-width="1.5"/>
+  <text x="565" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#1e8449">加息概率</text>
+  <text x="565" y="110" text-anchor="middle" font-size="11" fill="#1e8449">零售弱→降息升温</text>
+  <text x="565" y="125" text-anchor="middle" font-size="10" fill="#00a865">↓ 降息预期升温</text>
+  <line x1="630" y1="100" x2="660" y2="100" stroke="#999" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="660" y="70" width="130" height="60" rx="8" fill="#fde8e8" stroke="#d63031" stroke-width="1.5"/>
+  <text x="725" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#b03a2e">美元/日元</text>
+  <text x="725" y="110" text-anchor="middle" font-size="11" fill="#b03a2e">159.37（仍逼近160）</text>
+  <text x="725" y="125" text-anchor="middle" font-size="10" fill="#d63031">⚠↑ 黑天鹅未除</text>
+  <line x1="790" y1="100" x2="820" y2="100" stroke="#999" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="820" y="70" width="110" height="60" rx="8" fill="#fff3e0" stroke="#e67e22" stroke-width="1.5"/>
+  <text x="875" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#b3541a">VIX</text>
+  <text x="875" y="110" text-anchor="middle" font-size="11" fill="#b3541a">14.56（年内低）</text>
+  <text x="875" y="125" text-anchor="middle" font-size="10" fill="#e67e22">↓但尾部对冲升</text>
+  <rect x="10" y="160" width="12" height="12" fill="#e8f8f0" stroke="#00a865"/>
+  <text x="28" y="171" font-size="10" fill="#666">转鸽（利好）</text>
+  <rect x="160" y="160" width="12" height="12" fill="#fde8e8" stroke="#d63031"/>
+  <text x="178" y="171" font-size="10" fill="#666">转鹰/风险（利空） ⚠</text>
+  <rect x="320" y="160" width="12" height="12" fill="#fff3e0" stroke="#e67e22"/>
+  <text x="338" y="171" font-size="10" fill="#666">中性偏警戒</text>
+  <text x="560" y="171" font-size="10" fill="#999">今日格局：3红2绿1橙，较8/14早报5绿1红明显转差</text>
+</svg>
+
+<h3>各节点信号表</h3>
+<table>
+<thead><tr><th>节点</th><th>当前值</th><th>方向</th><th>对A股影响</th></tr></thead>
+<tbody>
+<tr><td>原油</td><td>WTI 82.40 / 布伦特 88.82</td><td><span class="badge b-red">↑ 周涨6%</span></td><td>霍尔木兹僵局推升通胀与成本端压力；航空/化工下游承压，利多油气但抑制成长估值</td></tr>
+<tr><td>美国CPI/PPI</td><td>CPI 3.4% / PPI 4.7%</td><td><span class="badge b-green">↓↓ 双降温</span></td><td>加息预期降温，中期利好科技成长</td></tr>
+<tr><td>10Y美债收益率</td><td>4.690%（回升5bp）</td><td><span class="badge b-red">↑ 不降反升</span></td><td>⚠降了又升——PPI后短暂回落至4.639%后再度冲高，科技估值隐忧重新抬头（科创50 PE高处最敏感）</td></tr>
+<tr><td>加息概率</td><td>零售弱→降息预期升温</td><td><span class="badge b-green">↓ 降息升温</span></td><td>风险偏好中期改善；但被美债供给/油价抵消，收益率未降</td></tr>
+<tr><td>美元/日元</td><td>159.37（逼近160）</td><td><span class="badge b-red">⚠↑ 仍警戒</span></td><td>联合干预后从164→155又贬回160附近；日本央行9/17会议前套利平仓黑天鹅未除</td></tr>
+<tr><td>VIX</td><td>14.56（年内最低）</td><td><span class="badge b-orange">↓ 平静/尾部升</span></td><td>指数波动极低，但SKEW指数+6.6%（尾部风险对冲增加），暗藏脆弱性</td></tr>
+<tr><td>美元指数</td><td>99.64</td><td><span class="badge b-gray">↓ -0.32%</span></td><td>零售弱打压美元，对人民币/北向略利好（边际缓和）</td></tr>
+<tr><td>黄金</td><td>4432美元/盎司</td><td><span class="badge b-gray">+0.26%</span></td><td>美元弱+避险托底，贵金属相对抗跌</td></tr>
+</tbody>
+</table>
+
+<div class="alert alert-red">
+<strong>综合判断（较8/14早报转谨慎）：</strong>格局由8/14盘前"5绿1红"退化为当前"3红2绿1橙"，<strong>核心恶化来自原油周涨6%与10Y美债收益率回升至4.690%</strong>——PPI降温的利好已被部分抹去，科技估值最大隐忧（①美债不降反升）再度点亮。<br>
+<strong>①10Y美债4.690%不降反升=科技估值隐忧再抬头</strong>：PPI后曾回落至4.639%，但油价涨+博通债务引发的AI基础设施融资担忧+美债供给压力推动收益率重回4.69%，对高估值科创方向（科创50 PE高）压制最直接。<br>
+<strong>②日元159.37仍逼近160=套利平仓黑天鹅</strong>：联合干预后从164→155又贬回，9/17日本央行会议前难有明确转向，一旦破160触发干预预期与套利平仓。<br>
+<strong>缓冲因素：</strong>零售弱致美元走弱（99.64）、中国央行2.4万亿放水、外资508亿美元扫货中国——人民币资产有独立流动性支撑，不必与美股同步悲观。<br>
+<strong>结论：仓位由8/14盘前65-70%下调至55-60%防守，监控美债4.75%与日元160双阈值。</strong>
+</div>
+</div>
+
+<!-- ============ 四、地缘政治与原油 ============ -->
+<div class="card section-anchor" id="ch4">
+<h2>四、地缘政治与原油（事件因子）</h2>
+<h3>1. 中东：霍尔木兹僵局升级，油价周涨6%</h3>
+<div class="point">
+<div class="pt-title">霍尔木兹航运量降至两个月低点，油轮遭袭</div>
+<div class="pt-body">美伊在霍尔木兹海峡对峙陷入僵局，船舶追踪显示周二仅14艘商船穿越（战前约日均2000万桶外运、当前运量降20-25%）。8/13两艘阿布扎比国家石油公司（ADNOC）油轮在海峡遭袭，美方归咎伊朗。美军"乔治·华盛顿"号航母编队向中东机动，特朗普公开称美国"已掌控霍尔木兹海峡"并将在其击败伊朗后宣布该水道为美国领土。美财长贝森特称将对伊实施"前所未有"经济制裁。油价周涨6%（WTI+5.4%/布油+6.3%）反映供应端溢价。</div>
+<div class="pt-action">影响：地缘溢价支撑油价→通胀与成本端偏空，但A股油气受益有限；若谈判缓和则油价回落利好成长</div>
+</div>
+<h3>2. 俄乌：黑海互袭，粮食出口承压</h3>
+<div class="point">
+<div class="pt-title">俄乌相互打击港口/能源设施，乌提议黑海停火被拒</div>
+<div class="pt-body">乌克兰通过第三方向俄提议黑海停止相互袭击民用目标，俄方此前已拒绝海上停火。双方持续升级对彼此黑海航运与港口设施打击，致粮食出口大幅下滑、推高全球粮价。拉夫罗夫称已就美"深度参与"乌对俄袭击向美方交涉。黑海+霍尔木兹两大水道同时紧张，大宗商品持续扰动。</div>
+</div>
+<h3>3. 特朗普动态（关税/制裁）</h3>
+<div class="point">
+<div class="pt-title">无人机100%关税 + 延长美中关税休战</div>
+<div class="pt-body">①<strong>8/13签署公告</strong>：对进口无人机及零部件征10%-100%分级关税（100%针对重型/热成像无人机，25%小型，对欧盟/日/韩/台15%、英国10%），9/3生效；中方反制——对两用物项无人机及关键零部件对美出口逐案从严审核。<br>②<strong>延长美中关税休战90天至11/10</strong>，维持对华30%关税，避免升至54%。<br>③取消800美元小额免税待遇；对华贸易"边境墙"拟上线AI侦探识别转口。<br>④指示五角大楼重振舰船工业；授权私企网络攻击。</div>
+<div class="pt-action">影响：无人机关税→国产无人机/低空经济替代逻辑；延长休战→中美摩擦边际缓和；取消免税→中国电商出海加速本地化</div>
+</div>
+<h3>4. 原油价格</h3>
+<table>
+<thead><tr><th>品种</th><th>价格</th><th>周变化</th><th>趋势</th></tr></thead>
+<tbody>
+<tr><td>WTI原油</td><td>82.40美元/桶</td><td>+5.4%</td><td>回升（霍尔木兹溢价）</td></tr>
+<tr><td>布伦特原油</td><td>88.82美元/桶</td><td>+6.3%</td><td>回升</td></tr>
+<tr><td>现货黄金</td><td>4432美元/盎司</td><td>+0.26%</td><td>美元弱托底</td></tr>
+</tbody>
+</table>
+<div class="alert alert-orange">
+<strong>原油判断：</strong>霍尔木兹僵局短期难解，航运量降+油轮遭袭+IEA预计本季供应缺口扩大，油价周涨6%形成成本端压力。但若美伊谈判出现缓和信号，油价回落将直接利好成长股估值。<strong>当前偏空因素，需纳入仓位决策的折扣项。</strong>
+</div>
+</div>
+
+<!-- ============ 五、ETF资金流向 ============ -->
+<div class="card section-anchor" id="ch5">
+<h2>五、ETF资金流向（东方财富）</h2>
+<p>数据口径：北向资金、大盘主力为8月14日收盘；ETF份额为8/14当日。央行2.4万亿净投放与外资508亿美元扫货构成增量资金主线。</p>
+
+<h3>1. 北向资金（8/14收盘，Wind口径）</h3>
+<table>
+<thead><tr><th>项目</th><th>金额</th><th>备注</th></tr></thead>
+<tbody>
+<tr><td>北向资金净买入</td><td class="up">+64.29亿元</td><td>创7月29日以来新高</td></tr>
+<tr><td>本周累计</td><td class="up">+66.65亿元</td><td>终结此前连续4周净卖出</td></tr>
+<tr><td>沪深港通成交额</td><td>2744.69亿元</td><td>占两市成交约12.81%</td></tr>
+</tbody>
+</table>
+<p><strong>北向增持方向（成交活跃）：</strong>沪股通—生益科技、兆易创新、寒武纪、中天科技、亨通光电；深股通—中际旭创、新易盛、紫光股份、北方华创、京东方A。资金集中涌向光通信/CPO、半导体设备。<strong>注：</strong>北向自2024年起不再盘中实时披露，此处为收盘后Wind统计口径，盘中另有"净流出"说法属余额口径差异。</p>
+
+<h3>2. 大盘主力资金（8/14收盘）</h3>
+<table>
+<thead><tr><th>指数</th><th>主力净流入</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>上证指数</td><td class="down">-24.11亿元</td><td>权重微红但主力小幅流出</td></tr>
+<tr><td>深证成指</td><td class="down">-73.24亿元</td><td></td></tr>
+<tr><td>沪深300</td><td class="down">-78.76亿元</td><td>蓝筹失血</td></tr>
+<tr><td>科创50</td><td class="down">-44.05亿元</td><td></td></tr>
+<tr><td>创业板指</td><td class="up">+8.47亿元</td><td>唯一净流入</td></tr>
+<tr><td>中证1000</td><td class="up">+40.20亿元</td><td>中小盘活跃</td></tr>
+</tbody>
+</table>
+<p>资金呈"<strong>权重失血、中小盘活跃</strong>"格局：从沪深300/大盘蓝筹撤出，转向创业板、中证1000及通信（光模块/CPO/5G/6G）、半导体设备等进攻型科技。<strong>通信设备板块单周主力净流入约87亿元，居全市场之首。</strong></p>
+
+<h3>3. 主要ETF净申购/净赎回（8/14）</h3>
+<table>
+<thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead>
+<tbody>
+<tr><td>沪深300ETF（华泰柏瑞）</td><td>510300</td><td class="down">净赎回 -1.773亿份（-8.37亿）</td><td>宽基持续失血</td></tr>
+<tr><td>科创50ETF（华夏）</td><td>588000</td><td class="up">净申购 +5.28亿份</td><td>硬科技吸金</td></tr>
+<tr><td>半导体ETF（国联安）</td><td>512480</td><td class="down">净赎回 -0.44亿份</td><td>小幅流出</td></tr>
+<tr><td>芯片ETF（华夏）</td><td>159995</td><td class="muted">数据源未覆盖</td><td>参考主题ETF动向</td></tr>
+<tr><td>创业板ETF（易方达）</td><td>159915</td><td class="down">净流出约 -7.25亿</td><td>净流出榜第3</td></tr>
+<tr><td>科创半导体设备ETF（华泰柏瑞）</td><td>588710</td><td class="up">份额+70.65亿份 / 净流入约222亿</td><td>⚠当日资金流入第一，半导体设备主线资金爆买</td></tr>
+</tbody>
+</table>
+<div class="point">
+<div class="pt-title">ETF信号解读</div>
+<div class="pt-body">整体口径（格隆汇/同花顺）：8/14 ETF整体净流出20.50亿（股票型-49亿、宽基-33.2亿），黄金/沪深300/创业板居净流出前三——<strong>宽基权重持续失血</strong>。但结构性亮点突出：<strong>科创半导体设备ETF单日份额暴增70.65亿份、净流入约222亿</strong>，半导体设备ETF国泰连续5日净流入。资金从宽基向<strong>半导体设备/科创硬科技</strong>极致聚焦，与8/14 A股CPO/半导体设备领涨互为印证。另一口径（证券之星按份额×均价）显示当日股票指数ETF合计净流入205亿，主因即为半导体设备ETF暴增，两口径统计范围不同。</div>
+</div>
+<h3>4. 增量资金主线</h3>
+<div class="alert alert-green">
+<strong>三重增量支撑：</strong>①<strong>北向回流</strong>：8/14净买64.29亿，终结4周净卖；②<strong>央行放水</strong>：4天净投放2.4万亿（含1万亿6个月买断式逆回购+每日6000亿隔夜逆回购），史上首次月中开展，精准滴灌；③<strong>外资扫货</strong>：高盛数据，近一月中国股票基金净流入508.2亿美元（占新兴市场近六成），贝莱德/瑞银/安联密集看多，重点配置半导体/互联网/电力/医疗。融资资金亦结束5周净流出、上周净流入335亿。<strong>结论：流动性与增量资金充裕，A股下行有"安全垫"，问题是结构与节奏而非总量。</strong>
+</div>
+</div>
+
+<!-- ============ 六、唐史主任长文分析 ============ -->
+<div class="card section-anchor" id="ch6">
+<h2>六、唐史主任长文分析（tier1 long_form）</h2>
+
+<h3>原文要点（微博，8/14盘中）</h3>
+<div class="point" style="background:#f0f4ff;">
+<div class="pt-body">"外盘昨晚taco交易，油价回落，科技股大面积反弹。A股最近是强韧的，更多还是看港股是否会有所表现，港股如果和A股共振，那么叙事和预期上会更强化些。方向也很清晰了，还是公式内的交易，<strong>海外交易电力，国内交易算力，情绪交易龙虾这种应用爆发</strong>。至于选股上，如果想要确定性强一些，那么<strong>卡着一季报业绩来选</strong>，趋势会更为清晰一些。我最近调仓基本都有考虑一季报的因素，所以调整中整体冲击还可以，明显强于偏叙事的品种。如果市场开始交易量和情绪双修复，那么新质属性的，尤其大会点名的，应该都会轮动。自家的孩子自家抱，不用太强调主线思维，更多还是在成交量供给的背景下，轮动修复。从地缘的后续影响来看，各地区的能源自给都会被重新摆上案头，比如欧洲在这次危机后就开始以法案形式保障清洁能源的投资。<strong>能源格局调整会影响中长期的产业趋势。这方面A股还没有特别明显的计价</strong>。<strong>做多窗口开启，试错可以积极一些，但最好还是不要飘移太厉害，毕竟外围风险还没有彻底解除。</strong>"</div>
+</div>
+
+<h3>核心产业逻辑提炼</h3>
+<div class="point">
+<div class="pt-title">1. 公式内交易：海外电力 / 国内算力 / 情绪应用</div>
+<div class="pt-body">方向高度凝练——海外（美股）主线是电力（AI数据中心供电缺口），国内A股主线是算力（硬件基础设施），情绪面是AI应用爆发（"龙虾"指代应用层）。对应当前A股最强方向正是算力硬件（CPO/光通信/半导体设备/存储），与8/14盘面CPO领涨完全吻合。</div>
+<div class="pt-action">映射：算力硬件链（CPO/PCB/液冷/电力）；AI应用（游戏/数字营销/算力调度）</div>
+</div>
+<div class="point">
+<div class="pt-title">2. 选股卡一季报业绩，远离纯叙事</div>
+<div class="pt-body">"如果想要确定性强一些，卡着一季报业绩来选"——强调业绩兑现的确定性，明确"明显强于偏叙事的品种"。调整中业绩支撑的标的冲击小。这是针对当前高位股退潮、纯叙事 bom 交易易跌的直接风控指引。</div>
+<div class="pt-action">映射：聚焦有Q1业绩支撑的算力/半导体标的；回避无业绩的高位纯概念</div>
+</div>
+<div class="point">
+<div class="pt-title">3. 能源格局调整 = 中长期未计价产业趋势</div>
+<div class="pt-body">"各地区的能源自给都会被重新摆上案头，欧洲以法案保障清洁能源投资。能源格局调整会影响中长期产业趋势，A股还没特别明显计价。"——地缘危机催化各国能源自主，电力/新能源/储能/电网中长期逻辑强化，当前A股定价不足。</div>
+<div class="pt-action">映射：电力（火电灵活性/绿电）、电网设备、储能、能源安全；卧龙电驱（电机/电力）等</div>
+</div>
+<div class="point">
+<div class="pt-title">4. 做多窗口开启，但外围风险未除、不飘移</div>
+<div class="pt-body">"做多窗口开启，试错可以积极一些，但最好还是不要飘移太厉害，毕竟外围风险还没有彻底解除。"——明确看多窗口，但提示①不漂移（守住算力主线，不追杂毛）②外围风险未除（美债/日元/地缘）。与宏观传导链双黑天鹅监控一致。</div>
+<div class="pt-action">映射：积极试错但控仓、守主线、防外围变量</div>
+</div>
+<h3>综合投资方向</h3>
+<p>①<strong>国内算力硬件</strong>（CPO/光通信/半导体设备/存储）是公式内主线，8/14盘面已验证；②<strong>选股锚定一季报业绩</strong>，远离纯叙事；③<strong>能源自主/电力</strong>是A股尚未充分计价的长逻辑；④<strong>做多窗口+不飘移+防外围</strong>。映射到自选股：富创精密/欧莱新材/先导基电（半导体设备材料=算力底座）、卧龙电驱（电机/电力）、京东方A（面板/存储）、鼎通科技（连接器/液冷）、汇成真空（真空镀膜设备）。</p>
+</div>
+
+<!-- ============ 七、共振信号 ============ -->
+<div class="card section-anchor" id="ch7">
+<h2>七、共振信号（多源交叉验证）</h2>
+
+<h3>看多共振</h3>
+<div class="point" style="border-left-color:#d63031;">
+<div class="pt-title" style="color:#d63031;">🔥 算力硬件链（CPO/光通信/半导体设备/存储）— 5重共振（最强）</div>
+<div class="pt-body">
+①<strong>A股8/14盘面</strong>：CPO逆势最强，中石科技/阿莱德20cm涨停、亨通光电/剑桥科技10cm涨停；通信设备主力净流入87亿居首<br>
+②<strong>美股映射</strong>：闪迪+7%/希捷+5%/西部数据+4%/美光+2%（存储逆势）；应用光电+15%/Lumentum+5%（光通信）；英伟达CPO交换机量产<br>
+③<strong>资金</strong>：科创半导体设备ETF单日暴增222亿；北向增持中际旭创/新易盛/北方华创；融资回流335亿<br>
+④<strong>唐史</strong>："国内交易算力"公式内主线；"卡一季报业绩"指向有业绩的硬件标的<br>
+⑤<strong>产业</strong>：长鑫市值3.69万亿、中芯/华虹Q2创新高、DeepSeek 8/17涨价、马斯克"只与英伟达合作"+VeraRubin配额
+</div>
+<div class="pt-action">关注：富创精密、欧莱新材、先导基电、鼎通科技、汇成真空、京东方A</div>
+</div>
+<div class="point" style="border-left-color:#e67e22;">
+<div class="pt-title" style="color:#e67e22;">🔥 中国资产重估 — 3重共振（增量资金）</div>
+<div class="pt-body">
+①<strong>北向回流</strong>：8/14净买64.29亿，终结4周净卖<br>
+②<strong>央行放水</strong>：2.4万亿净投放，宽松托底<br>
+③<strong>外资扫货</strong>：近一月中国股票基金净流入508.2亿美元（占新兴市场60%），贝莱德/瑞银/安联看多
+</div>
+<div class="pt-action">关注：核心资产、半导体/互联网/电力/医疗（外资四大方向）</div>
+</div>
+<div class="point" style="border-left-color:#1967d2;">
+<div class="pt-title" style="color:#1967d2;">国产替代 / 能源安全 — 3重共振</div>
+<div class="pt-body">
+①<strong>特朗普无人机100%关税</strong>→国产无人机/低空经济替代<br>
+②<strong>延长美中关税休战</strong>→摩擦边际缓和，国产算力叙事延续<br>
+③<strong>唐史能源自主</strong>→电力/电网/储能中长期未计价逻辑
+</div>
+</div>
+
+<h3>看空/风险信号</h3>
+<div class="point" style="border-left-color:#d63031;background:#fde8e8;">
+<div class="pt-title" style="color:#b03a2e;">⚠️ 风险信号 — 5重警示</div>
+<div class="pt-body">
+①<strong>博通-6%</strong>：3700亿美元AI基础设施债务担忧，或压制全球科技/算力估值<br>
+②<strong>10Y美债回升至4.690%</strong>：不降反升，科技估值隐忧再抬头（科创50 PE高处最敏感）<br>
+③<strong>日元159.37逼近160</strong>：套利平仓黑天鹅未除<br>
+④<strong>原油周涨6%</strong>：霍尔木兹溢价，通胀与成本端压力<br>
+⑤<strong>A股缩量+高位退潮</strong>：8/14成交缩量4080亿、近3000股下跌、高位题材股跌停（秦安股份/宝鹰股份等）
+</div>
+<div class="pt-action">防御：仓位降至55-60%；监控美债4.75%与日元160；不追高位超买</div>
+</div>
+<div class="point" style="border-left-color:#00a865;background:#e8f8f0;">
+<div class="pt-title" style="color:#1e8449;">✅ 边际缓和信号</div>
+<div class="pt-body">
+①<strong>零售-0.6%</strong>→降息预期升温，美元走弱至99.64<br>
+②<strong>北向净买64.29亿</strong>企稳，外资508亿扫货<br>
+③<strong>央行2.4万亿</strong>强力托底流动性<br>
+④日元159.37较8/14早159.51略回落（边际缓和但仍警戒）
+</div>
+</div>
+</div>
+
+<!-- ============ 八、7只自选股操作指引 ============ -->
+<div class="card section-anchor" id="ch8">
+<h2>八、7只自选股操作指引</h2>
+<p style="font-size:12px;color:#999;">基于8/14收盘技术面（日线MA/MACD/KDJ/BOLL/RSI）+ 隔夜美股映射 + 周末催化。600641原"万业企业"已更名"先导基电"。注：7只多为8月初以来暴力反弹股，多数KDJ超买、价格逼近BOLL上轨，短线追高风险大。</p>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">富创精密 688409 — 半导体设备零部件</span>
+<span class="badge b-gray">8/14 +0.06% 收209.55</span>
+</div>
+<div class="stock-meta">MA5 210.6 / MA10 190.7 / MA20 186.7 / MA60 200.4 ｜ KDJ J97.7超买 ｜ MACD红柱(DIF-0.92轴下) ｜ 5日+7.18% YTD+210.9%</div>
+<div class="stock-logic"><strong>逻辑：</strong>半导体设备ETF单日暴增222亿、北向增持设备链，唐史"国内算力/卡业绩"直接利好。但J值97.7超买、价格逼近BOLL上轨225.8，短线透支。技术面多头排列（MA5>MA10>MA20）但DIF仍在0轴下。</div>
+<div class="op-row">
+<span class="op op-hold">持有</span><span class="op op-buy">回踩MA10(190.7)/MA20(186.7)分批</span><span class="op op-watch">不追高，J超买</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>超买回调；支撑190.7→186.7，压力225.8（前高216.5）</div>
+</div>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">汇成真空 301392 — 真空镀膜设备</span>
+<span class="badge b-gray">8/14 +0.91% 收169.00</span>
+</div>
+<div class="stock-meta">MA5 172.3 / MA10 159.8 / MA20 156.9 / MA60 193.0 ｜ KDJ J92.3超买 ｜ MACD红柱(DIF-8.82轴下) ｜ 5日-3.8% 20日-14.45%</div>
+<div class="stock-logic"><strong>逻辑：</strong>7月高295深度回调后8月初探底131反弹至169，站上MA20(156.9)但仍处MA60(193)下方，属反弹修复。拟定增不超9.55亿投向超精密半导体及连续式PVD设备（景气主线）。KDJ超买、技术面弱于设备强股。</div>
+<div class="op-row">
+<span class="op op-watch">观望为主</span><span class="op op-buy">回踩MA20(156.9)/MA10(159.8)企稳试仓</span><span class="op op-sell">破156.9反弹转弱</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>反弹未反转；支撑156.9→131，压力193→195.4(BOLL上轨)</div>
+</div>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">京东方A 000725 — 面板+存储相关</span>
+<span class="badge b-gray">8/14 -0.85% 收5.81</span>
+</div>
+<div class="stock-meta">MA5 5.88 / MA10 5.845 / MA20 5.83 / MA60 6.38 ｜ KDJ 61.6中性 ｜ RSI6 44.2偏弱 ｜ 60日+25.38% YTD+39.87%</div>
+<div class="stock-logic"><strong>逻辑：</strong>存储链受益（长鑫市值3.69万亿、DDR5涨价、DRAM供不应求），但技术面偏弱——7月高7.02回落，现价在MA20(5.83)附近、MA60(6.38)下方，RSI6 44.2偏弱，动能不足。需放量站回5.88方谈转强。北向深股通增持（成交活跃榜）。</div>
+<div class="op-row">
+<span class="op op-watch">偏弱整理</span><span class="op op-buy">站回5.88转强再加</span><span class="op op-sell">跌破5.83减仓</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>技术偏弱；支撑5.83→5.37(BOLL下轨)，压力5.88→6.38(MA60)</div>
+</div>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">卧龙电驱 600580 — 机器人电机</span>
+<span class="badge b-gray">8/14 -1.40% 收34.57</span>
+</div>
+<div class="stock-meta">MA5 35.5 / MA20 32.55 / MA60 34.93 ｜ KDJ 51/63/27 ｜ <strong>MACD红柱且DIF+0.80站上0轴（七只中唯一）</strong> ｜ RSI6 48.5 ｜ YTD-29.33%</div>
+<div class="stock-logic"><strong>逻辑：</strong>七只自选股中<strong>MACD结构最健康</strong>（DIF站上0轴），中期修复未破坏，回踩MA20(32.55)不破则维持强势。特斯拉机器人（Optimus量产、25万亿产业）映射电机需求。唐史"能源自主"亦利好电机/电力方向。YTD-29%属修复早期。</div>
+<div class="op-row">
+<span class="op op-hold">持有</span><span class="op op-buy">回踩MA20(32.55)不破加仓</span><span class="op op-sell">破32.55且MACD翻绿离场</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>回踩MA20，破位转弱；支撑32.55→25.9，压力35.5→37.5</div>
+</div>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">欧莱新材 688530 — 靶材（半导体材料）</span>
+<span class="badge b-gray">8/14 +0.43% 收63.61</span>
+</div>
+<div class="stock-meta">MA5 63.05 / MA10 56.9 / MA60 62.35 ｜ KDJ J95.2超买 ｜ MACD红柱(DIF-0.39轴下) ｜ 5日+3.35% YTD+286.9%</div>
+<div class="stock-logic"><strong>逻辑：</strong>唐史"材料紧缺/卡业绩"受益，半导体设备ETF暴增222亿带动材料链。但<strong>YTD+286.9%、J95.2严重超买</strong>，价格接近BOLL上轨69.8，8月以来凌厉上涨已透支短期涨幅，波动剧烈（近10日单日最高+17%）。</div>
+<div class="op-row">
+<span class="op op-watch">超买严重 不追</span><span class="op op-buy">等回踩MA10(56.9)再考虑</span><span class="op op-sell">破56.9短线见顶</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>严重超买回调；支撑56.9→53，压力69.8(BOLL上轨)</div>
+</div>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">先导基电 600641（原万业企业）— 离子注入机</span>
+<span class="badge b-gray">8/14 +0.53% 收34.20</span>
+</div>
+<div class="stock-meta">MA5 34.16 / MA20 29.75 / MA60 32.71 ｜ KDJ J89.6超买 ｜ MACD红柱(DIF-0.19近0轴) ｜ 5日+9.34% YTD+93.88%</div>
+<div class="stock-logic"><strong>逻辑：</strong>国产替代（离子注入机）+算力底座，站上MA20(29.75)/MA60(32.71)，强势反弹。但J89.6超买、逼近BOLL上轨36.66，短线涨幅大。DIF接近0轴（即将转正），结构尚可但追高不宜。</div>
+<div class="op-row">
+<span class="op op-hold">持仓不追</span><span class="op op-buy">回踩MA60(32.7)/MA20(29.75)分批</span><span class="op op-sell">破32.7短线减仓</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>超买；支撑32.7→29.75，压力36.66→前高35.8</div>
+</div>
+
+<div class="stock-card">
+<div class="stock-title">
+<span class="name">鼎通科技 688668 — 连接器+液冷</span>
+<span class="badge b-gray">8/14 +5.78% 收268.68</span>
+</div>
+<div class="stock-meta">MA5 252.4 / MA10 237.3 / MA20 226.3 / MA60 308.4 ｜ KDJ J98.7超买 ｜ MACD红柱(DIF-11.2轴下) ｜ 5日+8.38% YTD+117.4%</div>
+<div class="stock-logic"><strong>逻辑：</strong>连接器/液冷属算力基建链，8/14大涨5.78%逼近BOLL上轨276.3，反弹势头强（8月初探底185暴拉）。但J98.7超买、RSI6 72.3偏强，短线冲高后存在回踩MA10(237.3)需求。唐史"国内算力/液冷"逻辑支撑中期。</div>
+<div class="op-row">
+<span class="op op-watch">反弹强但超买</span><span class="op op-buy">回踩MA10(237.3)/MA20(226.3)再考虑</span><span class="op op-sell">破237.3减仓</span>
+</div>
+<div style="font-size:12px;color:#e67e22;margin-top:6px;"><strong>风险：</strong>超买回踩；支撑237.3→226.3，压力276.3(BOLL上轨)→前高304.8</div>
+</div>
+</div>
+
+<!-- ============ 九、下周一操作策略 ============ -->
+<div class="card section-anchor" id="ch9">
+<h2>九、下周一操作策略（仓位/大盘/板块/回避）</h2>
+
+<h3>1. 仓位策略（周末预判，针对8/17开盘）</h3>
+<table>
+<thead><tr><th>项目</th><th>建议</th><th>逻辑</th></tr></thead>
+<tbody>
+<tr><td>总仓位</td><td><span class="badge b-orange">55-60%（较8/14盘前65-70%下调）</span></td><td>隔夜美股转跌+美债回升至4.69%+原油周涨6%+博通债务警报+缩量4080亿+高位股退潮；但北向回流+央行2.4万亿+外资508亿构成强支撑，不必过度悲观</td></tr>
+<tr><td>科技仓位</td><td>40-45%</td><td>算力硬件（CPO/半导体设备/存储）逻辑最强、资金聚焦，但博通债务+美债升+超买压制，宜回调分批不追高</td></tr>
+<tr><td>防御仓位</td><td>10-15%</td><td>医药/CRO/创新药（业绩+防御）+ 电力（能源自主/唐史逻辑）</td></tr>
+<tr><td>现金</td><td>30-35%</td><td>保留弹药，监控日元160 + 美债4.75% + 8/19 FOMC纪要</td></tr>
+</tbody>
+</table>
+
+<h3>2. 大盘研判（下周一）</h3>
+<div class="point">
+<div class="pt-title">预判：低开震荡消化，结构性机会仍在算力硬件</div>
+<div class="pt-body">隔夜美股转跌+博通债务+美债回升，下周一A股或低开消化。但增量资金（北向回流/央行放水/外资扫货）与8/14 CPO逆势强势提供支撑，预计"指数震荡、结构分化"。<strong>上证支撑</strong>3905(MA10)/3870(MA20)，跌破看3761(BOLL下轨)；<strong>压力</strong>3940(MA5)→3980(BOLL上轨)/3986(MA60)。<strong>创业板</strong>支撑3531/3497，压力3580→3737。指数普遍受MA60压制，需放量突破方能打开空间。</div>
+</div>
+
+<h3>3. 板块策略</h3>
+<table>
+<thead><tr><th>方向</th><th>板块</th><th>操作</th></tr></thead>
+<tbody>
+<tr><td class="up">做多</td><td>CPO/光通信/算力硬件</td><td>8/14最强主线，美股光通信逆势涨（应用光电+15%）映射；回调分批，警惕博通债务叙事扰动</td></tr>
+<tr><td class="up">做多</td><td>半导体设备/材料</td><td>半导体设备ETF单日暴增222亿，资金极致聚焦；富创/欧莱/先导回调至支撑再布局</td></tr>
+<tr><td class="up">做多</td><td>存储链</td><td>长鑫3.69万亿、DDR5涨价、中芯/华虹Q2创新高；京东方A受益但技术偏弱等转强</td></tr>
+<tr><td class="up">配置</td><td>医药/CRO/创新药</td><td>业绩+防御双属性，外资看多医疗方向</td></tr>
+<tr><td class="up">配置</td><td>电力/电网/储能</td><td>唐史"能源自主"未计价长逻辑；能源安全主线</td></tr>
+<tr><td class="down">谨慎</td><td>高位超买科技股</td><td>富创J97.7/欧莱J95.2/先导J89.6/鼎通J98.7均超买，不追高</td></tr>
+<tr><td class="down">回避</td><td>贵金属/有色</td><td>黄金平淡+前期拥挤；油价涨但非A股主线</td></tr>
+</tbody>
+</table>
+
+<h3>4. 回避清单</h3>
+<div class="alert alert-red">
+<strong>下周一回避：</strong>①<strong>高位超买追高</strong>（富创J97.7/欧莱J95.2/鼎通J98.7/先导J89.6，均逼近BOLL上轨）；②<strong>博通债务链传导</strong>的高估值AI基础设施/算力租赁标的（警惕美股科技估值重估）；③<strong>缩量环境下的纯叙事bom</strong>（唐史明确"卡业绩、远叙事"）；④<strong>贵金属/有色</strong>（前期拥挤+黄金平淡）；⑤<strong>高位题材退潮股</strong>（8/14已现跌停，规避中位补跌）。
+</div>
+
+<h3>5. 关键监控点位与事件</h3>
+<table>
+<thead><tr><th>监控项</th><th>阈值/时间</th><th>触发动作</th></tr></thead>
+<tbody>
+<tr><td>美元/日元</td><td>突破160</td><td>立即降仓至50%以下，套利平仓黑天鹅</td></tr>
+<tr><td>10Y美债收益率</td><td>突破4.75%</td><td>科技估值进一步承压，减仓高估值科创</td></tr>
+<tr><td>上证指数</td><td>跌破3870(MA20)</td><td>降仓，看3761(BOLL下轨)</td></tr>
+<tr><td>上证指数</td><td>站上3940-3986</td><td>确认反弹，可加仓科技</td></tr>
+<tr><td>FOMC会议纪要</td><td>8/19（周三）18:00</td><td>定调9月路径，影响全球风险偏好</td></tr>
+<tr><td>央行逆回购</td><td>8/17-19每日6000亿</td><td>观察流动性实际投放，宽松托底信号</td></tr>
+<tr><td>霍尔木兹/油价</td><td>WTI突破85或回落80下</td><td>突破=通胀加压利空；回落=成长估值修复</td></tr>
+</tbody>
+</table>
+
+<div class="alert alert-orange">
+<strong>一句话策略：</strong>隔夜美股转跌+美债回升至4.69%+原油周涨6%，宏观格局较8/14盘前转谨慎，仓位由65-70%<strong>下调至55-60%防守</strong>。但北向回流64亿+央行放水2.4万亿+外资508亿美元扫货构成强支撑，算力硬件（CPO/半导体设备/存储）仍是资金聚焦的最强主线，回调分批布局、不追高位超买。监控日元160与美债4.75%双阈值，重点看8/19 FOMC纪要与下周一量能能否回升。
+</div>
+</div>
+
+<div class="disclaimer">
+<strong>免责声明：</strong>本报告由自动化舆情分析流程生成，基于公开网络信息（微博、新闻、财经数据接口）整合而成，仅供个人投资参考，<strong>不构成任何投资建议或操作指令</strong>。报告中的所有判断、信号、共振分析、操作策略均为基于当日可得信息的推演，存在信息滞后、口径差异、数据误差等风险。股市有风险，投资需谨慎。读者应基于自身风险承受能力独立决策，据此操作盈亏自负。报告中涉及的个股仅为自选股跟踪分析，不构成推荐买入或卖出。自动化流程不对任何依据本报告进行的投资行为承担责任。
+</div>
+
+</div>
+</body>
+</html>
