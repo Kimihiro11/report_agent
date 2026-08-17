@@ -3,7 +3,7 @@
 """
 限时关注的重点数据解析（focus_monitor）
 
-监控三类「在动了就危险」的宏观引爆信号（日元主导传导链末端的关键动作）：
+监控三类日元主导传导链末端的宏观引爆信号（任一被确认即触发危险告警）：
   1) 抛美债       —— 日本/中国/海外持有的美国国债被主动抛售/减持（TIC 数据、官方表态）
   2) FIMA 工具    —— 美联储 FIMA 回购便利工具被启用 / 用量激增（外国央行押美债借美元干预汇率）
   3) 大机构日元加息 —— 高盛/摩根/三菱日联/野村等主流机构上调日本央行加息预测
@@ -12,13 +12,14 @@
            代理开启时 Google 可达，本模块「代理感知」——读取 HTTPS_PROXY/HTTP_PROXY 环境变量，
            或在 config.json 的 focus_monitor.proxy 显式配置。
 
-检测逻辑：若任一信号在近端时间窗内（默认 3 天）出现「动作型」报道（不仅是背景讨论），
-          判定为「在动了」，触发全屏危险告警：危险 危险 危险⚠️
+检测逻辑：若任一信号在近端时间窗（window_days，默认 3 天）内检获「动作型确认报道」
+          （mention+action 双命中且非否定表述），即判定为「触发（TRIGGERED）」，
+          弹出全屏危险告警：危险 危险 危险⚠️
 
 用法：
     python focus_monitor.py            # 实时爬取 + 检测 + 存 JSON + 生成独立 HTML
     python focus_monitor.py --no-fetch # 不爬取，仅用上次缓存 state JSON 渲染（离线模式）
-    python focus_monitor.py --days 2   # 设置「在动了」的近端时间窗（天）
+    python focus_monitor.py --days 2   # 设置近端时间窗（天），用于「近端」展示与热度提示
 
 也可被其他模块 import：
     from focus_monitor import run_focus_monitor, render_focus_html
@@ -189,10 +190,10 @@ def _kw_hit(text, keyword):
 
 
 def _crawl_signal(sig, opener, window_days, max_age_days):
-    """抓取单个信号的所有查询词，按 mention+action 且排除 negation 判定「在动了」。
+    """抓取单个信号的所有查询词，按 mention+action 且排除 negation 判定「触发（TRIGGERED）」。
 
-    - window_days：仅用于「近端」展示标签与 hot 热度提示（短窗口）。
-    - max_age_days：判定「在动了」的有效时效（这些宏观引爆信号半衰期以周计，
+    - window_days：仅用于「近端」展示标签与热度提示（短窗口）。
+    - max_age_days：触发判定的有效时效（这些宏观引爆信号半衰期以周计，
       不能按 3 天死卡，否则会漏掉仍在发酵的既成动作型报道）。无 pubDate 的
       报道视为「新鲜」（Google 已按时效/相关度排序）。
     """
@@ -254,12 +255,12 @@ def _crawl_signal(sig, opener, window_days, max_age_days):
             fresh_action += 1
             _extract_metrics(it["text"], metrics)
 
-    moving = fresh_action >= 1
+    triggered = fresh_action >= 1
     # 热点：近端存在较多讨论（即便未确认动作），用于「关注」提示
     hot = len(recent) >= 3
     return {
         "label": sig["label"],
-        "moving": moving,
+        "triggered": triggered,
         "hot": hot,
         "total_count": len(items_all),
         "recent_count": len(recent),
@@ -351,29 +352,29 @@ def build_state(config, no_fetch=False, days=None):
 
     signals_cfg = config.get("signals", {})
     any_reachable = False
-    moving_labels = []
+    triggered_labels = []
     for key, sig in signals_cfg.items():
         print(f"[焦点监控] 抓取信号: {sig['label']} ...")
         res = _crawl_signal(sig, opener, window, max_age)
         state["signals"][key] = res
         if res["reachable"]:
             any_reachable = True
-        if res["moving"]:
-            moving_labels.append(sig["label"])
+        if res["triggered"]:
+            triggered_labels.append(sig["label"])
         print(f"    总条目 {res['total_count']} | 近端 {res['recent_count']} | "
-              f"动作型 {res['recent_action_count']} | 在动了: {res['moving']}")
+              f"动作型 {res['recent_action_count']} | 触发: {res['triggered']}")
 
     state["reachable"] = any_reachable
-    state["severity"] = len(moving_labels)
-    if moving_labels:
+    state["severity"] = len(triggered_labels)
+    if triggered_labels:
         state["danger"] = True
         state["banner"] = "危险 危险 危险⚠️"
-        state["note"] = "检测到以下信号「在动了」：" + "、".join(moving_labels)
+        state["note"] = "以下信号已触发（动作型确认报道）：" + "、".join(triggered_labels)
     else:
         if not any_reachable:
-            state["note"] = "外网不可达（代理未开启或 Google/Bing 均超时），无法判定信号是否「在动了」，请检查网络/代理后重跑。"
+            state["note"] = "外网不可达（代理未开启或 Google/Bing 均超时），无法完成信号研判，请检查网络/代理后重跑。"
         else:
-            state["note"] = "近端时间窗内未检测到三类信号的「动作型」报道，当前平静。"
+            state["note"] = "近端时间窗内未检获三类信号的动作型确认报道，当前平静。"
     return state
 
 
@@ -396,7 +397,7 @@ def render_focus_html(state, standalone=False):
               letter-spacing:2px;box-shadow:0 4px 14px rgba(214,48,49,.35);">
     ⚠️ {banner} ⚠️
     <div style="font-size:13px;font-weight:500;margin-top:6px;opacity:.95;">
-      监测到日元主导传导链末端引爆信号「在动了」，警惕全球流动性收紧→A股风险偏好受压
+      日元主导传导链末端引爆信号已触发，警惕全球流动性收紧 → A股风险偏好承压
     </div>
   </div>'''
     else:
@@ -412,8 +413,8 @@ def render_focus_html(state, standalone=False):
             status = "数据缺失"
             scolor = color_neutral
             badge = f'<span style="background:#dfe6e9;color:#636e72;padding:2px 8px;border-radius:6px;font-size:12px;">外网不可达</span>'
-        elif s.get("moving"):
-            status = "在动了 ⚠️"
+        elif s.get("triggered"):
+            status = "触发 · 动作型确认"
             scolor = color_up
             badge = f'<span style="background:{color_up};color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:700;">危险</span>'
         elif s.get("hot"):
