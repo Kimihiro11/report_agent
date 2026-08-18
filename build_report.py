@@ -650,19 +650,63 @@ def deconstruct_weibo():
         consensus = ("分歧", "b-orange")
 
     # 个股 / 板块提及解构：名称或行业命中即视为被大V覆盖，记录多空净分
+    # 输出结构化研判：有相关舆情 → 一句话；无 → 不输出（保持 stock_mentions 为空）
+    tangshi_deep = load_tangshi_deep()
+    ts_main = (tangshi_deep or {}).get("deep_view", {}).get("mainline", []) if tangshi_deep else []
+    ts_avoid = (tangshi_deep or {}).get("deep_view", {}).get("avoid", []) if tangshi_deep else []
     stock_mentions = {}
     for code in WATCHLIST:
         nm = watch_name(code)
         sec = SECTOR.get(code, "")
+        # 1) 大V点名（名称或行业在当日微博中被提及）
+        hits = []
         for t in all_vs:
             kw = (nm if (nm and nm in t) else None) or (sec if (sec and sec in t) else None)
             if not kw:
                 continue
             sc = _score_text(t)
-            info = stock_mentions.setdefault(code, {"name": nm, "score": 0, "snippets": []})
-            info["score"] += sc
             i = t.find(kw)
-            info["snippets"].append(t[max(0, i - 12):i + len(kw) + 24])
+            hits.append({"score": sc, "snippet": t[max(0, i - 12):i + len(kw) + 24]})
+        # 2) 主题命中：自选股行业与板块共振匹配
+        sec_hit = bool(sec) and any(k in sec for k in matched_sectors)
+        # 3) 唐史深度主线/回避命中：自选股行业 → 唐史主线关键词的精确映射
+        #    主线命中优先级：国产替代/脱钩替代 > AI算力(光/超节点) > 存储 > 新动能
+        ts_hit = None
+        if ts_main:
+            ts_map = [
+                (["半导体", "设备", "离子注入", "靶材", "零部件", "PVD", "封装"], "国产替代/脱钩替代"),
+                (["光", "算力", "液冷", "连接器", "超节点"], "AI算力（光模块/超节点）"),
+                (["存储", "面板"], "存储（光弱则存强）"),
+            ]
+            for kws, main_name in ts_map:
+                if any(k in sec for k in kws):
+                    ts_hit = main_name
+                    break
+        if hits or sec_hit or ts_hit:
+            total_sc = sum(h["score"] for h in hits)
+            # 唐史主线命中：方向跟随唐史深度解读（偏多/结构性）；主题覆盖默认中性
+            if ts_hit:
+                ts_dir = (tangshi_deep or {}).get("deep_view", {}).get("direction", "偏多")
+                tone = ts_dir  # 如"偏多（结构性）"，直接沿用
+                cls = "b-red" if "偏多" in ts_dir else ("b-green" if "偏空" in ts_dir else "b-blue")
+            elif total_sc > 0:
+                tone, cls = "偏多", "b-red"
+            elif total_sc < 0:
+                tone, cls = "偏空", "b-green"
+            else:
+                tone, cls = "中性", "b-blue"
+            if hits:
+                src = "大V点名"
+                one_liner = f"{nm}（{sec}）被大V提及：{tone}（{len(hits)}条相关）"
+            elif sec_hit:
+                src = "主题覆盖"
+                one_liner = f"{nm}（{sec}）与板块共振「{'、'.join(matched_sectors)}」相关"
+            else:
+                src = "唐史主线"
+                one_liner = f"{nm}（{sec}）贴合唐史主线「{ts_hit}」"
+            stock_mentions[code] = {"name": nm, "score": total_sc, "snippets": [h["snippet"] for h in hits],
+                                    "tone": tone, "cls": cls, "src": src, "one_liner": one_liner,
+                                    "has_snippet": bool(hits)}
 
     # 关键论点：净分绝对值最高的代表性观点（仅当日更新，已解构，非原文堆砌）
     key = []
@@ -785,30 +829,21 @@ def vs_summary():
                        f"—— {'两者背离，需警惕情绪拖累' if diverge else '相互印证'}。"
                        f"舆情已解构为研判信号，不为原文堆砌。")
 
-    stock_bits = []
+    # 自选股舆情研判：有相关舆情 → 一句话；无 → 不加（去「未提及」占位）
+    stock_items = []
     for code in WATCHLIST:
         nm = watch_name(code)
         info = d["stock_mentions"].get(code)
-        if info and info["snippets"]:
-            if info["score"] > 0:
-                cls, tone = "b-red", "偏多"
-            elif info["score"] < 0:
-                cls, tone = "b-green", "偏空"
-            else:
-                cls, tone = "b-blue", "中性"
-            stock_bits.append(f'<span class="badge {cls}">{nm}·{tone}</span>')
-        else:
-            # 大V未点名，但板块主题被舆情共振命中时标注「主题覆盖」
-            sec = SECTOR.get(code, "")
-            sec_hit = bool(sec) and any(k in sec for k in matched_sectors)
-            if sec_hit:
-                stock_bits.append(f'<span class="badge b-blue">{nm}·主题覆盖</span>')
-            else:
-                stock_bits.append(f'<span class="tag">{nm}·未提及</span>')
+        if not info:
+            continue  # 无相关舆情，不输出
+        badge = f'<span class="badge {info.get("cls", "b-blue")}">{nm}·{info.get("tone", "中性")}</span>'
+        stock_items.append(f'<div style="margin:4px 0">{badge} <span style="font-size:12.5px;color:#444">{_esc(info.get("one_liner", ""))}</span></div>')
     if not updated_any:
-        stock_line = '<p class="muted">当日无大V更新，自选股无新增舆情信号（主题覆盖仅反映指数层面共振）。</p>'
+        stock_line = '<p class="muted">当日无大V更新，自选股无新增舆情信号（唐史主线/板块共振仍可参考）。</p>'
+    elif stock_items:
+        stock_line = "".join(stock_items)
     else:
-        stock_line = " ".join(stock_bits)
+        stock_line = '<p class="muted">当日自选股均无大V点名、主题共振或唐史主线关联，暂无相关舆情。</p>'
 
     if not updated_any:
         key_html = '<p class="muted">当日无大V更新，无关键论点可解构。</p>'
