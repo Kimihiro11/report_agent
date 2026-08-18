@@ -41,7 +41,7 @@ report_agent/
 │   └── news_intel/           # 外网资讯解析原始抓取（news_intel_YYYYMMDD.json，按需版本化）
 │
 ├── reports/                  # 产出报告（版本控制）
-│   ├── 早报/  晚报/  周报/  回测/  早期版本/  限时关注/
+│   ├── 早报/  晚报/  周报/  回测/  早期版本/
 │
 └── archive/                  # 历史版本归档（按日期）
 ```
@@ -77,9 +77,9 @@ report_agent/
 4) 回测（晚报/周报之后）
    python backtest.py --all
 
-5) 限时关注监测：日本央行加息程度研判（独立 / 已嵌入报告，置于「今日操作策略」之前）
-   python focus_monitor.py            # 实时抓取各大所英文研报+解析正文+研判，写入 data/focus/ 与 reports/限时关注/
-   python focus_monitor.py --no-fetch # 用上次缓存 state 重渲染
+5) 限时关注监测：日本央行加息程度研判（仅产出 state JSON，由日报内联呈现，置于「今日操作策略」之前；不单独产出独立页）
+   python focus_monitor.py            # 实时抓取各大所英文研报+解析正文+研判，写入 data/focus/focus_state_YYYYMMDD.json
+   python focus_monitor.py --no-fetch # 用上次缓存 state JSON（离线模式）
    python focus_monitor.py --days 7   # 设置近端时间窗（天，默认 7）
 ```
 

@@ -19,9 +19,13 @@
 数据缺口策略：任一源失败 / 超时自动跳过，绝不编造；无内容的机构标"观点缺失"。
 
 用法：
-    python focus_monitor.py            # 实时抓取 + 解析 + 研判 + 存 JSON + 独立 HTML
-    python focus_monitor.py --no-fetch # 不抓取，仅用上次缓存 state JSON 渲染（离线模式）
+    python focus_monitor.py            # 实时抓取 + 解析 + 研判 + 存 state JSON（日报内联渲染）
+    python focus_monitor.py --no-fetch # 不抓取，仅用上次缓存 state JSON（离线模式）
     python focus_monitor.py --days 7   # 设置近端时间窗（天），默认 7（研报时效以周计）
+
+不再单独产出独立页 / 片段（2026-08-18 起）：focus 章节由 build_report.py 实时读取
+state JSON 内联嵌入日报，置于「今日操作策略」之前；data/focus/focus_state_<DATE8>.json
+是唯一产出物。
 
 也可被其他模块 import：
     from focus_monitor import run_focus_monitor, render_focus_html
@@ -669,17 +673,14 @@ def render_focus_html(state, standalone=False, embed=False):
 
 
 def save_outputs(state):
+    """仅持久化 state JSON（日报实时读取内联渲染），不再单独产出独立页。"""
     date8 = state.get("date") or datetime.now().strftime("%Y%m%d")
     focus_dir = OUTPUT_DIR / "data" / "focus"
     focus_dir.mkdir(parents=True, exist_ok=True)
     json_path = focus_dir / f"focus_state_{date8}.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2, default=str)
-    rep_dir = OUTPUT_DIR / "reports" / "限时关注"
-    rep_dir.mkdir(parents=True, exist_ok=True)
-    html_path = rep_dir / f"focus-{date8}.html"
-    html_path.write_text(render_focus_html(state, standalone=True), encoding="utf-8")
-    return json_path, html_path
+    return json_path
 
 
 def run_focus_monitor(no_fetch=False, days=None):
@@ -707,12 +708,7 @@ def main():
     if state.get("note"):
         print(f"   {state['note']}")
     print("=" * 56)
-    frag = render_focus_html(state, standalone=False)
-    out_dir = OUTPUT_DIR / "reports" / "限时关注"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    frag_path = out_dir / f"focus-fragment-{state.get('date')}.html"
-    frag_path.write_text(frag, encoding="utf-8")
-    print(f"[焦点监控] 章节片段已写: {frag_path}")
+    print("[焦点监控] 已写入 state JSON（日报实时读取内联渲染，不再单独产出独立页/片段）")
 
 
 if __name__ == "__main__":
