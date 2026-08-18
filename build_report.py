@@ -175,6 +175,21 @@ def _parse_weibo_time(created_at):
         return None
 
 
+def load_tangshi_deep():
+    """读取唐史主任当日深度解读（Agent 研读注入，data/weibo_deep/tangshi_<DATE8>.json）。
+
+    唐史为 T1 大局方向掌控者，其博文不做简单多空打分，而由 Agent 研读近几日观点链后
+    解构为结构化深度解读（核心逻辑/方向/主线/回避/操作/风险）。文件缺失返回 None。
+    """
+    try:
+        p = BASE_DIR / "data" / "weibo_deep" / f"tangshi_{DATE8}.json"
+        if not p.exists():
+            return None
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def wb_posts(name):
     """返回某大V「当日更新」的微博条目 [{"text","time","date"}]；time 缺失/非当日一律剔除。
 
@@ -732,6 +747,8 @@ def vs_summary():
     idx_n = len(quotes) if quotes else 0
 
     # 各源按等级+角色总结（当日更新才计入；未更新源单独标注）
+    # 唐史（T1）不走简单多空，改用 Agent 深度解读（若已注入）
+    tangshi_deep = load_tangshi_deep()
     src_bits = []
     updated_any = False
     for name, s in d["src_scores"].items():
@@ -742,6 +759,12 @@ def vs_summary():
             src_bits.append(f'<span class="tag">{name}（T{tier}·{desc}）当日未更新</span>')
             continue
         updated_any = True
+        if tier == 1 and tangshi_deep:
+            # T1 深度解读：不展示简单多空分，标记由深度卡片承载
+            src_bits.append(f'<span class="badge {tangshi_deep.get("deep_view", {}).get("direction_cls", "b-red")}">'
+                            f'{name}（T1·{desc}）：{tangshi_deep.get("deep_view", {}).get("direction", "偏多")}'
+                            f'（深度解构 ↓）</span>')
+            continue
         tag = "看多" if s > 0 else ("看空" if s < 0 else "中性")
         cls = "b-red" if s > 0 else ("b-green" if s < 0 else "b-blue")
         tier_tag = "T1" if tier == 1 else "T2"
@@ -798,10 +821,29 @@ def vs_summary():
     risk_html = "".join(f'<div class="alert-red">⚠ {_esc(t)}…</div>' for t in d["risks"]) or \
         '<p class="muted">实时风险因子（日本传导链 / 事件）未提取到明确利空信号。</p>'
 
+    # T1 唐史主任深度解读卡片（Agent 研读注入，非词库打分）
+    deep_html = ""
+    if tangshi_deep and updated_any:
+        dv = tangshi_deep.get("deep_view", {})
+        mainline = "、".join(dv.get("mainline", []))
+        avoid = "、".join(dv.get("avoid", []))
+        deep_html = f'''
+      <div class="cc-head">唐史主任深度解构（T1·大局方向掌控者，研读近3日观点链）</div>
+      <div class="cc-body">
+        <div class="alert-blue" style="margin-bottom:8px"><b>核心逻辑：</b>{_esc(dv.get("core_logic", ""))}</div>
+        <div style="margin-bottom:6px"><b>方向：</b><span class="badge {dv.get("direction_cls", "b-blue")}">{_esc(dv.get("direction", ""))}</span>
+        &nbsp;<b>主线：</b>{_esc(mainline)}</div>
+        <div style="margin-bottom:6px"><b>回避：</b>{_esc(avoid)}</div>
+        <div class="alert-orange" style="margin-bottom:8px"><b>操作含义：</b>{_esc(dv.get("action", ""))}</div>
+        <div class="alert-red" style="margin-bottom:8px"><b>风险点：</b>{_esc("；".join(dv.get("risks", [])))}</div>
+        <p class="muted" style="font-size:12px;margin-top:6px"><b>研读总结：</b>{_esc(dv.get("summary", ""))}</p>
+      </div>'''
+
     return f'''
     <div class="cc-view">
       <div class="cc-head">大V共识解构</div>
       <div class="cc-body">{consensus_html}</div>
+      {deep_html}
       <div class="cc-head">大盘研判（解构信号 → 指数确认）</div>
       <div class="cc-body">{market_view}</div>
       <div class="cc-head">自选股解构（大V提及与多空倾向）</div>
