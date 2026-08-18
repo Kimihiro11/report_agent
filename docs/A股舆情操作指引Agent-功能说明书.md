@@ -27,7 +27,7 @@
 | 6 | 个股技术面 | `fetch_kline` + `fetch_technical_analysis` | 新浪日 K，MA5/10/20/60 + 多空排列判断 |
 | 7 | 国家队/资金流 | `fetch_national_team` + `build_report` 的 ETF 章节 | 宽基 ETF 净流 + 半导体/科创 ETF 逆势吸金 |
 | 8 | 9 章节完整报告生成 | `build_report.py`（实时模板） | 见第四节结构；**必须用 WebSearch 实时数据拼装** |
-| 9 | 个股见顶诊断引擎 | `peak_detector.py` + `stock_diagnosis.py` | 5 维度评分 + 见底缓冲，输出评分/等级/趋势，嵌入自选股卡片 |
+| 9 | 个股见顶诊断引擎 | `peak_detector.py` + `stock_diagnosis.py` | 五维评分（超买25/成交20/背离15/衰竭20/破位20，100 分制，见底缓冲已移除），输出评分/等级/趋势，嵌入自选股卡片 |
 | 10 | 舆情数据 + 报告入库 | `db.py: StockAgentDB` | PostgreSQL（库 `a_stock_agent`），本地 JSON 兜底 |
 | 11 | 个股判断回测与交叉验证 | `backtest.py` | 从报告提取判断 → 新浪日 K 回测 1/3/5 日 → 独立技术信号对照 |
 | 12 | 报告上传资料库 | 资料库技能（connect_open_platform + import_html） | 上传「我的文档」，JSON 校验无外链 |

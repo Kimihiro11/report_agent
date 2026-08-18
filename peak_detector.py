@@ -3,13 +3,12 @@
 """
 股票诊断系统 v2.0
 
-评分体系（风险分累加，总分经见底缓冲修正后映射到 0-100）：
-  - 超买程度   35分  (RSI/KDJ/WR/CCI/MFI/PSY + 短期涨幅)
-  - 成交活跃度 15分  (换手率 + 成交额 + 量比)
+评分体系（100分制）：
+  - 超买程度   25分  (RSI/KDJ/WR/CCI/MFI/PSY + 短期涨幅)
+  - 成交活跃度 20分  (换手率 + 成交额 + 量比)
   - 量价背离   15分  (价新高量未新高 + OBV背离 + VR过热)
   - 趋势衰竭   20分  (MACD顶背离 + 红柱缩短 + ADX拐头 + BIAS乖离)
-  - 形态破位   40分  (跌破5日线 + 布林中轨 + MACD/KDJ死叉 + 放量下跌)
-  - 见底信号  -35分  (安全缓冲，从总分中减去；维度满分见 print_diagnosis)
+  - 形态破位   20分  (跌破5日线 + 布林中轨 + MACD/KDJ死叉 + 放量下跌)
 
 风险等级：
   70-100分  🔴 极度危险 - 见顶确认，立即离场
@@ -250,7 +249,6 @@ def get_realtime_quote(code, adjust_for_intraday=True):
     
     try:
         resp = requests.get(url, timeout=10)
-        resp.encoding = 'gbk'  # 腾讯行情接口（qt.gtimg.cn）返回 GBK，默认 ISO-8859-1 会致中文名乱码
         data = resp.text
         
         if '=' in data and '~' in data:
@@ -270,7 +268,7 @@ def get_realtime_quote(code, adjust_for_intraday=True):
                 def safe_float(idx, default=0):
                     try:
                         return float(parts[idx]) if idx < len(parts) and parts[idx] else default
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError, IndexError):
                         return default
                 
                 price = safe_float(3)
@@ -728,11 +726,11 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     if boll_factor != 1.0 and original_overbought > 0:
         adjustments.append(f'BOLL位置修正（最高价）：布林位置{boll_pct:.1f}%（{boll_desc}），超买{original_overbought:.1f}分×{boll_factor:.2f}，调整为{overbought_score:.1f}分')
     
-    overbought_score = min(overbought_score, 35)
+    overbought_score = min(overbought_score, 25)
     total_score += overbought_score
     
     # ============================================================
-    # 维度二：成交活跃度（15分）
+    # 维度二：成交活跃度（20分）
     # 三个独立维度：换手率（绝对水平）+ 成交量分位（相对历史）+ 量比（短期放量）
     # ============================================================
     turnover_score = 0
@@ -804,7 +802,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     if boll_pct >= 100 and turnover_score > 0:
         turnover_score *= 1.2
     
-    turnover_score = min(turnover_score, 15)
+    turnover_score = min(turnover_score, 20)
     total_score += turnover_score
     
     # ============================================================
@@ -1139,7 +1137,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     total_score += exhaustion_score
     
     # ============================================================
-    # 维度五：形态破位（25分）
+    # 维度五：形态破位（20分）
     # 逻辑：出现破位信号，分数越高
     # ============================================================
     breakdown_score = 0
@@ -1438,9 +1436,14 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
                     breakdown_score += min(m_head_score, 8)
                     signals.append(('二次冲顶/M头', '，'.join(m_head_desc), min(m_head_score, 8), '破位'))
     
-    breakdown_score = min(breakdown_score, 40)
+    breakdown_score = min(breakdown_score, 20)
     total_score += breakdown_score
-
+    
+    # ============================================================
+    # 维度六：板块情绪（已移除）
+    # ============================================================
+    sector_score = 0
+    
     # ============================================================
     # 见底信号（减分项）- 超卖 + 底背离
     # 逻辑：出现底部信号，从总分中减去，避免下跌到底部还显示高危
@@ -1450,7 +1453,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     
     # 判断是否还在下跌趋势/低位，只有下跌时才算见底信号
     pct60 = latest.get('PRICE_PCT_60', 50)
-    is_downtrend = breakdown_score >= 10 or pct60 < 50
+    is_downtrend = breakdown_score >= 5 or pct60 < 50
     
     # 1. RSI超卖（最高7分）
     rsi6 = latest['RSI6']
@@ -1563,20 +1566,39 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
                 signals.append(('MACD底背离', f'收盘价新低绿柱缩小{macd_green_shrink_ratio*100:.0f}%', -2, '见底'))
     
     # 6. RSI底背离（最高3分）
-    if len(indicators) >= 20:
-        recent = indicators.iloc[-20:]
-        price_low_idx = recent['low'].idxmin()
-        price_low_rsi = recent.loc[price_low_idx, 'RSI6']
+    if len(indicators) >= 30:
+        # 在最近30天内找两个最低价的点进行比较（与MACD底背离逻辑一致）
+        last30 = indicators.iloc[-30:].copy().reset_index(drop=True)
         
-        earlier = indicators.iloc[-40:-20] if len(indicators) >= 40 else indicators.iloc[:-20]
-        if len(earlier) > 5:
-            earlier_low_idx = earlier['low'].idxmin()
-            earlier_low_price = earlier.loc[earlier_low_idx, 'low']
-            earlier_low_rsi = earlier.loc[earlier_low_idx, 'RSI6']
+        # 找最低价（第一个低点）
+        first_low_idx = last30['low'].idxmin()
+        first_low_price = last30.loc[first_low_idx, 'low']
+        first_low_rsi = last30.loc[first_low_idx, 'RSI6']
+        
+        # 找第二低价（第二个低点）
+        remaining = last30.drop(first_low_idx)
+        second_low_idx = remaining['low'].idxmin()
+        second_low_price = remaining.loc[second_low_idx, 'low']
+        second_low_rsi = remaining.loc[second_low_idx, 'RSI6']
+        
+        # 两个低点间隔至少5天
+        days_between = abs(second_low_idx - first_low_idx)
+        
+        if days_between >= 5:
+            # 确定哪个是早低点，哪个是晚低点
+            if first_low_idx < second_low_idx:
+                early_low_price = first_low_price
+                early_low_rsi = first_low_rsi
+                late_low_price = second_low_price
+                late_low_rsi = second_low_rsi
+            else:
+                early_low_price = second_low_price
+                early_low_rsi = second_low_rsi
+                late_low_price = first_low_price
+                late_low_rsi = first_low_rsi
             
-            current_low = recent['low'].min()
-            
-            if current_low < earlier_low_price and price_low_rsi > earlier_low_rsi:
+            # 最低价底背离：晚低点最低价创新低，但RSI未创新低
+            if late_low_price < early_low_price and late_low_rsi > early_low_rsi:
                 bottom_score += 3
                 signals.append(('RSI底背离', '价新低RSI未新低', -3, '见底'))
     
@@ -1676,7 +1698,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
         bottom_score += health_score
     
     bottom_score = min(bottom_score, 35)
-    total_score -= bottom_score
+    # 见底缓冲已移除（2026-08-18）：见底信号不再从总分中扣除，仅保留趋势状态判断与降权参考
     
     # ============================================================
     # 根据见底信号动态调整跌破60日线的权重
@@ -1714,15 +1736,15 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     is_parabolic = False
     if len(indicators) >= 6:
         pct_5d = (latest['close'] - indicators.iloc[-6]['close']) / indicators.iloc[-6]['close'] * 100
-        if pct_5d >= 30 and overbought_score >= 15 and breakdown_score < 5:
+        if pct_5d >= 30 and overbought_score >= 11 and breakdown_score < 3:
             is_parabolic = True
     
-    # 趋势状态判断（阈值按满分40分设计）
-    if bottom_score >= 20 and breakdown_score >= 24:
+    # 趋势状态判断（阈值按新满分设计：破位20分 / 超买25分）
+    if bottom_score >= 20 and breakdown_score >= 12:
         # 严重超卖 + 形态破位严重 → 超跌见底，强支撑位
         trend_status = '超跌见底'
         trend_color = '🟣'
-    elif bottom_score >= 15 and breakdown_score >= 16:
+    elif bottom_score >= 15 and breakdown_score >= 8:
         # 明显超卖 + 形态破位 → 底部区域
         trend_status = '底部区域'
         trend_color = '🟢'
@@ -1730,11 +1752,11 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
         # 超卖 + 大涨 → 见底反弹
         trend_status = '见底反弹'
         trend_color = '🟢'
-    elif breakdown_score >= 24 and overbought_score < 10:
+    elif breakdown_score >= 12 and overbought_score < 7:
         # 形态破位严重，超买已经消化，处于下跌趋势
         trend_status = '下跌趋势'
         trend_color = '🔵'
-    elif breakdown_score >= 16:
+    elif breakdown_score >= 8:
         # 形态已经破位，见顶确认
         trend_status = '见顶确认'
         trend_color = '🔴'
@@ -1742,11 +1764,11 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
         # 加速冲顶
         trend_status = '加速冲顶'
         trend_color = '🟠'
-    elif overbought_score >= 20:
+    elif overbought_score >= 14:
         # 严重超买，见顶风险高
         trend_status = '高位超买'
         trend_color = '🟡'
-    elif overbought_score >= 10:
+    elif overbought_score >= 7:
         # 轻度超买
         trend_status = '上涨趋势'
         trend_color = '🟢'
@@ -1843,7 +1865,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     # 等级数值：安全=1, 预警=2, 高危=3, 极度危险=4
     min_level_num = 0
     bottom_abs = abs(bottom_score)
-    if breakdown_score >= 32:
+    if breakdown_score >= 16:
         # 严重破位（80%）
         if exhaustion_score >= 8 and bottom_abs < 3:
             # 刚破位，趋势衰竭，还没超卖 → 极度危险
@@ -1857,7 +1879,7 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
         else:
             # 破位严重，严重超卖 → 安全（下跌后期，可能反弹）
             min_level_num = 1
-    elif breakdown_score >= 24:
+    elif breakdown_score >= 12:
         # 中度破位（60%）
         if bottom_abs < 5:
             min_level_num = 3  # 接近高危
@@ -1865,14 +1887,14 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
             min_level_num = 2  # 已经超卖，风险降低
         else:
             min_level_num = 1  # 严重超卖
-    elif breakdown_score >= 14:
+    elif breakdown_score >= 7:
         # 轻度破位（35%）
         # 形态已经破位，至少是预警
         min_level_num = 2
     
     if min_level_num > 0:
         level_names = {1: '安全', 2: '预警', 3: '高危', 4: '极度危险'}
-        adjustments.append(f'形态破位加权：形态破位{breakdown_score:.1f}分（{"严重" if breakdown_score>=32 else "中度" if breakdown_score>=24 else "轻度"}），见底信号{bottom_score:.0f}分，最低风险等级设为{level_names[min_level_num]}（分数不硬拉）')
+        adjustments.append(f'形态破位加权：形态破位{breakdown_score:.1f}分（{"严重" if breakdown_score>=16 else "中度" if breakdown_score>=12 else "轻度"}），见底信号{bottom_score:.0f}分，最低风险等级设为{level_names[min_level_num]}（分数不硬拉）')
     
     # 加速冲顶阶段降权：
     # 逻辑：5日涨幅大 + 超买严重 + 形态没破位 → 虽然风险高但可能还会继续涨
@@ -1880,12 +1902,12 @@ def diagnose_peak(indicators, quote=None, sector_indicators=None):
     # 但如果超买BOLL修正后超过40分，说明超买极其严重，加速冲顶降权失效，直接正常评级
     if len(indicators) >= 6:
         pct_5d = (latest['close'] - indicators.iloc[-6]['close']) / indicators.iloc[-6]['close'] * 100
-        if pct_5d >= 20 and overbought_score >= 20 and breakdown_score < 14 and overbought_after_boll <= 40:
+        if pct_5d >= 20 and overbought_score >= 14 and breakdown_score < 7 and overbought_after_boll <= 28:
             # 加速冲顶阶段，最高风险等级是预警，不到高危
             old_eff = effective_score
             effective_score = min(effective_score, 49)
             if effective_score != old_eff:
-                adjustments.append(f'加速冲顶降权：5日涨幅{pct_5d:.1f}%，超买{overbought_score:.1f}分（BOLL修正后{overbought_after_boll:.1f}分≤40），形态未破位，有效评分从{old_eff:.1f}限制为{effective_score:.1f}（最高预警）')
+                adjustments.append(f'加速冲顶降权：5日涨幅{pct_5d:.1f}%，超买{overbought_score:.1f}分（BOLL修正后{overbought_after_boll:.1f}分≤28），形态未破位，有效评分从{old_eff:.1f}限制为{effective_score:.1f}（最高预警）')
     
     if effective_score >= 70:
         level = '极度危险'
@@ -1963,21 +1985,17 @@ def print_diagnosis(result, stock_code, stock_name=''):
     print(f"  【风险等级】 {result['level_color']} {result['level']}")
     print(f"  【趋势状态】 {result['trend_color']} {result['trend_status']}")
     
-    # 各维度得分
+    # 各维度得分（五维，见底缓冲已移除，见底信号见触发信号列表）
     print(f"\n  ── 五维评分 ──")
     dims = result['dimensions']
-    max_scores = {'超买程度': 35, '成交活跃度': 15, '量价背离': 15, '趋势衰竭': 20, '形态破位': 40, '见底信号': 35}
+    max_scores = {'超买程度': 25, '成交活跃度': 20, '量价背离': 15, '趋势衰竭': 20, '形态破位': 20}
     for dim, score in dims.items():
-        max_s = max_scores.get(dim, 20)
         if dim == '见底信号':
-            # 见底信号是负分，特殊处理
-            bar_len = int(abs(score) / max_s * 20)
-            bar = '▓' * bar_len + '░' * (20 - bar_len)
-            print(f"  {dim:6s} |{bar}| {score:5.1f} / -{max_s}")
-        else:
-            bar_len = int(score / max_s * 20)
-            bar = '█' * bar_len + '░' * (20 - bar_len)
-            print(f"  {dim:6s} |{bar}| {score:5.1f} / {max_s}")
+            continue  # 见底缓冲已移除，不参与总分，仅保留在触发信号里参考
+        max_s = max_scores.get(dim, 20)
+        bar_len = int(score / max_s * 20)
+        bar = '█' * bar_len + '░' * (20 - bar_len)
+        print(f"  {dim:6s} |{bar}| {score:5.1f} / {max_s}")
     
     # 加权降权明细
     adjustments = result.get('adjustments', [])
@@ -2046,12 +2064,8 @@ def main():
             target_date = arg2.replace('.', '-')
             # 统一格式为 YYYY-MM-DD
             parts = target_date.split('-')
-            try:
-                if len(parts) == 3:
-                    target_date = f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
-            except ValueError:
-                print(f"错误：无法解析日期参数 {arg2!r}，应为 YYYY-MM-DD")
-                return
+            if len(parts) == 3:
+                target_date = f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
             if len(sys.argv) > 3:
                 stock_name = sys.argv[3]
         else:
@@ -2060,10 +2074,11 @@ def main():
     
     if target_date:
         print(f"正在回测 {stock_code} {stock_name} 在 {target_date} 的情况...")
+        # 指定日期时，获取更多历史数据（250天，确保有足够的历史数据计算指标）
+        df = get_kline(stock_code, days=250)
     else:
         print(f"正在获取 {stock_code} {stock_name} 的数据...")
-    
-    df = get_kline(stock_code, days=120)
+        df = get_kline(stock_code, days=120)
     if df is None:
         print(f"获取 {stock_code} 数据失败")
         return

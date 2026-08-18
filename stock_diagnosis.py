@@ -3,7 +3,7 @@
 """
 个股见顶风险诊断集成模块
 
-复用 peak_detector.py 的见顶诊断引擎（5维度评分 + 见底缓冲），
+复用 peak_detector.py 的见顶诊断引擎（五维评分：超买25/成交20/背离15/衰竭20/破位20；见底缓冲已移除），
 对 config.json 中的自选股做个股层面的风险诊断，输出结构化结果。
 （HTML 渲染由 build_report.py 的 stock_card/render_signals 负责，本模块不渲染。）
 
