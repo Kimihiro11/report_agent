@@ -251,8 +251,31 @@ def search_news(query, max_items=5):
     return []
 
 
-def fetch_weibo(user_id, name, cookie=""):
-    """抓取微博用户最新内容（m.weibo.cn API），需在config.json配置weibo_cookie"""
+def _parse_weibo_time(created_at):
+    """解析微博 created_at（如 'Mon Aug 17 19:30:00 +0800 2026'）→ datetime；失败返回 None。"""
+    if not created_at:
+        return None
+    try:
+        import email.utils
+        parts = created_at.split()
+        # 新浪格式：周几 月 日 时:分:秒 时区 年
+        if len(parts) == 6:
+            dt = email.utils.parsedate_tz(f"{parts[1]} {parts[2]} {parts[4]} {parts[3]} {parts[5]}")
+            if dt:
+                import time as _time
+                ts = email.utils.mktime_tz(dt)
+                return datetime.fromtimestamp(ts)
+        return None
+    except Exception:
+        return None
+
+
+def fetch_weibo(user_id, name, cookie="", only_today=True):
+    """抓取微博用户最新内容（m.weibo.cn API），需在config.json配置weibo_cookie。
+
+    only_today=True（默认）：仅保留当日发布的微博；当日无更新返回空列表。
+    返回 [{"text":..., "time":...}, ...]，统一结构供下游消费。
+    """
     if not cookie:
         print(f"[微博] 跳过 {name} (UID:{user_id}) — 未配置 weibo_cookie")
         return []
@@ -275,6 +298,7 @@ def fetch_weibo(user_id, name, cookie=""):
             return []
         cards = data.get("data", {}).get("cards", [])
         posts = []
+        today = datetime.now().date()
         for card in cards:
             mblog = card.get("mblog", {})
             if not mblog:
@@ -282,9 +306,13 @@ def fetch_weibo(user_id, name, cookie=""):
             raw_text = mblog.get("text", "")
             clean = re.sub(r"<[^>]+>", "", raw_text).strip()
             created = mblog.get("created_at", "")
+            if only_today:
+                dt = _parse_weibo_time(created)
+                if dt is None or dt.date() != today:
+                    continue  # 非当日更新，跳过
             if clean and len(clean) > 10:
                 posts.append({"text": clean[:500], "time": created})
-        print(f"  获取 {len(posts)} 条微博")
+        print(f"  获取 {len(posts)} 条微博（{'仅当日' if only_today else '全部'})")
         return posts[:10]
     except Exception as e:
         print(f"  [parse error] {e}")

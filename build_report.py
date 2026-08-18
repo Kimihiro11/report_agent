@@ -46,6 +46,7 @@ REPORT_STATE = _TYPE_STATE[REPORT_TYPE]
 cfg = {}
 WATCHLIST = []
 VS_NAMES = []
+VS_SOURCES = []  # 大V 源配置：name/tier(等级)/description(角色描述)
 snap_path = None
 snapshot = {}
 weibo_data = {}
@@ -70,7 +71,7 @@ diag_raw = []
 def load_context():
     """解析命令行参数，并加载全部实时数据上下文（配置/快照/外网解析/个股诊断）到模块全局。"""
     global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE
-    global cfg, WATCHLIST, VS_NAMES
+    global cfg, WATCHLIST, VS_NAMES, VS_SOURCES
     global snap_path, snapshot, weibo_data, quotes, us_market, etf, market_state, matched_sectors
     global intel, _intel_topics
     global tangshi, touxing_asset, touxing_yeye
@@ -94,6 +95,7 @@ def load_context():
     cfg = agent.load_config()
     WATCHLIST = cfg.get("watchlist_stocks", []) or []
     VS_NAMES = [s.get("name", "") for s in cfg.get("weibo_sources", [])]
+    VS_SOURCES = cfg.get("weibo_sources", []) or []
 
     # ---- 加载实时快照（数据引擎产出，位于 data/snapshots/，取当日最新一份） ----
     _snap_dir = BASE_DIR / "data" / "snapshots"
@@ -156,8 +158,46 @@ def load_context():
             print(f"[诊断] 实时诊断失败: {e}")
 
 
+def _parse_weibo_time(created_at):
+    """解析微博 created_at（如 'Mon Aug 17 19:30:00 +0800 2026'）→ date；失败返回 None。"""
+    if not created_at:
+        return None
+    try:
+        import email.utils
+        import time as _time
+        parts = created_at.split()
+        if len(parts) == 6:
+            dt = email.utils.parsedate_tz(f"{parts[1]} {parts[2]} {parts[4]} {parts[3]} {parts[5]}")
+            if dt:
+                return datetime.fromtimestamp(email.utils.mktime_tz(dt)).date()
+        return None
+    except Exception:
+        return None
+
+
+def wb_posts(name):
+    """返回某大V「当日更新」的微博条目 [{"text","time","date"}]；time 缺失/非当日一律剔除。
+
+    日报只处理当日更新：旧帖/置顶/转发时间非当日的不参与舆情解构（防旧闻污染研判）。
+    """
+    report_date = datetime.strptime(TODAY, "%Y-%m-%d").date()
+    out = []
+    for p in weibo_data.get(name, []) or []:
+        text = (p.get("text") or "").strip()
+        if not text:
+            continue
+        d = _parse_weibo_time(p.get("time", ""))
+        if d is None:
+            continue  # 时间无法解析 → 视为非当日更新，剔除
+        if d != report_date:
+            continue
+        out.append({"text": text, "time": p.get("time", ""), "date": d})
+    return out
+
+
 def wb_texts(name):
-    return [p.get("text", "") for p in weibo_data.get(name, []) if p.get("text")]
+    """某大V当日更新的纯文本列表（供解构打分）。"""
+    return [p["text"] for p in wb_posts(name)]
 
 
 def diag_for(code):
@@ -503,17 +543,28 @@ def header_market():
 # ================= 组装 HTML =================
 # ================= 微博舆情解构（第六节用，不在核心结论展开） =================
 # 多空词库：把大V / 宏观 / 事件原文「解构」成可研判的多空信号，而非流水账
+# 覆盖常见口语化表达（再平衡/买盘强劲/上调目标价/轰/暴涨/爆仓等），保持扩展性
 BULL_WORDS = ["看多", "看好", "利好", "机会", "上涨", "突破", "加仓", "买入", "牛市", "底部",
               "反弹", "复苏", "景气", "超预期", "积极", "乐观", "主线", "确定性", "配置", "布局",
-              "修复", "上行", "走强", "领涨", "拐点", "困境反转", "戴维斯", "净流入", "资金流入"]
+              "修复", "上行", "走强", "领涨", "拐点", "困境反转", "戴维斯", "净流入", "资金流入",
+              "买盘", "强劲", "再平衡", "重估", "上调", "目标价", "猛攻", "猛烈", "轰", "暴涨",
+              "大涨", "新高", "主升浪", "逼空", "抢筹", "吸筹", "回补", "见底", "转强", "企稳",
+              "加码", "增持", "放量上攻", "红包行情", "吃肉", "起飞", "干", "就是干", "冲"]
 BEAR_WORDS = ["看空", "利空", "风险", "下跌", "回调", "减仓", "卖出", "熊市", "顶部", "见顶",
               "泡沫", "警惕", "谨慎", "防御", "避险", "承压", "收缩", "降温", "拖累", "爆雷",
-              "不确定", "观望", "走弱", "下行", "破位", "杀跌", "踩踏", "净流出", "资金流出", "暴雷"]
+              "不确定", "观望", "走弱", "下行", "破位", "杀跌", "踩踏", "净流出", "资金流出", "暴雷",
+              "空头", "爆仓", "割肉", "清仓", "离场", "套牢", "阴跌", "跳水", "崩盘", "腰斩",
+              "利空出尽前的黑暗", "退潮", "出货", "派发", "砸盘", "恐慌", "逃命", "亏损", "回调到位之前",
+              "天量", "滞涨", "背离", "衰竭", "大级别调整", "风雨欲来", "小心", "当心"]
 NEG_WORDS = ["不", "没", "没有", "无", "未", "别", "勿", "非", "未必", "不可", "不要", "难", "缺乏", "缺少", "尚未"]
 
 
 def _score_text(text):
-    """对单条文本做多空打分（含就近否定翻转），返回净分。"""
+    """对单条文本做多空打分（含就近否定翻转），返回净分。
+
+    逻辑：BULL 词命中且无否定 → +1，有否定（如"不看好"）→ -1；
+          BEAR 词命中且无否定 → -1，有否定（如"没有风险"）→ +1。
+    """
     if not text:
         return 0
     score = 0
@@ -524,7 +575,7 @@ def _score_text(text):
             if i < 0:
                 break
             window = text[max(0, i - 3):i]
-            score -= 1 if any(n in window for n in NEG_WORDS) else 1
+            score += -1 if any(n in window for n in NEG_WORDS) else 1
             idx = i + len(w)
     for w in BEAR_WORDS:
         idx = 0
@@ -539,22 +590,44 @@ def _score_text(text):
 
 
 def deconstruct_weibo():
-    """解构微博舆情：提炼大V对大盘与个股的多空研判。返回结构化 dict。"""
-    vs_sources = {
-        "唐史主任司马迁": tangshi,
-        "投星资产": touxing_asset,
-        "投星大爷": touxing_yeye,
-    }
+    """解构微博舆情：仅统计当日更新，按源配置（tier 等级 + description 角色）加权。
+    返回结构化 dict：src_scores / src_meta / total / consensus / stock_mentions / key / risks。"""
+    # 动态构建大V源：按 config.weibo_sources 的 tier/description 区别对待
+    vs_sources = {}
+    for s in VS_SOURCES:
+        nm = s.get("name", "")
+        texts = wb_texts(nm)
+        tier = int(s.get("tier", 2) or 2)
+        weight = 1.5 if tier == 1 else 1.0  # Tier1（大局方向掌控者）权重 1.5
+        vs_sources[nm] = {
+            "texts": texts,
+            "tier": tier,
+            "weight": weight,
+            "description": s.get("description", ""),
+            "signal_type": s.get("signal_type", ""),
+        }
+
     src_scores = {}
+    src_meta = {}
     all_vs = []
-    for name, texts in vs_sources.items():
-        s = sum(_score_text(t) for t in texts)
-        src_scores[name] = s
+    for name, meta in vs_sources.items():
+        texts = meta["texts"]
+        if not texts:
+            src_scores[name] = 0
+            src_meta[name] = {"tier": meta["tier"], "weight": meta["weight"],
+                              "description": meta["description"], "signal_type": meta["signal_type"],
+                              "count": 0, "updated": False}
+            continue
+        raw = sum(_score_text(t) for t in texts)
+        src_scores[name] = raw * meta["weight"]  # 按等级加权后的净分
+        src_meta[name] = {"tier": meta["tier"], "weight": meta["weight"],
+                          "description": meta["description"], "signal_type": meta["signal_type"],
+                          "count": len(texts), "updated": True}
         all_vs.extend(texts)
     total = sum(src_scores.values())
-    if total > 1:
+    if total > 1.5:
         consensus = ("偏多", "b-red")
-    elif total < -1:
+    elif total < -1.5:
         consensus = ("偏空", "b-green")
     elif total == 0:
         consensus = ("中性", "b-blue")
@@ -576,7 +649,7 @@ def deconstruct_weibo():
             i = t.find(kw)
             info["snippets"].append(t[max(0, i - 12):i + len(kw) + 24])
 
-    # 关键论点：净分绝对值最高的代表性观点（已解构，非原文堆砌）
+    # 关键论点：净分绝对值最高的代表性观点（仅当日更新，已解构，非原文堆砌）
     key = []
     for t in all_vs:
         sc = _score_text(t)
@@ -588,7 +661,7 @@ def deconstruct_weibo():
     # 风险点：日本传导链 / 事件因子中的利空信号
     risks = [t[:78] for t in (japan_items + event_items) if _score_text(t) <= -1][:3]
 
-    return {"src_scores": src_scores, "total": total, "consensus": consensus,
+    return {"src_scores": src_scores, "src_meta": src_meta, "total": total, "consensus": consensus,
             "stock_mentions": stock_mentions, "key": key, "risks": risks}
 
 
@@ -596,12 +669,20 @@ def core_conclusion():
     """核心结论：一句话研判 + 状态徽章 + 数据速览。舆情解构细节见第六节。"""
     d = deconstruct_weibo()
     consensus_label, consensus_cls = d["consensus"]
+    updated_any = any(m.get("updated") for m in d["src_meta"].values())
     idx_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
     up_n = sum(1 for q in quotes.values() if q.get("chg_pct", 0) > 0) if quotes else 0
     idx_n = len(quotes) if quotes else 0
 
-    # 用解构结果驱动一句话研判（不在本节展开解构细节）
-    if consensus_label == "偏多" and idx_label in ("偏多", "震荡"):
+    # 用解构结果驱动一句话研判（不在本节展开解构细节）；当日无更新时情绪维度让位给指数
+    if not updated_any:
+        if idx_label == "偏多":
+            stance = "指数偏多，大V当日未更新，情绪面无新增扰动"
+        elif idx_label == "偏空":
+            stance = "指数偏弱，大V当日未更新，情绪面无新增支撑"
+        else:
+            stance = "指数震荡，大V当日未更新，以结构与技术面为准"
+    elif consensus_label == "偏多" and idx_label in ("偏多", "震荡"):
         stance = "情绪与指数共振偏多，可积极但不追高"
     elif consensus_label == "偏空" and idx_label == "偏多":
         stance = "指数走强但情绪偏空，注意背离与回调"
@@ -614,12 +695,21 @@ def core_conclusion():
     risk_label = "日本传导链有预警" if japan_items else "暂无日本传导链预警"
     risk_cls = "b-green" if japan_items else "b-blue"
 
-    verdict = (f"综合实时指数与微博舆情解构：大盘 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨），"
-               f"大V意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b>。{stance}。"
-               f"主线聚焦「{main_line}」；{risk_label}。")
+    if not updated_any:
+        verdict = (f"综合实时指数：大盘 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨）。"
+                   f"大V当日未更新微博，情绪面暂无新增信号。{stance}。"
+                   f"主线聚焦「{main_line}」；{risk_label}。")
+        cons_badge_cls = "b-blue"
+        cons_badge_label = "大V当日未更新"
+    else:
+        verdict = (f"综合实时指数与微博舆情解构：大盘 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨），"
+                   f"大V意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b>。{stance}。"
+                   f"主线聚焦「{main_line}」；{risk_label}。")
+        cons_badge_cls = consensus_cls
+        cons_badge_label = f"大V共识 {consensus_label}"
 
     badges = (
-        f'<span class="badge {consensus_cls}">大V共识 {consensus_label}</span>'
+        f'<span class="badge {cons_badge_cls}">{cons_badge_label}</span>'
         f'<span class="badge b-red">指数 {idx_label}</span>'
         f'<span class="badge b-orange">主线 {main_line}</span>'
         f'<span class="badge {risk_cls}">风险 {risk_label}</span>'
@@ -641,20 +731,36 @@ def vs_summary():
     up_n = sum(1 for q in quotes.values() if q.get("chg_pct", 0) > 0) if quotes else 0
     idx_n = len(quotes) if quotes else 0
 
+    # 各源按等级+角色总结（当日更新才计入；未更新源单独标注）
     src_bits = []
+    updated_any = False
     for name, s in d["src_scores"].items():
-        if not s:
+        meta = d["src_meta"].get(name, {})
+        tier = meta.get("tier", 2)
+        desc = meta.get("description", "")
+        if not meta.get("updated"):
+            src_bits.append(f'<span class="tag">{name}（T{tier}·{desc}）当日未更新</span>')
             continue
+        updated_any = True
         tag = "看多" if s > 0 else ("看空" if s < 0 else "中性")
         cls = "b-red" if s > 0 else ("b-green" if s < 0 else "b-blue")
-        src_bits.append(f'<span class="badge {cls}">{name}：{tag}（{"+" if s > 0 else ""}{s}）</span>')
-    consensus_html = (f'大V整体共识 <b class="{consensus_cls}">{consensus_label}</b>；'
-                      + (" ".join(src_bits) if src_bits else "实时大V观点缺失，无法解构"))
+        tier_tag = "T1" if tier == 1 else "T2"
+        src_bits.append(f'<span class="badge {cls}">{name}（{tier_tag}·{desc}）：{tag}（{"+" if s > 0 else ""}{s:.1f}，{meta.get("count", 0)}条）</span>')
+    if not updated_any:
+        consensus_html = ('<b class="b-orange">当日大V均未更新微博，无新增舆情可解构</b>；'
+                          '以下基于历史快照中的最新条目仅作参考，不构成当日研判。')
+    else:
+        consensus_html = (f'大V整体共识（仅当日更新，T1权重1.5）<b class="{consensus_cls}">{consensus_label}</b>；'
+                          + (" ".join(src_bits) if src_bits else "实时大V观点缺失，无法解构"))
 
     diverge = (consensus_label == "偏空" and idx_label == "偏多")
-    market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 指 {up_n} 涨）与大V共识 <b class='{consensus_cls}'>{consensus_label}</b> "
-                   f"—— {'两者背离，需警惕情绪拖累' if diverge else '相互印证'}。"
-                   f"舆情已解构为研判信号，不为原文堆砌。")
+    if not updated_any:
+        market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 指 {up_n} 涨）。"
+                       f"当日无大V更新，情绪面暂无新增信号，研判以指数与技术面为准。")
+    else:
+        market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 指 {up_n} 涨）与大V共识 <b class='{consensus_cls}'>{consensus_label}</b> "
+                       f"—— {'两者背离，需警惕情绪拖累' if diverge else '相互印证'}。"
+                       f"舆情已解构为研判信号，不为原文堆砌。")
 
     stock_bits = []
     for code in WATCHLIST:
@@ -676,12 +782,18 @@ def vs_summary():
                 stock_bits.append(f'<span class="badge b-blue">{nm}·主题覆盖</span>')
             else:
                 stock_bits.append(f'<span class="tag">{nm}·未提及</span>')
-    stock_line = " ".join(stock_bits)
+    if not updated_any:
+        stock_line = '<p class="muted">当日无大V更新，自选股无新增舆情信号（主题覆盖仅反映指数层面共振）。</p>'
+    else:
+        stock_line = " ".join(stock_bits)
 
-    key_html = "".join(
-        f'<div class="{"alert-red" if sc < 0 else "alert-green" if sc > 0 else "alert-blue"}">'
-        f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {_esc(t)}…</div>'
-        for _, sc, t in d["key"]) or '<p class="muted">实时大V观点未提取到强多空信号。</p>'
+    if not updated_any:
+        key_html = '<p class="muted">当日无大V更新，无关键论点可解构。</p>'
+    else:
+        key_html = "".join(
+            f'<div class="{"alert-red" if sc < 0 else "alert-green" if sc > 0 else "alert-blue"}">'
+            f'<b>[{ "看空" if sc < 0 else "看多" if sc > 0 else "中性"}]</b> {_esc(t)}…</div>'
+            for _, sc, t in d["key"]) or '<p class="muted">当日大V观点未提取到强多空信号。</p>'
 
     risk_html = "".join(f'<div class="alert-red">⚠ {_esc(t)}…</div>' for t in d["risks"]) or \
         '<p class="muted">实时风险因子（日本传导链 / 事件）未提取到明确利空信号。</p>'
