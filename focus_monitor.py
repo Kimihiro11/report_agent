@@ -33,6 +33,7 @@ state JSON 内联嵌入日报，置于「今日操作策略」之前；data/focu
 import json
 import os
 import re
+from statistics import median
 import sys
 import html
 import urllib.request
@@ -40,6 +41,8 @@ import urllib.parse
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+
+from templates.prompts import FocusMonitorPrompts
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 OUTPUT_DIR = Path(__file__).parent
@@ -96,10 +99,18 @@ _MONTHS = ["January", "February", "March", "April", "May", "June", "July",
 
 _RANGE_RE = re.compile(r"(\d{1,2})\s*[-–]\s*(\d{1,2})\s*(?:bp|basis points?)", re.I)
 _SINGLE_RE = re.compile(r"(\d{1,2})\s*(?:bp|basis points?)", re.I)
-_TERM_RE = re.compile(r"(?:terminal|peak|end-|final|end)\s+rate[^.]{0,40}?(\d(?:\.\d)?)\s*%", re.I)
-_RATE_LEVEL_RE = re.compile(r"(?:policy rate|rate|rates)\s+(?:to\s+|around\s+|of\s+)?(\d\.\d{1,2})\s*%", re.I)
+# hike 也可能表达为百分比，如 "hike by 0.25%" / "0.25 percentage point hike" / "25bp"
+_PCT_HIKE_RE = re.compile(r"(?:hike|raise)\s+(?:by\s+)?(0\.\d{1,2})\s*(?:%|percentage point)", re.I)
+_PCT_POINT_RE = re.compile(r"(\d{1,2})\s*(?:percentage point|pp)", re.I)
+_TERM_RE = re.compile(r"(?:terminal|peak|end[- ]|final|target|policy rate)\s*(?:rate)?[^.]{0,45}?(\d(?:\.\d)?)\s*%", re.I)
+_RATE_LEVEL_RE = re.compile(r"(?:policy rate|rate|rates)\s+(?:to\s+|around\s+|of\s+|at\s+|toward\s+|hiked?\s+to\s+)?(\d\.\d{1,2})\s*%", re.I)
 _QP_RE = re.compile(r"(three[- ]?quarter|half|quarter)[ -]?point", re.I)
 _QP_MAP = {"quarter": 25, "half": 50, "three-quarter": 75, "three quarter": 75}
+# 立场语境否定：识别 "not hike" / "no rate hike" / "unlikely to raise" 等降低鹰派计分
+_NEGATION_CTX = re.compile(
+    r"\b(not|no|never|unlikely|won't|will not|would not|did not|hasn't|haven't|without)\s+\w{0,12}\s+"
+    r"(hike|hikes|raise|raises|raised|tighten|tightening|cut|cuts|lower|lowers|eased|ease)\b", re.I
+)
 # 仅当正文同时命中机构名 + 日银/日本利率语境才计入（避免串味：如某机构被提及但文章讲美联储）
 _BOJ_CTX = ["bank of japan", "boj", "japan rate", "japanese rate", "japan's rate", "japan's policy rate", "japan's central bank", "yen", "japanese yen"]
 
@@ -227,7 +238,7 @@ def _kw_hit(text, keyword):
 
 
 def _extract_numbers(text):
-    """从正文中抽取日银加息相关数值：hike(bp, 区间) / rate_level(%) / terminal(%)。"""
+    """从正文中抽取日银加息相关数值：hike(bp, 区间, 百分比) / rate_level(%) / terminal(%)。"""
     hike = None
     m = _RANGE_RE.search(text)
     if m:
@@ -236,6 +247,17 @@ def _extract_numbers(text):
         m = _SINGLE_RE.search(text)
         if m:
             hike = (int(m.group(1)), int(m.group(1)))
+    # 百分比 hike：0.25% = 25bp；0.50% = 50bp
+    if hike is None:
+        m = _PCT_HIKE_RE.search(text)
+        if m:
+            bp = int(round(float(m.group(1)) * 100))
+            hike = (bp, bp)
+    if hike is None:
+        m = _PCT_POINT_RE.search(text)
+        if m:
+            bp = int(m.group(1))
+            hike = (bp, bp)
     if hike is None:
         wm = _QP_RE.search(text)
         if wm:
@@ -264,9 +286,31 @@ def _extract_timing(text):
 
 
 def _classify_stance(text):
+    """基于关键词密度判断机构立场；识别 "not hike / no rate cut" 等否定语境并反向扣分。"""
     low = text.lower()
-    hawk = sum(1 for k in _HAWKISH if re.search(rf"\b{re.escape(k)}\b", low))
-    dove = sum(1 for k in _DOVISH if re.search(rf"\b{re.escape(k)}\b", low))
+
+    def _count_with_position(keywords):
+        hits = []
+        for k in keywords:
+            for m in re.finditer(rf"\b{re.escape(k)}\b", low):
+                hits.append(m.start())
+        return hits
+
+    hawk_pos = _count_with_position(_HAWKISH)
+    dove_pos = _count_with_position(_DOVISH)
+
+    # 否定语境：若关键词出现在否定短语附近（前后 40 字符），则反向扣分
+    neg_spans = [(m.start(), m.end()) for m in _NEGATION_CTX.finditer(low)]
+
+    def _in_negation(pos):
+        for s, e in neg_spans:
+            if s - 40 <= pos <= e + 40:
+                return True
+        return False
+
+    hawk = sum(1 for p in hawk_pos if not _in_negation(p)) - sum(1 for p in hawk_pos if _in_negation(p))
+    dove = sum(1 for p in dove_pos if not _in_negation(p)) - sum(1 for p in dove_pos if _in_negation(p))
+
     if hawk > dove + 1:
         return "偏鹰"
     if dove > hawk + 1:
@@ -349,8 +393,10 @@ def _crawl_institution(inst, opener, window_days):
         it["_dt"] = _parse_pubdate(it["pub"])
         it["_recent"] = (it["_dt"] is not None) and ((now - it["_dt"]).days <= window_days)
 
-    # 合并所有可解析文本用于抽取
-    corpus = " ".join((it.get("content_en") or it.get("title") or "") for it in relevant[:4])
+    # 只让近端材料参与抽取；若发布时点均不可解析，再降级使用可解析文本并降低时效置信。
+    recent_items = [it for it in relevant[:4] if it.get("_recent")]
+    usable_items = recent_items or [it for it in relevant[:4] if it.get("content_en")]
+    corpus = " ".join((it.get("content_en") or it.get("title") or "") for it in usable_items)
     corpus = re.sub(r"\s+", " ", corpus).strip()
 
     hike, rate_level, terminal = _extract_numbers(corpus)
@@ -382,9 +428,10 @@ def _crawl_institution(inst, opener, window_days):
 
     return {
         "name_zh": inst["name_zh"], "name_en": inst["name_en"],
-        "found": True, "items": relevant[:6], "stance": stance,
+        "found": True, "items": usable_items[:6], "stance": stance,
         "hike": hike, "terminal": terminal, "timing": timing,
         "reasons": reasons, "view_zh": view_zh,
+        "fresh_items": len(recent_items), "freshness_degraded": not bool(recent_items),
     }
 
 
@@ -413,36 +460,37 @@ def _synthesize_consensus(insts):
             "hike_range": "", "terminal_range": "", "hawk_n": 0, "dove_n": 0, "neutral_n": 0,
         }
 
-    max_single = max((hi for lo, hi in hikes), default=0)
-    max_term = max(terminals, default=0)
-    if max_single >= 50 or max_term >= 1.25:
+    hike_midpoints = [(lo + hi) / 2 for lo, hi in hikes]
+    typical_hike = median(hike_midpoints) if hike_midpoints else None
+    typical_term = median(terminals) if terminals else None
+    hawk_n = sum(1 for s in stances if s == "偏鹰")
+    dove_n = sum(1 for s in stances if s == "偏鸽")
+    neutral_n = sum(1 for s in stances if s == "中性")
+    # 一致预期按中位数+立场多数判断，极端最大值只作为尾部风险，不代表主流。
+    if ((typical_hike is not None and typical_hike >= 50) or
+            (typical_term is not None and typical_term >= 1.25) or
+            (hawk_n > dove_n + neutral_n)):
         degree_label, degree_color = "激进（偏鹰）", "#d63031"
-    elif (max_single <= 25 and max_term <= 1.0) and (hikes or terminals):
+    elif ((typical_hike is not None and typical_hike <= 25) and
+          (typical_term is None or typical_term <= 1.0) and dove_n >= hawk_n):
         degree_label, degree_color = "温和（渐进）", "#00a865"
     else:
         degree_label, degree_color = "中性（分歧）", "#e17055"
 
-    hawk_n = sum(1 for s in stances if s == "偏鹰")
-    dove_n = sum(1 for s in stances if s == "偏鸽")
-    neutral_n = sum(1 for s in stances if s == "中性")
-
     hike_range = ""
-    if hikes:
-        lo = min(lo for lo, hi in hikes)
-        hi = max(hi for lo, hi in hikes)
-        hike_range = f"{lo}–{hi}bp" if lo != hi else f"{lo}bp"
+    if hike_midpoints:
+        hike_range = f"中位数 {typical_hike:.0f}bp（样本范围 {min(hike_midpoints):.0f}–{max(hike_midpoints):.0f}bp）"
     terminal_range = ""
     if terminals:
-        terminal_range = f"{min(terminals):.2f}–{max(terminals):.2f}%"
+        terminal_range = f"中位数 {typical_term:.2f}%（样本范围 {min(terminals):.2f}–{max(terminals):.2f}%）"
 
     bits = [f"共检索到 {len(stances)} 家大所有效观点：偏鹰 {hawk_n} / 偏鸽 {dove_n} / 中性 {neutral_n}。"]
     if hike_range:
-        bits.append(f"主流预期日银单次加息幅度区间约 {hike_range}。")
+        bits.append(f"日银单次加息预期 {hike_range}。")
     if terminal_range:
-        bits.append(f"终点利率预期区间约 {terminal_range}。")
+        bits.append(f"终点利率预期 {terminal_range}。")
     if hawk_n and dove_n:
-        bits.append("市场分歧明显：以三菱日联为代表的机构认为 25bp 不够、单次或达 50–75bp，"
-                    "而多数机构仍预期渐进 25bp。")
+        bits.append("市场分歧明显：偏鹰机构关注通胀与汇率约束，偏鸽机构更重视增长和金融稳定；以中位数代表主流、极端值仅作尾部风险。")
     elif hawk_n and not dove_n:
         bits.append("机构口径整体偏鹰，需警惕日银加息节奏快于市场预期。")
     elif dove_n and not hawk_n:
@@ -557,30 +605,9 @@ def build_analysis(state):
     cons = state.get("consensus", {})
     degree = cons.get("degree_label", "—")
 
-    # 传导链定位
-    chain = ("原油(上游触发) → 日本输入型通胀 → <b>央行加息</b> ←(本次研判焦点：幅度/节奏/终点) → "
-             "抛美债压力 → FIMA工具(缓冲) → 日元/套息平仓 → A股。"
-             "本模块专攻「央行加息」这一节点的<b>程度</b>：加息越激进，套息平仓与流动性收紧压力越大。")
-
-    # 对 A 股影响
-    if "激进" in degree:
-        aimpact = ("机构判断日银加息偏激进（单次或达 50bp+、终点利率上修），将显著强化套息交易平仓逻辑，"
-                   "借入日元套利的国际资金回流，全球风险资产（含 A 股北向资金）面临波动与流出压力；"
-                   "美债收益率上行亦压制成长股估值。属「预警/关注」级别，需提高风险意识。")
-    elif "温和" in degree:
-        aimpact = ("机构判断日银加息偏温和（渐进 25bp、终点利率有限），套息平仓压力可控，"
-                   "对 A 股更多是情绪与北向资金扰动，而非系统性冲击；但仍需盯防超预期鹰派信号。")
-    else:
-        aimpact = ("机构对日银加息程度分歧明显，方向未明。分歧本身意味着一旦某一方预期兑现（尤其偏鹰），"
-                   "市场波动会放大。对 A 股属「观察/待确认」级别，建议跟踪一致预期的收敛方向。")
-
-    # 后续观察点
-    watchpoints = [
-        "各大所是否将日银单次加息预期上调至 50bp 及以上（激进信号）",
-        "日银终点利率预期是否上修至 1.25% 以上",
-        "美元/日元汇率是否跌破关键位触发程序化套息平仓",
-        "日本实际减持美债 / FIMA 工具是否被启用（传导链末端确认）",
-    ]
+    chain = FocusMonitorPrompts.CHAIN
+    aimpact = FocusMonitorPrompts.impact(degree)
+    watchpoints = FocusMonitorPrompts.WATCHPOINTS
     wp = "".join(f'<li style="font-size:12px;color:#2d3436;margin:3px 0;">▸ {html.escape(w)}</li>' for w in watchpoints)
 
     return f'''

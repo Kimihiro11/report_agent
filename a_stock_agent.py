@@ -13,6 +13,7 @@ A股舆情操作指引 Agent（数据引擎）
 依赖: 仅需Python标准库（urllib/json/re），无需pip安装
 """
 import json
+import os
 import urllib.request
 import urllib.parse
 import re
@@ -20,6 +21,11 @@ import sys
 import socket
 import subprocess
 import html
+import gzip
+import csv
+import io
+import time as _time_mod
+import functools
 from datetime import datetime
 from pathlib import Path
 
@@ -40,15 +46,30 @@ def load_config():
 
 
 def fetch_url(url, headers=None, timeout=10, quiet=False, encoding="utf-8"):
-    """抓取 URL 文本。encoding 默认 utf-8；新浪行情（hq.sinajs.cn）等 GBK 源传 encoding="gbk"。"""
+    """抓取 URL 文本。encoding 默认 utf-8；新浪行情（hq.sinajs.cn）等 GBK 源传 encoding="gbk"。
+
+    增强请求头：Accept / Accept-Language / Accept-Encoding / Connection，
+    支持 gzip 自动解压，提升兼容性与反爬通过率。
+    """
     req = urllib.request.Request(url)
     req.add_header("User-Agent", UA)
+    req.add_header("Accept", "*/*")
+    req.add_header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+    req.add_header("Accept-Encoding", "gzip, deflate")
+    req.add_header("Connection", "keep-alive")
     if headers:
         for k, v in headers.items():
             req.add_header(k, v)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode(encoding, errors="replace")
+            data = resp.read()
+            # 自动解压 gzip
+            if resp.headers.get("Content-Encoding") == "gzip":
+                try:
+                    data = gzip.decompress(data)
+                except Exception:
+                    pass
+            return data.decode(encoding, errors="replace")
     except Exception as e:
         if not quiet:
             print(f"  [fetch error] {url[:80]} -> {e}")
@@ -120,24 +141,6 @@ def _run_mx_skill(query, indicators, timeout=120):
         return None
 
 
-def _parse_mx_amount(md, name):
-    """从妙想 md 中定位 name 所在段落，提取净流入金额（亿元，可为负）。返回 float 或 None。"""
-    lines = md.splitlines()
-    for i, line in enumerate(lines):
-        if name in line:
-            window = "\n".join(lines[i:i + 6])
-            for pat in (r"主力净流入[^\d\-]*?(-?[\d,]+\.?\d*)\s*亿",
-                        r"净流入[^\d\-]*?(-?[\d,]+\.?\d*)\s*亿",
-                        r"净流入[^\d\-]*?(-?[\d,]+\.?\d*)\s*万"):
-                mm = re.search(pat, window)
-                if mm:
-                    val = float(mm.group(1).replace(",", ""))
-                    if "万" in pat:
-                        val /= 1e4
-                    return val
-    return None
-
-
 def _parse_mx_quote(md, name):
     """从妙想 md 中定位 name 所在行，提取 (涨跌幅%, 最新价)。任一缺失返回 (None, None)。"""
     for line in md.splitlines():
@@ -155,19 +158,213 @@ def _parse_mx_quote(md, name):
 
 
 # ----------------------------------------------------------------------------
+# 腾讯自选股（westock）连接器：ETF 资金净流兜底源（streamableHttp MCP）
+#   鉴权由 WorkBuddy 运行时管理；脚本内调用需在 config.json 的 westock.auth_token
+#   填入有效 token，或预置环境变量 WESTOCK_AUTH_TOKEN；未配置/不可达时返回 None，
+#   由上层继续使用东方财富 push2 主源（绝不抛异常阻断主流程）。
+#   返回字段（A股）：mainNetFlow（主力净流入，单位：元）→ 换算亿元。
+# ----------------------------------------------------------------------------
+
+def _westock_mcp_url():
+    """读取 westock MCP 地址（config 优先，缺省回退官方地址）。"""
+    try:
+        cfg = load_config()
+        w = cfg.get("westock") or {}
+        if w.get("mcp_url"):
+            return w["mcp_url"]
+    except Exception:
+        pass
+    return "https://stockbuddy.qq.com/cgi/cgi-bin/openai/mcp/mcp"
+
+
+def _westock_auth_token():
+    """读取 westock 访问令牌：环境变量优先，其次 config.westock.auth_token。"""
+    t = os.environ.get("WESTOCK_AUTH_TOKEN")
+    if t:
+        return t
+    try:
+        cfg = load_config()
+        w = cfg.get("westock") or {}
+        return w.get("auth_token") or ""
+    except Exception:
+        return ""
+
+
+def _westock_strip_sse(raw):
+    """从 MCP 响应体（纯 JSON 或 SSE text/event-stream）中提取 JSON-RPC 消息列表。"""
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("{"):
+        try:
+            return [json.loads(raw)]
+        except Exception:
+            return []
+    msgs = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or not line.startswith("data:"):
+            continue
+        payload = line[len("data:"):].strip()
+        if payload in ("", "[DONE]"):
+            continue
+        try:
+            msgs.append(json.loads(payload))
+        except Exception:
+            continue
+    return msgs
+
+
+def _westock_mcp_call(params, token, url, timeout=30):
+    """最小 MCP streamableHttp 客户端：initialize → notifications/initialized → tools/call。
+
+    返回 tools/call 的 result dict 或 None。任何失败都打印并返回 None（绝不抛异常）。
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    session_id = [None]
+
+    def _post(body):
+        data = json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        if session_id[0]:
+            req.add_header("Mcp-Session-Id", session_id[0])
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                sid = resp.headers.get("Mcp-Session-Id")
+                if sid:
+                    session_id[0] = sid
+                raw = resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            err = e.read().decode("utf-8", "replace") if e.fp else ""
+            print(f"  [westock] HTTP {e.code}: {err[:200]}")
+            return None
+        except Exception as e:
+            print(f"  [westock] 请求异常: {e}")
+            return None
+        msgs = _westock_strip_sse(raw)
+        return msgs[-1] if msgs else None
+
+    init = _post({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "report_agent", "version": "1.0"},
+        },
+    })
+    if init is None or init.get("error"):
+        return None
+    _post({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
+    resp = _post({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": params})
+    if resp is None or resp.get("error"):
+        return None
+    return resp.get("result")
+
+
+def _westock_parse_fundflow(result):
+    """从 data_fund_flow 的 result 解析每只 code（无市场前缀）的主力净流入（元）。"""
+    if not result:
+        return {}
+    text = ""
+    for c in (result.get("content") or []):
+        if isinstance(c, dict) and c.get("type") == "text":
+            text += c.get("text", "")
+    if not text:
+        return {}
+    try:
+        obj = json.loads(text)
+    except Exception:
+        obj = None
+    items = None
+    if isinstance(obj, list):
+        items = obj
+    elif isinstance(obj, dict):
+        for k in ("data", "list", "items", "result"):
+            if isinstance(obj.get(k), list):
+                items = obj[k]
+                break
+    out = {}
+    if items:
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            code = str(it.get("code") or it.get("stockCode") or "").lower()
+            for prefix in ("sh", "sz", "hk", "us"):
+                if code.startswith(prefix):
+                    code = code[len(prefix):]
+                    break
+            val = it.get("mainNetFlow")
+            if val is None:
+                val = it.get("MainNetFlow")
+            if val is not None:
+                try:
+                    out[code] = float(val)
+                except (ValueError, TypeError):
+                    pass
+    else:
+        # 退化：正则从文本抓取「代码 + 主力净流入」
+        for m in re.finditer(r"(sh|sz|hk|us)?(\d{6})[^\n]*?主力净流入[^\d\-]*?(-?[\d,]+\.?\d*)", text):
+            code = m.group(2)
+            try:
+                out[code] = float(m.group(3).replace(",", ""))
+            except ValueError:
+                pass
+    return out
+
+
+def _westock_override_path():
+    """Agent 经已连接连接器生成的本地 ETF 覆盖文件路径（无需静态 token）。"""
+    return OUTPUT_DIR / "data" / "westock_etf_override.json"
+
+
+def _etf_westock_override():
+    """读取 agent 经 westock-mcp 连接器写入的 ETF 覆盖文件（date==今日 才有效）。
+
+    平台托管鉴权下，脚本无法获取 westock 静态 token；正确用法是：连接
+    westock-mcp 连接器后，由 agent 经 MCP 工具取数并写入本文件，脚本直接消费，
+    避免 401 unauthorized。返回 [(name,code,direction,cls,signal),...] 或 None。
+    """
+    p = _westock_override_path()
+    if not p.exists():
+        return None
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if obj.get("date") != datetime.now().strftime("%Y%m%d"):
+        return None
+    out = []
+    for f in (obj.get("flows") or []):
+        name = f.get("name")
+        code = f.get("code")
+        if not name or not code:
+            continue
+        out.append((name, code, f.get("direction", ""), f.get("cls", ""), f.get("signal", "")))
+    return out or None
+
+
+# ----------------------------------------------------------------------------
 # 外网连通性探测 + 搜索引擎（Google 优先，Bing 兜底，必应国际版补充）
 # ----------------------------------------------------------------------------
-_NETWORK_OK = None  # 网络探测结果缓存，避免重复建连
+_NETWORK_OK = None   # 网络探测结果缓存
+_NETWORK_TS = 0      # 缓存时间戳
+_NETWORK_TTL = 30    # 缓存有效期（秒），超时后重新探测
 
 
 def check_network(host="news.google.com", port=443, timeout=4):
-    """快速探测外网是否连通（连接 Google News 443）。结果缓存。
+    """快速探测外网是否连通（连接 Google News 443）。结果缓存 30 秒（TTL）。
 
     返回 True 表示外网可达，采集路径进入「深度」模式（搜集更多关键信息）；
     返回 False 则退守「浅度」模式，仅做必要查询。
     """
-    global _NETWORK_OK
-    if _NETWORK_OK is not None:
+    global _NETWORK_OK, _NETWORK_TS
+    now = _time_mod.time()
+    if _NETWORK_OK is not None and (now - _NETWORK_TS) < _NETWORK_TTL:
         return _NETWORK_OK
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -177,12 +374,21 @@ def check_network(host="news.google.com", port=443, timeout=4):
         _NETWORK_OK = True
     except Exception:
         _NETWORK_OK = False
+    _NETWORK_TS = now
     return _NETWORK_OK
+
+
+@functools.lru_cache(maxsize=1)
+def _collect_depth_cached():
+    """采集深度缓存（lru_cache，进程内只算一次，由 check_network TTL 控制刷新）。"""
+    return "deep" if check_network() else "shallow"
 
 
 def collect_depth():
     """返回采集深度：网络通 -> 'deep'（搜集更多关键信息），不通 -> 'shallow'。"""
-    return "deep" if check_network() else "shallow"
+    # 清除 lru_cache 以便 check_network 的 TTL 能生效
+    _collect_depth_cached.cache_clear()
+    return _collect_depth_cached()
 
 
 # Google News RSS 优先；必应 News RSS 兜底（对「最新」类词易返回空频道）
@@ -485,20 +691,35 @@ def fetch_japan_carry(jc_config=None):
     return results
 
 
+def _load_index_quotes():
+    """从 config.json 读取指数行情配置；缺失时回退内置默认。"""
+    try:
+        cfg = load_config()
+        idx = cfg.get("index_quotes")
+        if idx:
+            codes = ",".join(i["sina_code"] for i in idx)
+            name_map = {i["sina_code"]: i["name"] for i in idx}
+            return codes, name_map
+    except Exception:
+        pass
+    codes = "sh000001,sz399001,sz399006,sh000688,sh000300"
+    name_map = {
+        "sh000001": "上证指数", "sz399001": "深证成指",
+        "sz399006": "创业板指", "sh000688": "科创50", "sh000300": "沪深300",
+    }
+    return codes, name_map
+
+
 def fetch_index_quotes():
     """抓取主要指数行情（新浪API）"""
     print("[行情] 抓取指数数据...")
-    codes = "sh000001,sz399001,sz399006,sh000688,sh000300"
+    codes, name_map = _load_index_quotes()
     url = f"https://hq.sinajs.cn/list={codes}"
     headers = {"Referer": "https://finance.sina.com.cn"}
     text = fetch_url(url, headers, encoding="gbk")  # 新浪行情接口返回 GBK
     if not text:
         return {}
     result = {}
-    name_map = {
-        "sh000001": "上证指数", "sz399001": "深证成指",
-        "sz399006": "创业板指", "sh000688": "科创50", "sh000300": "沪深300",
-    }
     for line in text.strip().split("\n"):
         m = re.match(r'var hq_str_(\w+)="(.+)"', line)
         if not m:
@@ -524,16 +745,28 @@ def fetch_index_quotes():
     return result
 
 
-def _us_sina():
-    """隔夜美股（新浪美股实时行情），返回 [(name, pct, price, signal), ...]。"""
-    # 代码 -> 中文名（稳定的代码映射，非行情数据）
-    symbols = {
+def _load_us_symbols():
+    """从 config.json 读取美股代码映射；config 缺失时回退内置默认。"""
+    try:
+        cfg = load_config()
+        syms = cfg.get("us_symbols")
+        if syms:
+            return {s["sina_code"]: s["name"] for s in syms}
+    except Exception:
+        pass
+    # 回退默认
+    return {
         "gb_dji": "道琼斯", "gb_ixic": "纳斯达克", "gb_inx": "标普500",
         "gb_sox": "费城半导体", "gb_nvda": "英伟达", "gb_tsla": "特斯拉",
         "gb_mu": "美光科技", "gb_stx": "希捷科技", "gb_wdc": "西部数据",
         "gb_sndk": "闪迪", "gb_amat": "应用材料", "gb_avgo": "博通",
         "gb_lite": "Lumentum", "gb_glw": "康宁",
     }
+
+
+def _us_sina():
+    """隔夜美股（新浪美股实时行情），返回 [(name, pct, price, signal), ...]。"""
+    symbols = _load_us_symbols()
     url = f"https://hq.sinajs.cn/list={','.join(symbols)}"
     text = fetch_url(url, headers={"Referer": "https://finance.sina.com.cn"}, encoding="gbk")  # 新浪行情接口返回 GBK
     if not text:
@@ -558,15 +791,13 @@ def _us_sina():
 
 def _us_mx():
     """隔夜美股（东方财富妙想兜底源），解析 md 为 [(name, pct, price, signal), ...]。"""
+    symbols = _load_us_symbols()
+    names = list(symbols.values())
     md = _run_mx_skill(
-        "查询道琼斯、纳斯达克、标普500、费城半导体、英伟达、特斯拉、美光科技、"
-        "希捷科技、西部数据、闪迪、应用材料、博通、Lumentum、康宁的实时行情、涨跌幅",
+        "查询" + "、".join(names) + "的实时行情、涨跌幅",
         "实时行情、涨跌幅")
     if not md:
         return []
-    names = ["道琼斯", "纳斯达克", "标普500", "费城半导体", "英伟达", "特斯拉",
-             "美光科技", "希捷科技", "西部数据", "闪迪", "应用材料", "博通",
-             "Lumentum", "康宁"]
     out = []
     for cn in names:
         pct, price = _parse_mx_quote(md, cn)
@@ -589,12 +820,96 @@ def fetch_us_market():
     return res
 
 
-def _etf_push2():
-    """ETF 实时资金净流（东方财富 push2，单位：亿元）。返回 [(name,code,direction,cls,signal),...]。"""
-    etfs = [
+def fetch_us_yield():
+    """美债收益率：美国财政部官方日度曲线优先，雅虎行情兜底。
+
+    返回 {"ten_year": float, "short_end": float, "short_end_label": "2Y|3M",
+    "data_date": "YYYY-MM-DD", "source": str, "updated": bool}；全部失败返回 None。
+    财政部曲线直接提供 10Y/2Y；只有官方源失败时才以雅虎 ^TNX/^IRX 作为兜底。
+    """
+    print("[美债] 抓取美债收益率（美国财政部 10Y/2Y 优先，雅虎兜底）...")
+
+    def _treasury():
+        year = datetime.now().year
+        url = ("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+               f"daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&"
+               f"field_tdr_date_value={year}&page&_format=csv")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                text = r.read().decode("utf-8-sig", "replace")
+            rows = list(csv.DictReader(io.StringIO(text)))
+            for row in rows:  # 官方 CSV 按日期倒序；取首个 10Y/2Y 均有效的交易日
+                try:
+                    ten_year = float(row.get("10 Yr") or "")
+                    two_year = float(row.get("2 Yr") or "")
+                    data_date = datetime.strptime(row["Date"], "%m/%d/%Y").strftime("%Y-%m-%d")
+                    return {
+                        "ten_year": ten_year,
+                        "short_end": two_year,
+                        "short_end_label": "2Y",
+                        "data_date": data_date,
+                        "source": "美国财政部",
+                        "updated": True,
+                    }
+                except (TypeError, ValueError, KeyError):
+                    continue
+        except Exception as e:
+            print(f"  [美债] 美国财政部获取失败: {e}")
+        return None
+
+    def _yahoo(sym):
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=12) as r:
+                data = json.loads(r.read().decode("utf-8", "replace"))
+            meta = data["chart"]["result"][0]["meta"]
+            return meta.get("regularMarketPrice"), meta.get("regularMarketTime")
+        except Exception as e:
+            print(f"  [美债] 雅虎 {sym} 获取失败: {e}")
+            return None, None
+
+    result = _treasury()
+    if result:
+        print(f"  10Y={result['ten_year']} 2Y={result['short_end']}（{result['data_date']}，美国财政部）")
+        return result
+
+    ten_year, timestamp = _yahoo("^TNX")
+    short_end, _ = _yahoo("^IRX")
+    if ten_year is None and short_end is None:
+        print("  [美债] 全部源不可达，跳过（报告层占位）")
+        return None
+    data_date = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d") if timestamp else ""
+    print(f"  10Y={ten_year} 短端(3M)={short_end}（雅虎兜底）")
+    return {
+        "ten_year": ten_year,
+        "short_end": short_end,
+        "short_end_label": "3M",
+        "data_date": data_date,
+        "source": "雅虎财经",
+        "updated": True,
+    }
+
+
+def _load_etf_flows():
+    """从 config.json 读取 ETF 资金流配置；缺失时回退内置默认。"""
+    try:
+        cfg = load_config()
+        etfs = cfg.get("etf_flows")
+        if etfs:
+            return [(e["name"], e["code"], e.get("mkt", "1")) for e in etfs]
+    except Exception:
+        pass
+    return [
         ("沪深300ETF", "510300", "1"), ("芯片ETF", "159995", "0"),
         ("半导体设备ETF国泰", "159516", "0"), ("科创50ETF", "588280", "1"),
     ]
+
+
+def _etf_push2():
+    """ETF 实时资金净流（东方财富 push2，单位：亿元）。返回 [(name,code,direction,cls,signal),...]。"""
+    etfs = _load_etf_flows()
     results = []
     for name, code, mkt in etfs:
         secid = f"{mkt}.{code}"
@@ -618,35 +933,58 @@ def _etf_push2():
     return results
 
 
-def _etf_mx():
-    """ETF 资金流（东方财富妙想兜底源），解析 md 主力净流入。返回同结构元组列表。"""
-    md = _run_mx_skill(
-        "查询沪深300ETF、芯片ETF、半导体设备ETF国泰、科创50ETF最新资金流向、"
-        "主力净流入、涨跌幅", "资金流向、主力净流入、涨跌幅")
-    if not md:
+def _etf_westock():
+    """ETF 资金流（腾讯自选股连接器兜底源），调用 data_fund_flow 取主力净流入(元)→亿元。
+
+    返回 [(name, code, direction, cls, signal), ...]，与 _etf_push2 同结构；
+    未配置 token / 不可达 / 解析失败均返回 []（交由主源 东方财富 push2 兜底）。
+    """
+    etfs = _load_etf_flows()
+    token = _westock_auth_token()
+    if not token:
+        print("  [westock] 未配置 auth_token（config.westock.auth_token 或 WESTOCK_AUTH_TOKEN），跳过 ETF 兜底。")
         return []
-    etfs = [("沪深300ETF", "510300"), ("芯片ETF", "159995"),
-            ("半导体设备ETF国泰", "159516"), ("科创50ETF", "588280")]
+    url = _westock_mcp_url()
+    mk = {"1": "sh", "0": "sz"}  # 沪=sh，深=sz（腾讯自选股代码格式）
+    codes = [f"{mk.get(m, 'sh')}{code}" for _, code, m in etfs]
+    result = _westock_mcp_call(
+        {"name": "data_fund_flow", "arguments": {"codes": ",".join(codes)}},
+        token, url,
+    )
+    if not result:
+        return []
+    flows = _westock_parse_fundflow(result)
+    if not flows:
+        return []
     out = []
-    for name, code in etfs:
-        net = _parse_mx_amount(md, name)  # 亿元，可为负
+    for name, code, mkt in etfs:
+        net = flows.get(code)  # 元
         if net is None:
             continue
-        direction = "净申购" if net >= 0 else "净赎回"
-        cls = "b-red" if net >= 0 else "b-green"
-        signal = f"近一日{'净流入' if net >= 0 else '净流出'} {abs(net):.2f}亿元"
+        net_yi = net / 1e8  # 元 → 亿元
+        direction = "净申购" if net_yi >= 0 else "净赎回"
+        cls = "b-red" if net_yi >= 0 else "b-green"
+        signal = f"近一日{'净流入' if net_yi >= 0 else '净流出'} {abs(net_yi):.2f}亿元"
         out.append((name, code, direction, cls, signal))
     return out
 
 
 def fetch_etf_flows():
-    """ETF 实时资金净流。东方财富 push2 优先，妙想兜底。
+    """ETF 实时资金净流。腾讯自选股连接器（已接上）优先，东方财富 push2 兜底。
 
     返回 [(name, code, direction, cls, signal), ...]。direction=净申购/净赎回，
     cls 为徽章色（b-red 净流入 / b-green 净赎回）。所有源失败返回空列表。
+
+    说明：westock 鉴权由平台托管，脚本无法获取静态 token（实测 401）；故已连接
+    连接器时由 agent 经 MCP 取数写入 data/westock_etf_override.json，此处优先消费，
+    无覆盖文件再走 push2 → 脚本自带 HTTP 客户端的兜底链。
     """
-    print("[ETF] 抓取 ETF 资金净流（东方财富 push2 优先，妙想兜底）...")
-    res = _fetch_with_fallback([("东方财富push2", _etf_push2), ("东方财富妙想", _etf_mx)], label="ETF资金流")
+    ov = _etf_westock_override()
+    if ov:
+        print(f"[ETF] 使用 腾讯自选股连接器（已接上）数据：{len(ov)} 只")
+        return ov
+    print("[ETF] 抓取 ETF 资金净流（东方财富 push2 优先，腾讯自选股连接器兜底）...")
+    res = _fetch_with_fallback([("东方财富push2", _etf_push2), ("腾讯自选股", _etf_westock)], label="ETF资金流")
     res = res or []
     print(f"  获取 {len(res)} 只 ETF 资金流")
     return res
@@ -669,7 +1007,14 @@ SECTOR_KEYWORDS = [
 
 
 def analyze_sentiment(weibo_data, quotes):
-    """简单规则分析：提取舆情关键词 + 行情涨跌判断"""
+    """规则分析：提取舆情关键词 + 基于加权涨跌幅判断市场情绪强度。
+
+    情绪状态不再只看上涨家数，而是综合『上涨占比』和『加权平均涨跌幅』：
+    - bullish: 上涨占比 >= 60% 且加权涨幅 >= +0.5%
+    - bearish: 上涨占比 <= 30% 且加权跌幅 <= -0.5%
+    - neutral: 其余情况
+    同时输出强度 score（-1 ~ +1）供报告层做渐变渲染。
+    """
     print("[分析] 提取信号...")
     all_text = ""
     for user, posts in weibo_data.items():
@@ -678,16 +1023,28 @@ def analyze_sentiment(weibo_data, quotes):
 
     matched_sectors = extract_keywords(all_text, SECTOR_KEYWORDS)
 
-    market_state = "neutral"
-    up_count = sum(1 for q in quotes.values() if q["chg_pct"] > 0)
-    if up_count >= 4:
+    total = len(quotes) or 1
+    values = list(quotes.values())
+    up_count = sum(1 for q in values if q.get("chg_pct", 0) > 0)
+    up_ratio = up_count / total
+    avg_pct = sum(q.get("chg_pct", 0) for q in values) / total if values else 0.0
+
+    if up_ratio >= 0.6 and avg_pct >= 0.5:
         market_state = "bullish"
-    elif up_count <= 1:
+    elif up_ratio <= 0.3 and avg_pct <= -0.5:
         market_state = "bearish"
+    else:
+        market_state = "neutral"
+
+    # 强度分：上涨占比与加权涨幅共同映射到 [-1, 1]
+    score = (up_ratio - 0.5) * 2 * 0.6 + max(-1, min(1, avg_pct / 2)) * 0.4
+    score = max(-1.0, min(1.0, score))
 
     return {
         "matched_sectors": matched_sectors,
         "market_state": market_state,
+        "market_score": round(score, 3),
+        "avg_chg_pct": round(avg_pct, 3),
         "up_count": up_count,
         "total_indices": len(quotes),
     }
@@ -767,9 +1124,11 @@ def main():
     print("=" * 50)
 
     config = load_config()
+    no_fetch = "--no-fetch" in sys.argv
     print(f"配置加载完成: {len(config.get('weibo_sources', []))} 个微博源, {len(config.get('watchlist_stocks', []))} 只自选股")
-    net = "通(深度采集)" if check_network() else "不通(浅度采集)"
-    print(f"[网络] 外网状态: {net} — 外网搜索优先 Google News，回退 Bing")
+    if not no_fetch:
+        net = "通(深度采集)" if check_network() else "不通(浅度采集)"
+        print(f"[网络] 外网状态: {net} — 外网搜索优先 Google News，回退 Bing")
 
     # 回测模式：对历史报告中的个股判断做回测与交叉验证
     if "--backtest" in sys.argv:
@@ -789,7 +1148,21 @@ def main():
             print("[回测] 无可用判断数据，请先生成报告")
         return
 
-    no_fetch = "--no-fetch" in sys.argv
+    today = datetime.now().strftime("%Y%m%d")
+    snap_dir = OUTPUT_DIR / "data" / "snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    if no_fetch:
+        cached = sorted(snap_dir.glob(f"fetched_{today}_*.json"))
+        if not cached:
+            print(f"[数据引擎] --no-fetch：未找到 {today} 的缓存快照，不生成空快照。")
+            return
+        try:
+            snapshot = json.loads(cached[-1].read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[数据引擎] --no-fetch：缓存读取失败 {cached[-1].name}: {e}")
+            return
+        print(f"[数据引擎] --no-fetch：复用已有快照 {cached[-1].name}，不联网、不写新空快照、不重复入库。")
+        return
 
     weibo_cookie = config.get("weibo_cookie", "")
     weibo_data = {}
@@ -815,20 +1188,18 @@ def main():
         weibo_data.update(jp_data)
 
     quotes = {}
-    us_market, etf = [], []
+    us_market, etf, us_yield = [], [], None
     if not no_fetch:
         quotes = fetch_index_quotes()
         us_market = fetch_us_market()
         etf = fetch_etf_flows()
+        us_yield = fetch_us_yield()
 
     analysis = analyze_sentiment(weibo_data, quotes)
 
     # 简版模式已取消（2026-08-17）：除回测外一律跑全功能 9 章节报告。
     # a_stock_agent 作为数据引擎：采集 → 快照 → 入库；
     # 全功能报告由 build_report.py + WebSearch 实时拼装生成。
-    today = datetime.now().strftime("%Y%m%d")
-    snap_dir = OUTPUT_DIR / "data" / "snapshots"
-    snap_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%H%M%S")
     snap_path = snap_dir / f"fetched_{today}_{ts}.json"
     snapshot = {
@@ -839,6 +1210,7 @@ def main():
         "quotes": quotes,
         "us_market": us_market,
         "etf": etf,
+        "us_yield": us_yield,
     }
     with open(snap_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)

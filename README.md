@@ -50,7 +50,7 @@ report_agent/
 
 | 文件 | 职责 |
 |------|------|
-| `a_stock_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 日本传导链实时采集 → 写 `data/snapshots/` 快照 → 强制全量入库 PostgreSQL（连接不通打印醒目 ⚠️ 告警）。含多源兜底框架与东方财富妙想技能包装。 |
+| `a_stock_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 日本传导链实时采集 → 写 `data/snapshots/` 快照 → 强制全量入库 PostgreSQL（连接不通打印醒目 ⚠️ 告警）。含多源兜底框架：ETF 资金流以东方财富 push2 为主、腾讯自选股连接器（westock）兜底；美股以新浪为主、东方财富妙想兜底。 |
 | `build_report.py` | 实时 9 章节报告模板。读取当日 `data/snapshots/` 最新快照 + 诊断 + 焦点模块，渲染 HTML。支持 `--date` / `--type 早报\|晚报\|周报`。 |
 | `backtest.py` | 回测与交叉验证（方向命中 + 量价技术信号交叉验证）。`--all` 生成回测报告，`--seed` 解析报告 HTML 写入 `seeds/`。 |
 | `db.py` | PostgreSQL 封装：11 张表、`upsert`、探活 `test_connection`、自愈合 `init_database`。 |

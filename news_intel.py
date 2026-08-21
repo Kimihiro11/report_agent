@@ -28,6 +28,8 @@ import urllib.parse
 import urllib.request
 
 import a_stock_agent as agent
+from llm_client import call_json
+from templates.prompts import NewsIntelPrompts
 
 BASE_DIR = Path(__file__).parent
 OUTPUT_DIR = BASE_DIR / "data" / "news_intel"
@@ -39,8 +41,8 @@ BING_EN = "https://www.bing.com/news/search?q={q}&format=rss&setlang=en-us&cc=US
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
-# ---- 主题定义：每个主题对应若干英文 query（外网抓取用语） ----
-TOPICS = {
+# ---- 主题定义默认回退：每个主题对应若干英文 query（外网抓取用语） ----
+_DEFAULT_TOPICS = {
     "us_market": {
         "label_zh": "隔夜美股与全球风险偏好",
         "queries_en": [
@@ -77,6 +79,29 @@ TOPICS = {
 
 _FETCH_PER_TOPIC = 4   # 每个主题抓取正文的最多条数（控时长）
 _RSS_PER_QUERY = 6     # 每个 query 取多少条 RSS 结果
+
+
+def _load_config():
+    cfg_path = BASE_DIR / "config.json"
+    if cfg_path.exists():
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _load_topics():
+    """优先从 config.json 的 news_intel_topics 读取主题，否则使用默认主题。"""
+    cfg = _load_config()
+    topics = cfg.get("news_intel_topics")
+    if topics and isinstance(topics, dict):
+        return topics
+    return dict(_DEFAULT_TOPICS)
+
+
+TOPICS = _load_topics()
 
 
 def _clean(text):
@@ -199,33 +224,70 @@ def _collect_topic(topic_key):
     return merged
 
 
+def _summarize_topic(label, raw, date, config):
+    """远程LLM(provider=external)可用时生成结构化摘要；默认由当前运行的模型(Agent)注入。"""
+    prompt = NewsIntelPrompts.summarize_zh(label, raw, date)
+    system = "你只做跨市场金融资讯压缩。事实与推断分离，不得补充输入外数字；只输出JSON。"
+    obj, reason = call_json(prompt, config, system_prompt=system, temperature=0.1)
+    if not isinstance(obj, dict):
+        return "", {}, prompt, reason
+    direction = obj.get("direction") if obj.get("direction") in {"偏多", "偏空", "中性"} else "中性"
+    try:
+        confidence = round(max(0.0, min(1.0, float(obj.get("confidence", 0.5)))), 2)
+    except (TypeError, ValueError):
+        confidence = 0.5
+    structured = {
+        "direction": direction,
+        "confidence": confidence,
+        "as_of": str(obj.get("as_of") or date)[:10],
+        "facts": [str(x)[:160] for x in (obj.get("facts") or [])[:3]],
+        "core_conclusion": str(obj.get("core_conclusion") or "")[:180],
+        "transmission": [str(x)[:180] for x in (obj.get("transmission") or [])[:3]],
+        "priced_in": str(obj.get("priced_in") or "无法判断")[:20],
+        "watch": [str(x)[:160] for x in (obj.get("watch") or [])[:3]],
+    }
+    summary = str(obj.get("summary_zh") or structured["core_conclusion"]).strip()[:500]
+    return summary, structured, prompt, "ok"
+
+
 def run_intel(date=None, no_fetch=False):
-    """抓取+解析全部主题，写入 data/news_intel/news_intel_YYYYMMDD.json。"""
+    """抓取+解析全部主题，并在已配置LLM时自动生成结构化中文摘要。"""
     date = date or datetime.now().strftime("%Y-%m-%d")
     date8 = date.replace("-", "")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / f"news_intel_{date8}.json"
 
-    if no_fetch and out_path.exists():
-        print(f"[news_intel] --no-fetch：重渲染已缓存 {out_path.name}")
-        return json.loads(out_path.read_text(encoding="utf-8"))
+    if no_fetch:
+        if out_path.exists():
+            print(f"[news_intel] --no-fetch：读取已缓存 {out_path.name}")
+            return json.loads(out_path.read_text(encoding="utf-8"))
+        print(f"[news_intel] --no-fetch：未找到 {out_path.name}，不生成空缓存。")
+        return {}
 
+    config = agent.load_config()
     topics = {}
     for key, cfg in TOPICS.items():
         print(f"[news_intel] 英文抓取+解析主题: {cfg['label_zh']} ...")
         raw = _collect_topic(key) if not no_fetch else []
+        summary, structured, prompt_for_llm, llm_mode = (
+            _summarize_topic(cfg["label_zh"], raw, date, config) if raw
+            else ("", {}, "", "no_content")
+        )
         topics[key] = {
             "label_zh": cfg["label_zh"],
             "queries_en": cfg["queries_en"],
             "raw": raw,
-            "summary_zh": "",   # 由 Agent 读取 content_en 后补全中文总结
+            "summary_zh": summary,
+            "summary_structured": structured,
+            "summary_prompt_for_llm": prompt_for_llm,
+            "summary_mode": llm_mode,
         }
-        print(f"  获取 {len(raw)} 条（其中 {sum(1 for r in raw if r.get('content_en'))} 条已解析正文）")
+        print(f"  获取 {len(raw)} 条（正文 {sum(1 for r in raw if r.get('content_en'))}；摘要模式 {llm_mode}）")
 
     payload = {
         "date": date,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "note": "raw=英文源原始解析；summary_zh 由 Agent 读取后总结为中文结论",
+        "note": "raw=英文原始解析；默认(未配外部API)由当前运行的模型(Agent)注入 summary_zh/summary_structured；配置 config.llm(provider=external) 时自动调用远程模型",
         "topics": topics,
     }
     with open(out_path, "w", encoding="utf-8") as f:

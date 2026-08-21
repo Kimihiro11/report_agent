@@ -47,14 +47,18 @@ def _inject_today(df, quote):
 
 
 def analyze_stock(code, name='', target_date=None):
-    """对单只股票做见顶诊断，返回结构化结果 dict；失败返回 None。
+    """对单只股票做见顶诊断，返回结构化结果 dict（含诊断元数据）；失败返回 None。
 
     target_date: 指定回测日期(YYYY-MM-DD)，为 None 时运行实时模式。
     """
+    diagnosed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         df = get_kline(code, days=120)
-        if df is None or len(df) < 30:
-            print(f"  [诊断] {code} {name}: K线数据不足")
+        if df is None:
+            print(f"  [诊断] {code} {name}: 无法获取K线数据")
+            return None
+        if len(df) < 30:
+            print(f"  [诊断] {code} {name}: K线数据不足（仅{len(df)}条，需≥30条）")
             return None
         df['date'] = pd.to_datetime(df['date'])
 
@@ -62,40 +66,54 @@ def analyze_stock(code, name='', target_date=None):
             target_dt = pd.to_datetime(target_date)
             df = df[df['date'] <= target_dt].copy()
             if len(df) == 0:
+                print(f"  [诊断] {code} {name}: 指定日期{target_date}前无K线数据")
                 return None
 
         indicators = calc_indicators(df)
         if indicators is None:
+            print(f"  [诊断] {code} {name}: 技术指标计算失败")
             return None
 
         quote = None
+        data_source = "history"
         if not target_date:
             quote = get_realtime_quote(code)
             if quote:
                 df = _inject_today(df, quote)
                 indicators = calc_indicators(df)
+                if indicators is None:
+                    print(f"  [诊断] {code} {name}: 注入实时行情后技术指标计算失败")
+                    return None
+                data_source = "realtime"
 
         result = diagnose_peak(indicators, quote)
         if result is None:
+            print(f"  [诊断] {code} {name}: peak_detector 返回空结果")
             return None
 
         if not name and quote and quote.get('name'):
             name = quote.get('name')
         result['code'] = code
         result['name'] = name
+        result['diagnosed_at'] = diagnosed_at
+        result['data_source'] = data_source
+        result['target_date'] = target_date or diagnosed_at[:10]
         return result
     except Exception as e:
-        print(f"  [诊断失败] {code} {name}: {e}")
+        print(f"  [诊断失败] {code} {name}: {type(e).__name__}: {e}")
         return None
 
 
-def run_all(watchlist):
+def run_all(watchlist, target_date=None):
     """对自选股列表做批量诊断。
 
     watchlist: list of str (纯代码) 或 list of dict (含 code/name)。
-    返回 list of result dict。
+    target_date: 历史报告日期；提供时只使用该日期及之前K线，不注入当前实时行情。
+    返回 dict：{meta: {...}, results: [result dict, ...]}。
     """
+    batch_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     results = []
+    failed = []
     for item in watchlist:
         if isinstance(item, dict):
             code = item.get('code', '')
@@ -104,10 +122,20 @@ def run_all(watchlist):
             code = item
             name = ''
         print(f"  [诊断] {code} {name}...")
-        r = analyze_stock(code, name)
+        r = analyze_stock(code, name, target_date=target_date)
         if r:
             results.append(r)
             print(f"    评分 {r['total_score']:.1f} | {r['level_color']} {r['level']} | {r['trend_color']} {r['trend_status']}")
         else:
+            failed.append(code)
             print(f"    ⚠ 诊断失败，跳过")
-    return results
+    return {
+        "meta": {
+            "batch_diagnosed_at": batch_at,
+            "target_date": target_date or batch_at[:10],
+            "total": len(watchlist),
+            "succeeded": len(results),
+            "failed": failed,
+        },
+        "results": results,
+    }

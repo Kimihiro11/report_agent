@@ -34,10 +34,27 @@ BEAR_KW = ["回避", "卖出", "减仓", "做空", "规避", "不参与"]
 DIRECTION_CN = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
 
 # 自选股代码→名称映射（config 的 watchlist_stocks 仅含代码）
-WATCHLIST_NAME = {
+_DEFAULT_WATCHLIST_NAME = {
     "688668": "鼎通科技", "688409": "富创精密", "600641": "先导基电",
     "000725": "京东方A", "301392": "汇成真空", "688530": "欧莱新材", "600580": "卧龙电驱",
 }
+
+
+def _load_watchlist_names():
+    """从 config.json 的 watchlist_names 读取；缺失时回退内置默认。"""
+    try:
+        import a_stock_agent as agent
+        cfg = agent.load_config()
+        names = cfg.get("watchlist_names")
+        if names:
+            return dict(names)
+    except Exception:
+        pass
+    return dict(_DEFAULT_WATCHLIST_NAME)
+
+
+# 模块级加载
+WATCHLIST_NAME = _load_watchlist_names()
 
 
 def action_to_direction(action: str) -> str:
@@ -206,19 +223,31 @@ def seed_judgments(report_dir: Path = None):
     files = []
     for p in pats:
         files += list(report_dir.rglob(p))
-    # 去重
-    seen, all_j = set(), []
+    # 去重：同 (报告日, 代码) 仅保留一条。来源优先级 早报(盘前预测,3) > 晚报(盘后,2) > 9章节/盘中(1)
+    # 优先选用更高优先级的来源；同级时偏向有方向（非中性）的判断；再同级则保留先到者。
+    def _src_priority(name: str) -> int:
+        if "早报" in name:
+            return 3
+        if "晚报" in name:
+            return 2
+        if any(k in name for k in ("9章节", "9维度", "盘中")):
+            return 1
+        return 0
+
+    best = {}
     for f in sorted(set(files)):
+        pri = _src_priority(f.name)
         for j in extract_judgments_from_html(f):
             key = (j["report_date"], j["stock_code"])
-            if key not in seen:
-                seen.add(key)
-                all_j.append(j)
+            is_dir = j["direction"] != "neutral"
+            cur = best.get(key)
+            if cur is None:
+                best[key] = (pri, is_dir, j)
             else:
-                # 同日期同代码冲突时，优先保留有方向（非中性）的判断
-                old = next((x for x in all_j if (x["report_date"], x["stock_code"]) == key), None)
-                if old and old["direction"] == "neutral" and j["direction"] != "neutral":
-                    old.update(j)
+                cpri, cdi, _ = cur
+                if (pri, is_dir) > (cpri, cdi):
+                    best[key] = (pri, is_dir, j)
+    all_j = [v[2] for v in best.values()]
     if not all_j:
         print("[seed] 未从报告中解析到任何个股判断")
         return []
@@ -263,11 +292,8 @@ def load_judgments(as_of=None):
 _EM_CACHE = {}
 
 
-def fetch_kline(code: str, beg="2026-06-01", end=None):
-    """返回 [{date, open, close, high, low}]，按日期升序（新浪主源，东方财富兜底）
-
-    end 默认为今天（实时截止），不再写死未来日期。
-    """
+def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
+    """实时抓取日K线（新浪主源，东方财富兜底），返回 [{date, open, close, high, low}] 升序。"""
     end = end or datetime.now().strftime("%Y-%m-%d")
     if code in _EM_CACHE:
         return _EM_CACHE[code]
@@ -318,6 +344,32 @@ def fetch_kline(code: str, beg="2026-06-01", end=None):
     return []
 
 
+def fetch_kline(code: str, beg="2026-06-01", end=None, refresh_days: int = 5):
+    """DB 优先返回日K线（历史数据）：本地 daily_klines 缺失或尾端早于 今天-refresh_days 时，
+    才拉实时行情并回写数据库。使回测可完全基于已入库的历史数据复现，不依赖每次联网抓取。
+
+    end 默认为今天（实时截止），不再写死未来日期。
+    """
+    cfg = _load_db_cfg()
+    db = _db_available(cfg)
+    if db:
+        kl = db.get_klines(code)
+        latest = kl[-1]["date"] if kl else None
+        from datetime import timedelta
+        stale = (latest is None) or (
+            latest < (datetime.now().date() - timedelta(days=refresh_days)).isoformat())
+        if stale:
+            live = _fetch_kline_live(code, beg, end)
+            if live:
+                try:
+                    db.save_klines(code, live)
+                except Exception as e:
+                    print(f"[DB] {code} kline 回写跳过: {e}")
+                kl = db.get_klines(code) or live
+        return kl or []
+    return _fetch_kline_live(code, beg, end)
+
+
 def idx_of_date(klines, target):
     """返回 >= target 的第一根 bar 的索引（交易日对齐）；target 晚于行情末端返回 -1（由调用方按 pending 处理，避免入场价静默错位）。target 可为 date 或 str。"""
     t = target.isoformat() if hasattr(target, "isoformat") else str(target)
@@ -358,6 +410,9 @@ def run_backtest(window_days=WINDOWS, as_of=None):
         print("[回测] 个股判断为空，请先 --seed")
         return None
 
+    db = _db_available(_load_db_cfg())
+    psrc = "DB" if db else "LIVE"  # 价格来源：DB=已入库历史日K；LIVE=实时抓取
+
     results = []        # 每行一个 (judgment, window)
     pending = 0
     for j in judgments:
@@ -378,7 +433,7 @@ def run_backtest(window_days=WINDOWS, as_of=None):
                     "entry_close": None, "exit_close": None,
                     "ret_pct": None, "direction_hit": None,
                     "tech_signal": "neutral", "tech_agree": None,
-                    "status": "pending",
+                    "status": "pending", "price_source": psrc, "note": "",
                 })
             continue
         entry = kl[idx]["close"]
@@ -394,7 +449,7 @@ def run_backtest(window_days=WINDOWS, as_of=None):
                     "entry_close": entry, "exit_close": None,
                     "ret_pct": None, "direction_hit": None,
                     "tech_signal": tech_sig, "tech_agree": None,
-                    "status": "pending",
+                    "status": "pending", "price_source": psrc, "note": "",
                 })
                 continue
             exit_c = kl[ex]["close"]
@@ -418,9 +473,8 @@ def run_backtest(window_days=WINDOWS, as_of=None):
                 "entry_close": entry, "exit_close": exit_c,
                 "ret_pct": round(ret, 2), "direction_hit": hit,
                 "tech_signal": tech_sig, "tech_agree": agree,
-                "status": "done",
+                "status": "done", "price_source": psrc, "note": "",
             })
-    db = _db_available(_load_db_cfg())
     if db:
         try:
             db.save_backtest_results(results)
@@ -470,6 +524,18 @@ def aggregate(results):
 
 
 # ----------------- 生成 HTML 报告 -----------------
+def _load_backtest_template():
+    """加载外部回测报告模板；缺失时回退内置极简模板。"""
+    try:
+        p = BASE_DIR / "templates" / "backtest_report.html"
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return ("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>回测报告</title></head>"
+            "<body><h1>回测报告</h1>{rows}</body></html>")
+
+
 def build_backtest_html(data):
     results = data["results"]
     agg = data["agg"]
@@ -484,6 +550,9 @@ def build_backtest_html(data):
     # 明细表
     rows = ""
     for r in sorted(results, key=lambda x: (x["judgment_date"], x["stock_code"], x["window_days"])):
+        src = r.get("price_source", "")
+        src_badge = ('<span class="badge-db">DB</span>' if src == "DB"
+                     else '<span class="badge-live">实时</span>' if src == "LIVE" else "")
         if r["status"] == "pending":
             ret_s = '<span class="muted">待回测</span>'
             hit_s = '<span class="muted">—</span>'
@@ -501,7 +570,8 @@ def build_backtest_html(data):
                 agree_s = f'<span class="{cls_of(r["tech_agree"])}">{"一致" if r["tech_agree"] else "背离"}</span>'
         rows += (f"<tr><td>{r['judgment_date']}</td><td>{r['stock_name']}<span class='muted'> {r['stock_code']}</span></td>"
                  f"<td>{r['action']}</td><td>{DIRECTION_CN[r['direction']]}</td><td>{r['window_days']}日</td>"
-                 f"<td>{ret_s}</td><td>{hit_s}</td><td>{DIRECTION_CN[r['tech_signal']]}</td><td>{agree_s}</td></tr>")
+                 f"<td>{ret_s}</td><td>{hit_s}</td><td>{DIRECTION_CN[r['tech_signal']]}</td><td>{agree_s}</td>"
+                 f"<td>{src_badge}</td></tr>")
 
     # 按窗口汇总
     wrows = ""
@@ -526,78 +596,34 @@ def build_backtest_html(data):
     arate = agg["agree_rate"]
     rate_s = f"{rate}%" if rate is not None else "样本不足"
     arate_s = f"{arate}%" if arate is not None else "样本不足"
-    html = f'''<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A股舆情Agent · 个股判断回测与交叉验证</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.8}}
-.wrap{{max-width:980px;margin:0 auto;padding:24px 20px 60px}}
-.header{{background:linear-gradient(135deg,#0f6b5e 0%,#1f9e86 100%);color:#fff;border-radius:14px;padding:26px 30px;margin-bottom:22px}}
-.header h1{{font-size:22px;font-weight:700;margin-bottom:6px}}
-.header .sub{{font-size:13px;opacity:.85}}
-.header .meta{{display:flex;gap:12px;margin-top:12px;font-size:12px;flex-wrap:wrap}}
-.header .meta span{{background:rgba(255,255,255,.16);padding:4px 14px;border-radius:20px}}
-.card{{background:#fff;border-radius:12px;padding:22px 24px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.05)}}
-.card h2{{font-size:16px;font-weight:700;color:#0f6b5e;margin-bottom:14px;padding-left:10px;border-left:4px solid #1f9e86}}
-table{{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}}
-th{{background:#f0f2f5;color:#555;font-weight:600;padding:8px 10px;text-align:left;border-bottom:2px solid #e0e3e8}}
-td{{padding:7px 10px;border-bottom:1px solid #eef0f3}}
-.up{{color:#d63031;font-weight:600}}
-.down{{color:#00a865;font-weight:600}}
-.muted{{color:#999}}
-.metrics{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
-.metric{{background:#fafbfc;border-radius:10px;padding:16px;border:1px solid #eef0f3}}
-.metric .label{{font-size:12px;color:#888;margin-bottom:6px}}
-.metric .value{{font-size:26px;font-weight:700}}
-.metric .value.good{{color:#1f9e86}}
-.metric .value.warn{{color:#e67e22}}
-.metric .desc{{font-size:12px;color:#666;margin-top:4px}}
-.disclaimer{{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:16px;font-size:12px;color:#666}}
-.disclaimer strong{{color:#d63031}}
-</style></head><body><div class="wrap">
-<div class="header">
-<h1>A股舆情Agent · 个股判断回测与交叉验证</h1>
-<div class="sub">每日报告个股操作指引 → 新浪日K实测收益 → 独立技术信号对照</div>
-<div class="meta"><span>生成时间：{today}</span><span>样本(已兑现)：{agg['total_done']} 条</span>
-<span>待回测：{len(pend)} 条</span><span>窗口：1/3/5 交易日</span></div>
-</div>
+    rate_class = "good" if (rate or 0) >= 50 else "warn"
+    arate_class = "good" if (arate or 0) >= 50 else "warn"
 
-<div class="card">
-<h2>一、回测核心指标</h2>
-<div class="metrics">
-  <div class="metric"><div class="label">方向命中率（看多/看空判定）</div>
-    <div class="value {'good' if (rate or 0)>=50 else 'warn'}">{rate_s}</div>
-    <div class="desc">基于 {agg['dir_calls']} 次有明确方向的判断，未来窗口实际涨跌与判断方向一致的比例（即回测交叉验证结果）</div></div>
-  <div class="metric"><div class="label">独立技术信号一致率</div>
-    <div class="value {'good' if (arate or 0)>=50 else 'warn'}">{arate_s}</div>
-    <div class="desc">agent 叙事判断 与 独立量价技术信号（MA20+斜率）方向一致的比例；样本不足时待更多方向性判断兑现</div></div>
-</div>
-</div>
+    # 价格来源统计（DB历史 vs 实时）
+    src_db = sum(1 for r in results if r.get("price_source") == "DB")
+    src_live = sum(1 for r in results if r.get("price_source") == "LIVE")
+    src_note = (f"DB历史 {src_db} / 实时 {src_live}") if (src_db or src_live) else "实时行情"
 
-<div class="card">
-<h2>二、分窗口命中率</h2>
-<table><thead><tr><th>持有窗口</th><th>命中/总数</th><th>命中率</th></tr></thead><tbody>{wrows}</tbody></table>
-</div>
-
-<div class="card">
-<h2>三、分个股命中率（看多/看空判定）</h2>
-<table><thead><tr><th>代码</th><th>命中/总数</th><th>命中率</th><th>平均收益</th></tr></thead><tbody>{srows}</tbody></table>
-</div>
-
-<div class="card">
-<h2>四、逐笔回测明细</h2>
-<table><thead><tr><th>判断日</th><th>个股</th><th>操作</th><th>方向</th><th>窗口</th><th>实际收益</th><th>方向命中</th><th>技术信号</th><th>交叉验证</th></tr></thead>
-<tbody>{rows}</tbody></table>
-<p class="muted" style="font-size:12px;margin-top:8px;">说明：中性（持有/观望/谨慎）不参与方向命中统计，仅列示实际收益；技术信号为判断日当天的独立量价趋势（价格相对MA20 + MA20斜率）。待回测=该股判断日之后的窗口尚未到交易日。</p>
-</div>
-
-<div class="disclaimer">
-<strong>免责声明</strong>：本回测基于公开行情与历史报告自动生成，样本量有限，统计结论不构成投资建议。命中率受样本期市场风格影响，过去表现不预示未来。交叉验证仅用于评估两类方法的一致性，不保证收益。
-</div>
-</div></body></html>'''
-    return html
+    # 安全替换（避免模板 CSS 花括号触发 str.format 报错）
+    tmpl = _load_backtest_template()
+    repl = {
+        "{today}": today,
+        "{total_done}": str(agg["total_done"]),
+        "{pending_count}": str(len(pend)),
+        "{rate_s}": rate_s,
+        "{rate_class}": rate_class,
+        "{dir_calls}": str(agg["dir_calls"]),
+        "{arate_s}": arate_s,
+        "{arate_class}": arate_class,
+        "{wrows}": wrows,
+        "{srows}": srows,
+        "{rows}": rows,
+        "{src_note}": src_note,
+    }
+    out = tmpl
+    for k, v in repl.items():
+        out = out.replace(k, v)
+    return out
 
 
 # ----------------- 入口 -----------------

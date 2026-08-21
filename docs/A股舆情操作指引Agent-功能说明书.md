@@ -59,7 +59,7 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
    │         / fetch_index_quotes / fetch_kline / fetch_national_team
    │         → 舆情 dict + 行情 dict
    │
-   ├─[诊断层] stock_diagnosis.run_all(7只代码) → 见顶诊断评分
+   ├─[诊断层] stock_diagnosis.run_all(自选股代码, 动态取 config.watchlist_stocks) → 见顶诊断评分
    │
    ├─[生成层] build_report.py(实时模板)
    │         → A股操作指引-9章节-{YYYY-MM-DD}.html
@@ -80,7 +80,7 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
 1. **核心结论**（头部 header + conclusion-grid：最强主线 / 次强主线 / 操作基调 / 风险）
 2. **一、隔夜美股**（含全球人物马斯克/特朗普信号，条形图）
 3. **二、CPI 与宏观**（中美指标表 + 风险解除结论）
-4. **三、宏观传导链监控**（独立因子：oil→CPI→美债→加息概率→日元→VIX→A股，附 SVG 横向流程状态图）
+4. **三、宏观传导链监控**（日元主导：原油触发→日本输入型通胀→日本加息→抛美债压力→FIMA 回购→日元干预→套息平仓→A股；附 SVG 横向流程图及美国财政部 10Y/2Y 最新日度收益率面板）
 5. **四、地缘政治与原油**（事件因子）
 6. **五、ETF 资金流向**（国家队/资金切换主线确认）
 7. **六、唐史主任长文分析 + 投星观点提炼**
@@ -90,8 +90,8 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
 11. **附：主要指数（A股收盘）**
 12. **免责声明**（固定文案）
 
-**自选股固定 7 只（代码不可随意改，改前必须同步 `config.json`、`backtest.py` 的 `WATCHLIST_NAME`、各报告生成器）：**
-`688668 鼎通科技、688409 富创精密、600641 先导基电、000725 京东方A、301392 汇成真空、688530 欧莱新材、600580 卧龙电驱`
+**自选股由 `config.json` 的 `watchlist_stocks` 动态决定（数量不写死；改代码须同步 `config.json`、`backtest.py` 的 `WATCHLIST_NAME`、各报告生成器，报告标题用 len(WATCHLIST) 渲染）：**
+（具体标的与数量见 `config.json` 的 `watchlist_stocks`，当前含 600498 烽火通信共 8 只）
 
 ---
 
@@ -151,7 +151,7 @@ reports/                  # 产出物按类型分目录：早报/晚报/周报/�
 | 字段 | 作用 | 注意 |
 |------|------|------|
 | `weibo_sources` | 微博大 V 列表（user_id/name/tier） | 加用户即扩展舆情源 |
-| `watchlist_stocks` | 7 只自选股代码数组 | 改代码须同步全局 |
+| `watchlist_stocks` | 自选股代码数组（数量动态，由 config 决定） | 改代码须同步全局 |
 | `global_sources` | 马斯克/特朗普等全球人物 | 信号类型配置 |
 | `macro_indicators` + `_guide` | 宏观指标与解读 | 指导报告第二章 |
 | `event_factors` | 地缘/原油/灾害关键词 | 第四章 |
