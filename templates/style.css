@@ -56,6 +56,21 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .deep-grid{display:grid;gap:6px;margin-bottom:6px}
 .deep-row{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
 .deep-k{display:inline-block;min-width:44px;font-size:12px;font-weight:600;color:#534AB7;background:#f0f2f5;border-radius:6px;padding:2px 8px;text-align:center}
+/* ===== 第五节 ETF 近5日柱状图 ===== */
+.ef-chart-wrap{margin-top:14px;background:#fafbff;border:1px solid #e8eaf6;border-radius:10px;padding:12px 14px}
+.ef-title{font-size:12.5px;font-weight:600;color:#3C3489;margin-bottom:10px}
+.ef-chart{display:flex;gap:6px;align-items:stretch}
+.ef-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.ef-date{font-size:11px;color:#888;white-space:nowrap}
+.ef-bars{display:flex;gap:3px;align-items:flex-end;height:110px;width:100%}
+.ef-bar-cell{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:2px;min-width:0}
+.ef-bar{width:68%;border-radius:3px 3px 0 0;min-height:3px}
+.ef-bar-empty{width:68%;height:3px;background:#f0f2f5;border-radius:3px}
+.ef-bar-val{font-size:9.5px;color:#777;white-space:nowrap}
+.ef-legend{font-size:11.5px;color:#555;margin-top:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ef-leg-dot{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px}
+.ef-leg-dot.ef-in{background:#d63031}
+.ef-leg-dot.ef-out{background:#00a865}
 .stock-card{border:1px solid #eef0f3;border-radius:10px;padding:16px;margin-bottom:12px}
 .stock-title{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 .stock-title .name{font-size:15px;font-weight:700;color:#1a2b4a}
@@ -81,6 +96,20 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .intel-wrap{margin-top:14px;border-top:1px dashed #eef0f3;padding-top:12px}
 .intel-summary{font-size:13.5px;line-height:1.9;color:#243;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef2f7;border-radius:10px;padding:13px 15px}
 .intel-summary b{color:#1967d2}
+/* 结构化解析卡片：方向徽章 + 核心结论 + 传导 + 已定价 + 关注点 */
+.in-struct{background:#fbfcfe;border:1px solid #eef2f7;border-radius:10px;padding:12px 14px}
+.in-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.in-core{font-size:13.5px;line-height:1.8;color:#1a2b4a;background:#f8f7ff;border-left:3px solid #534AB7;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-weight:500}
+.in-sec{font-size:12.5px;color:#444;line-height:1.75;margin:5px 0}
+.in-sec .in-k{display:inline-block;min-width:52px;font-size:11.5px;font-weight:700;color:#534AB7;background:#f0f2f5;border-radius:6px;padding:1px 8px;text-align:center;margin-right:8px}
+.in-sec ul{margin:4px 0 0;padding-left:14px}
+.in-sec li{margin:2px 0}
+.in-sec li::marker{color:#AFA9EC}
+.in-watch{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.in-chip{display:inline-block;font-size:11.5px;padding:2px 10px;border-radius:10px;background:#e8f0fe;color:#1967d2;border:1px solid #c8d8f5}
+/* 隔夜美股汇总行 */
+.us-sum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#fafbff;border:1px solid #e8eaf6;border-radius:8px;margin:2px 0 10px}
+.us-sum .tag{white-space:nowrap}
 .disclaimer{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:18px 22px;font-size:12px;color:#666;line-height:1.8}
 .disclaimer strong{color:#d63031}
 .chain-svg{width:100%;height:auto;display:block;margin:8px 0}
@@ -88,6 +117,10 @@ td{padding:8px 10px;border-bottom:1px solid #eef0f3}
 .toc h2{font-size:15px;color:#3C3489;margin-bottom:10px}
 .toc ol{margin-left:20px;font-size:13px;color:#444}
 .toc li{margin:4px 0}
+.toc a{color:#3C3489;text-decoration:none;border-bottom:1px dashed transparent;transition:color .15s,border-color .15s}
+.toc a:hover{color:#d63031;border-bottom-color:#d63031}
+html{scroll-behavior:smooth}
+.card{scroll-margin-top:14px}
 .bar-row{display:flex;align-items:center;margin:5px 0;font-size:12.5px}
 .bar-name{width:150px;text-align:right;padding-right:10px;color:#555}
 .bar-wrap{flex:1;background:#f0f2f5;border-radius:4px;height:16px;overflow:hidden}

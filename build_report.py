@@ -132,6 +132,8 @@ weibo_data = {}
 quotes = {}
 us_market = []
 etf = []
+fund_flows = {}
+market_width = {}
 market_state = "neutral"
 matched_sectors = []
 intel = {}
@@ -151,7 +153,8 @@ def load_context():
     """解析命令行参数，并加载全部实时数据上下文（配置/快照/外网解析/个股诊断）到模块全局。"""
     global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE
     global cfg, WATCHLIST, VS_NAMES, VS_SOURCES
-    global snap_path, snapshot, weibo_data, quotes, us_market, etf, market_state, matched_sectors
+    global snap_path, snapshot, weibo_data, quotes, us_market, etf, fund_flows, market_state, matched_sectors
+    global market_width
     global intel, _intel_topics
     global tangshi, touxing_asset, touxing_yeye
     global macro_items, event_items, japan_items, tech_items, global_items
@@ -199,6 +202,8 @@ def load_context():
     quotes = snapshot.get("quotes", {})
     us_market = snapshot.get("us_market", []) or []
     etf = snapshot.get("etf", []) or []
+    fund_flows = snapshot.get("fund_flows") or {}
+    market_width = snapshot.get("market_width") or {}
     market_state = snapshot.get("market_state", "neutral")
     matched_sectors = snapshot.get("matched_sectors", []) or []
 
@@ -457,9 +462,18 @@ def us_bar(name, pct, val, sig):
     color = "#d63031" if pf > 0 else "#00a865"
     if pf == 0:
         color = "#888"
-    return (f'<div class="bar-row"><div class="bar-name">{name}</div>'
+    tip = f"收盘 {val}" if str(val).strip() not in ("", "—") else ""
+    title_attr = f' title="{_esc(tip)}"' if tip else ""
+    return (f'<div class="bar-row"{title_attr}><div class="bar-name">{name}</div>'
             f'<div class="bar-wrap"><div class="bar-fill" style="width:{w:.1f}%;background:{color}"></div></div>'
             f'<div class="bar-val {up_down(pf)}">{sign(pf)}{pf}%</div></div>')
+
+
+def _pct_val(x):
+    try:
+        return float(x[1])
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # ================= 个股诊断信号渲染（第八节用） =================
@@ -509,6 +523,31 @@ def render_signals(sigs):
     return html
 
 
+def position_advice(d):
+    """参考仓位区间：市场状态基础仓位 + 诊断 level 修正（真实规则，非预测）。"""
+    base = {"bullish": (0.6, 0.8), "neutral": (0.4, 0.6), "bearish": (0.1, 0.3)}.get(market_state, (0.4, 0.6))
+    adj = {"安全": 0.10, "黄色预警": 0.0, "高危": -0.10, "见顶确认": -0.15,
+           "见底反弹": 0.05, "趋势健康": 0.05}.get(d.get("level", ""), 0.0)
+    lo = max(0.0, min(0.85, base[0] + adj))
+    hi = max(lo + 0.1, min(0.9, base[1] + adj))
+    return f"{int(round(lo * 100))}-{int(round(hi * 100))}%"
+
+
+def stop_loss_price(d):
+    """止损位：min(MA20, 近5日低点) × 0.97（下方 3% 缓冲），基于真实日K。"""
+    try:
+        import backtest as _bt
+        kl = _bt.fetch_kline(d.get("code"))
+        if kl and len(kl) >= 5:
+            closes = [k["close"] for k in kl]
+            ma20 = sum(closes[-20:]) / min(20, len(closes))
+            low5 = min(k["low"] for k in kl[-5:])
+            return round(min(ma20, low5) * 0.97, 2)
+    except Exception:
+        pass
+    return None
+
+
 def stock_card(code):
     sector = _load_sector(code)
     d = diag_for(code)
@@ -542,6 +581,14 @@ def stock_card(code):
         logic = f"{sector}（实时诊断缺失）"
         sig_html = ""
         price_html = ""
+    # 参考仓位 + 止损位（真实规则 + 真实日K，诊断缺失则不展示）
+    pos_txt = stop_txt = ""
+    if d:
+        pos_txt = position_advice(d)
+        sl = stop_loss_price(d)
+        if sl:
+            stop_txt = f"｜ 止损位 <b>{sl}</b>元"
+    pos_html = f'<p class="stock-meta">参考仓位 {pos_txt}（市场{ {"bullish":"偏多","neutral":"震荡","bearish":"偏空"}.get(market_state,"震荡") } + 诊断修正）{stop_txt}</p>' if pos_txt else ""
     return f'''
     <div class="stock-card">
       <div class="stock-title">
@@ -552,6 +599,7 @@ def stock_card(code):
       <p class="stock-logic">{logic}</p>
       {sig_html}
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
+      {pos_html}
     </div>'''
 
 
@@ -628,11 +676,65 @@ def us_yield_panel():
 def us_section():
     if not us_market:
         return PLACEHOLDER
-    rows = "".join(
-        f'<tr><td>{n}</td><td class="{up_down(p)}">{sign(p)}{p}%</td><td>{v}</td></tr>'
-        for n, p, v, sig in us_market)
+    # 汇总行：三大指数方向徽章（含点位）+ 涨跌家数 + 领涨/领跌标的（一眼读出美股格局）
+    up_n = sum(1 for x in us_market if _pct_val(x) > 0)
+    sum_parts = []
+    for x in us_market[:3]:
+        pf = _pct_val(x)
+        cls = "b-red" if pf > 0 else ("b-green" if pf < 0 else "b-gray")
+        short = str(x[0]).replace("纳斯达克", "纳指").replace("标普500", "标普")
+        price_txt = f" {fmt(x[2])}" if str(x[2]).strip() not in ("", "—") else ""
+        sum_parts.append(f'<span class="badge {cls}">{_esc(short)} {sign(pf)}{pf}%{price_txt}</span>')
+    sum_parts.append(f'<span class="tag">上涨 {up_n}/{len(us_market)}</span>')
+    _valid = [x for x in us_market if _pct_val(x) != 0]
+    if _valid:
+        best = max(_valid, key=_pct_val)
+        worst = min(_valid, key=_pct_val)
+        sum_parts.append(f'<span class="tag">领涨 {_esc(str(best[0]))} {sign(_pct_val(best))}{_pct_val(best)}%</span>')
+        sum_parts.append(f'<span class="tag">领跌 {_esc(str(worst[0]))} {sign(_pct_val(worst))}{_pct_val(worst)}%</span>')
+    summary = f'<div class="us-sum">{"".join(sum_parts)}</div>'
     bars = "".join(us_bar(n, p, v, s) for n, p, v, s in us_market)
-    return f'<table><thead><tr><th>标的</th><th>涨跌</th><th>最新价</th></tr></thead><tbody>{rows}</tbody></table><div style="margin-top:12px;">{bars}</div>'
+    return f'<div style="margin:2px 0">{summary}{bars}</div>'
+
+
+def _etf_history_chart():
+    """近5日 ETF 主力净流入分组柱状图（数据来自 PostgreSQL etf_flows 历史，纯 CSS 渲染）。
+
+    返回空串表示数据库不可用或无历史数据（不影响当日表格渲染）。
+    """
+    try:
+        from db import StockAgentDB
+        dc = (cfg or {}).get("database", {})
+        db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
+                          user=dc.get("user", "postgres"), password=dc.get("password", ""),
+                          dbname=dc.get("dbname", "a_stock_agent"))
+        hist = db.get_etf_flows_history(days=5)
+    except Exception:
+        return ""
+    if not hist:
+        return ""
+    dates = list(hist.keys())
+    names = list(dict.fromkeys(n for day in hist.values() for n in day))
+    max_abs = max((abs(v) for day in hist.values() for v in day.values()), default=1) or 1
+    cols = ""
+    for d in dates:
+        cells = ""
+        for n in names:
+            v = hist[d].get(n)
+            if v is None:
+                cells += '<div class="ef-bar-cell"><div class="ef-bar-empty"></div></div>'
+                continue
+            h = max(4.0, abs(v) / max_abs * 100)
+            color = "#d63031" if v > 0 else "#00a865"
+            cells += (f'<div class="ef-bar-cell" title="{_esc(n)} {v:+.2f}亿元">'
+                      f'<div class="ef-bar" style="height:{h:.1f}%;background:{color}"></div>'
+                      f'<span class="ef-bar-val">{v:+.1f}</span></div>')
+        cols += f'<div class="ef-col"><div class="ef-date">{_esc(d[5:])}</div><div class="ef-bars">{cells}</div></div>'
+    legend = " · ".join(_esc(n) for n in names)
+    return (f'<div class="ef-chart-wrap"><div class="ef-title">近5日 ETF 主力净流入（亿元）· 数据库历史</div>'
+            f'<div class="ef-chart">{cols}</div>'
+            f'<div class="ef-legend"><span class="ef-leg-dot ef-in"></span>净流入&nbsp;&nbsp;'
+            f'<span class="ef-leg-dot ef-out"></span>净流出&nbsp;&nbsp;|&nbsp;&nbsp;{legend}</div></div>')
 
 
 def etf_section():
@@ -641,48 +743,299 @@ def etf_section():
     rows = "".join(
         f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>'
         for e in etf)
-    return f'<table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead><tbody>{rows}</tbody></table>'
+    chart = _etf_history_chart()
+    return f'<table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead><tbody>{rows}</tbody></table>{chart}'
 
 
-def index_section():
-    if not quotes:
-        return PLACEHOLDER
-    rows = "".join(
-        f'<tr><td>{name}</td><td>{q.get("price")}</td><td class="{up_down(q.get("chg_pct"))}">{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td></tr>'
-        for name, q in quotes.items())
-    return f'<table><thead><tr><th>指数</th><th>最新</th><th>涨跌幅</th></tr></thead><tbody>{rows}</tbody></table>'
+def fund_section():
+    """资金面信号（自选股两融 + 北向持仓）。
+
+    数据来自 agent 经 westock 连接器取的真实数据（data_fund_margin 日频、
+    data_north_holding 季频），写入 westock_fund_override.json 由快照带入；
+    缺失渲染占位，绝不伪造。
+    """
+    if not fund_flows:
+        return ""
+    margin = fund_flows.get("margin") or []
+    north = fund_flows.get("north_holding") or []
+    data_date = fund_flows.get("data_date", "")
+    parts = []
+    # 两融（日频）
+    if margin:
+        mrows = "".join(
+            f'<tr><td>{_esc(m.get("name", ""))}</td>'
+            f'<td>{m.get("balance", 0) / 1e8:.1f}亿</td>'
+            f'<td class="{up_down(m.get("dod_pct", 0))}">{"+" if (m.get("dod_pct", 0) or 0) > 0 else ""}{m.get("dod_pct", 0)}%</td></tr>'
+            for m in sorted(margin, key=lambda x: -(x.get("balance") or 0)))
+        parts.append(
+            f'<h3 style="font-size:13px;margin:10px 0 4px">自选股融资余额（日频 · {_esc(str(data_date)[:10])}）</h3>'
+            f'<table><thead><tr><th>个股</th><th>融资余额</th><th>较前日</th></tr></thead><tbody>{mrows}</tbody></table>')
+    # 北向持仓（季频）
+    if north:
+        nrows = "".join(
+            f'<tr><td>{_esc(n.get("name", ""))}</td>'
+            f'<td>{(n.get("ratio") or 0):.2f}%</td>'
+            f'<td>{(n.get("cap") or 0) / 1e8:.1f}亿</td>'
+            f'<td class="{up_down(n.get("shares_chg_q") or 0)}">'
+            f'{"+" if (n.get("shares_chg_q") or 0) > 0 else ""}{(n.get("shares_chg_q") or 0) / 1e4:.0f}万股</td></tr>'
+            for n in sorted(north, key=lambda x: -(x.get("ratio") or 0)))
+        parts.append(
+            '<h3 style="font-size:13px;margin:10px 0 4px">自选股北向持仓（季频 · Q2 2026-06-30）</h3>'
+            '<table><thead><tr><th>个股</th><th>持股比例</th><th>持股市值</th><th>Q2 增持/减持</th></tr></thead>'
+            f'<tbody>{nrows}</tbody></table>')
+        parts.append('<p class="muted" style="font-size:11px;margin-top:4px">北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露（真实数据）；融资余额为日频。</p>')
+    if not parts:
+        return ""
+    return '<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">' + "".join(parts) + '</div>'
+
+
+def _adl_line_chart(points):
+    """ADL 累计线图（SVG 折线，无第三方库）。
+
+    points: [{d: 'MM-DD', v: 当日净差, adl: 累计值}] 升序。
+    折线=ADL 累计；圆点按当日净差正红负绿；Y 轴按数据 min/max 自适应，含 0 轴虚线。
+    """
+    if len(points) < 2:
+        return ""
+    W, H, pad_l, pad_r, pad_t, pad_b = 640, 150, 34, 14, 18, 22
+    vals = [p["adl"] for p in points]
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1
+    lo -= span * 0.15
+    hi += span * 0.15
+    plot_w = W - pad_l - pad_r
+    plot_h = H - pad_t - pad_b
+    def X(i):
+        return pad_l + (plot_w * i / (len(points) - 1))
+    def Y(v):
+        return pad_t + plot_h * (hi - v) / (hi - lo)
+    # 网格 + 0 轴
+    grids = ""
+    for gy in (0.0, 0.25, 0.5, 0.75, 1.0):
+        y = pad_t + plot_h * gy
+        val = hi - gy * (hi - lo)
+        grids += f'<line x1="{pad_l}" y1="{y:.1f}" x2="{W-pad_r}" y2="{y:.1f}" stroke="#eef0f4" stroke-width="1"/>'
+        grids += f'<text x="{pad_l-6}" y="{y+3:.1f}" text-anchor="end" font-size="9" fill="#9aa3b2">{val:+,.0f}</text>'
+    y0 = Y(0)
+    zero_line = f'<line x1="{pad_l}" y1="{y0:.1f}" x2="{W-pad_r}" y2="{y0:.1f}" stroke="#c3cad6" stroke-width="1" stroke-dasharray="4,3"/>'
+    # 折线 + 点
+    coords = [(X(i), Y(p["adl"])) for i, p in enumerate(points)]
+    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
+    segs = ""
+    for i in range(len(points) - 1):
+        c = "#d63031" if points[i+1]["adl"] >= points[i]["adl"] else "#00a865"
+        segs += f'<line x1="{coords[i][0]:.1f}" y1="{coords[i][1]:.1f}" x2="{coords[i+1][0]:.1f}" y2="{coords[i+1][1]:.1f}" stroke="{c}" stroke-width="2.2" stroke-linecap="round"/>'
+    dots = ""
+    for i, (x, y) in enumerate(coords):
+        c = "#d63031" if points[i]["v"] >= 0 else "#00a865"
+        dots += (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="#fff" stroke="{c}" stroke-width="2">'
+                 f'<title>{points[i]["d"]} 净差{points[i]["v"]:+d} ADL={points[i]["adl"]:+d}</title></circle>')
+        if i in (0, len(points) - 1):
+            dots += (f'<text x="{x:.1f}" y="{y-7:.1f}" text-anchor="middle" font-size="9" font-weight="600" fill="#4a5568">'
+                     f'{points[i]["adl"]:+,d}</text>')
+    # X 轴日期标签（隔一个显示避免拥挤）
+    labels = "".join(
+        f'<text x="{x:.1f}" y="{H-6}" text-anchor="middle" font-size="9" fill="#9aa3b2">{p["d"]}</text>'
+        for i, (x, p) in enumerate([(coords[i][0], points[i]) for i in range(len(points))])
+        if i % 2 == 0 or i == len(points) - 1)
+    return (f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto;display:block">'
+            f'{grids}{zero_line}<polyline points="{poly}" fill="none" stroke="none"/>'
+            f'{segs}{dots}{labels}</svg>')
+
+
+def market_width_section():
+    """市场宽度与腾落指数（ADL）。
+
+    当日涨跌家数来自东财 getTopicZDFenBu（真实数据，快照 market_width 字段）；
+    ADL 累计 = Σ(上涨家数 - 下跌家数)，从数据库 market_width 表首个记录日起累计
+    （2026-08-27 起采集入库；历史不可得，绝不伪造）。返回 "" 表示无数据。
+    """
+    if not market_width:
+        return ""
+    up = market_width.get("up", 0)
+    down = market_width.get("down", 0)
+    flat = market_width.get("flat", 0)
+    zt = market_width.get("zt", 0)
+    dt = market_width.get("dt", 0)
+    total = up + down + flat or 1
+    up_ratio = up / total * 100
+    # ADL 历史（DB 积累）
+    adl_hist = []
+    adl = 0
+    try:
+        import db as _db
+        dc = (cfg or {}).get("database", {})
+        db = _db.StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
+                              user=dc.get("user", "postgres"), password=dc.get("password", ""),
+                              dbname=dc.get("dbname", "a_stock_agent"))
+        hist = db.get_market_width(days=15)
+        adl = 0
+        for r in hist:
+            adl += (r["up"] or 0) - (r["down"] or 0)
+            adl_hist.append({"d": str(r["width_date"])[5:], "v": (r["up"] or 0) - (r["down"] or 0), "adl": adl})
+    except Exception:
+        pass
+    # 今日净差
+    net_today = up - down
+    # ADL 线图（近 10 个交易日累计曲线）
+    chart = _adl_line_chart(adl_hist[-10:]) if adl_hist else ""
+    if not chart:
+        return ""
+    width_badge = "偏多" if up_ratio >= 55 else ("偏空" if up_ratio <= 45 else "中性")
+    wcolor = "#d63031" if up_ratio >= 55 else ("#00a865" if up_ratio <= 45 else "#1967d2")
+    wcls = "b-red" if up_ratio >= 55 else ("b-green" if up_ratio <= 45 else "b-blue")
+    adl_txt = f"{adl:+d}" if adl_hist else f"{net_today:+d}"
+    return (f'<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">'
+            f'<h3 style="font-size:13px;margin:6px 0 4px">市场宽度与腾落指数（实时 · 全市场）</h3>'
+            f'<p style="font-size:12.5px;margin:4px 0">上涨 <b class="up">{up}</b> / 下跌 <b class="down">{down}</b>'
+            f' / 平 {flat} 家 ｜ 涨停 {zt} / 跌停 {dt} ｜ 上涨占比 {up_ratio:.0f}%'
+            f' <span class="badge {wcls}">{width_badge}</span></p>'
+            f'<p style="font-size:12.5px;margin:4px 0">腾落指数(ADL) <b style="color:{wcolor}">{adl_txt}</b>'
+            f' <span class="muted" style="font-size:11px">（Σ上涨-下跌，近{len(adl_hist)}个交易日累计；'
+            f'基线 8/14-8/26 westock 全市场统计 + 每日入库积累，真实数据）</span></p>'
+            f'<div style="margin-top:6px">{chart}</div>'
+            f'<p class="muted" style="font-size:11px;margin:4px 0 0">'
+            f'线=ADL 累计（上涨家数-下跌家数逐日累加），红点=当日上涨家数占优、绿点=下跌占优；'
+            f'ADL 持续回升表示市场宽度修复。</p></div>')
+
+
+_INTEL_DIR_CLS = {"偏多": "b-red", "偏空": "b-green", "中性": "b-blue", "利多": "b-red", "利空": "b-green"}
+
+
+def _intel_structured_html(ss, summary):
+    """把 summary_structured 渲染为结构化卡片：方向/置信度 → 核心结论 → 传导 → 已定价 → 关注点。
+
+    置信度与方向仅展示已解析事实，绝不推断补齐；字段缺失的块整体跳过。
+    """
+    core = str(ss.get("core_conclusion") or "").strip() or summary
+    parts = []
+    if not core:
+        return ""
+    # 头部：方向徽章 + 置信度 + 时点
+    head = '<div class="in-head">'
+    d_label = str(ss.get("direction") or "").strip()
+    if d_label:
+        head += f'<span class="badge {_INTEL_DIR_CLS.get(d_label, "b-blue")}">{_esc(d_label)}</span>'
+    conf = ss.get("confidence")
+    if isinstance(conf, (int, float)) and 0 <= conf <= 1:
+        head += f'<span class="muted" style="font-size:11.5px">置信度 {float(conf):.2f}</span>'
+    as_of = str(ss.get("as_of") or "").strip()
+    if as_of:
+        head += f'<span class="muted" style="font-size:11.5px">截至 {as_of}</span>'
+    head += "</div>"
+    parts.append(head)
+    # 核心结论
+    parts.append(f'<div class="in-core">{_esc(core)}</div>')
+    # 传导路径
+    trans = [str(x).strip() for x in (ss.get("transmission") or []) if str(x).strip()]
+    if trans:
+        lis = "".join(f"<li>{_esc(t)}</li>" for t in trans)
+        parts.append(f'<div class="in-sec"><span class="in-k">传导</span>对 A 股传导路径<ul>{lis}</ul></div>')
+    # 是否已定价
+    priced = str(ss.get("priced_in") or "").strip()
+    if priced:
+        parts.append(f'<div class="in-sec"><span class="in-k">已定价</span>{_esc(priced)}</div>')
+    # 关注点
+    watch = [str(x).strip() for x in (ss.get("watch") or []) if str(x).strip()]
+    if watch:
+        chips = "".join(f'<span class="in-chip">{_esc(w)}</span>' for w in watch[:6])
+        parts.append(f'<div class="in-sec"><span class="in-k">关注</span><span class="in-watch">{chips}</span></div>')
+    return '<div class="in-struct">' + "".join(parts) + "</div>"
 
 
 def intel_block(key):
-    """外网资讯解析块：渲染 Agent 写的中文总结（已解析英文正文后总结，不展示英文原文）。
+    """外网资讯解析块：优先渲染 summary_structured 结构化卡片（方向/传导/已定价/关注点），
+    缺失时回退扁平 summary_zh 段落（已解析英文正文后总结，不展示英文原文）。
 
     数据来自 news_intel.py（英文源抓取 + 正文解析），绝不编造；缺口渲染占位。
     """
     t = _intel_topics.get(key)
-    if not t or not t.get("raw"):
+    if not t:
         return ('<div class="intel-wrap"><p class="muted" style="font-size:12px;">'
                 '外网资讯解析缺失（请先运行 `python news_intel.py` 抓取英文源并总结）。</p></div>')
     summary = t.get("summary_zh", "").strip()
+    ss = t.get("summary_structured")
+    if isinstance(ss, dict) and (ss.get("core_conclusion") or summary):
+        body = _intel_structured_html(ss, summary)
+        if body:
+            return f'<div class="intel-wrap">{body}</div>'
     if summary:
         body = f'<div class="intel-summary">{_esc(summary)}</div>'
-    else:
+    elif t.get("raw"):
         body = '<p class="muted" style="font-size:12px;">外网资讯已抓取解析，中文结论待生成。</p>'
+    else:
+        return ('<div class="intel-wrap"><p class="muted" style="font-size:12px;">'
+                '外网资讯解析缺失（请先运行 `python news_intel.py` 抓取英文源并总结）。</p></div>')
     return f'<div class="intel-wrap">{body}</div>'
+
+
+def judgment_hit_rate(days=5, window=3):
+    """近 days 个报告日的自选股方向判断兑现率（真实数据：daily_klines 收盘价）。
+
+    方向命中口径与回测一致：bullish 且 window 日后收盘涨 → 命中；bearish 且跌 → 命中。
+    仅统计窗口内行情已到期的判断；无判断/库不可用返回 None。
+    """
+    try:
+        import backtest as _bt
+        judgments = _bt.load_judgments(None)
+        if not judgments:
+            return None
+        dates = sorted({j["report_date"] for j in judgments})[-days:]
+        hit = total = 0
+        for j in judgments:
+            if j["report_date"] not in dates:
+                continue
+            if j.get("direction") not in ("bullish", "bearish"):
+                continue
+            kl = _bt.fetch_kline(j["stock_code"])
+            if not kl:
+                continue
+            idx = _bt.idx_of_date(kl, j["report_date"])
+            if idx < 0 or idx + window >= len(kl):
+                continue  # 行情未到期，不统计
+            entry = kl[idx]["close"]
+            exit_c = kl[idx + window]["close"]
+            ret = (exit_c / entry - 1) * 100
+            hit_ok = ret > 0 if j["direction"] == "bullish" else ret < 0
+            total += 1
+            hit += 1 if hit_ok else 0
+        if not total:
+            return None
+        return {"rate": round(hit / total * 100), "hit": hit, "total": total,
+                "days": days, "window": window}
+    except Exception:
+        return None
 
 
 def conclusion_grid():
     state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
     sectors = "、".join(matched_sectors) or "—"
-    up_us = sum(1 for x in us_market if (x[1] if isinstance(x[1], (int, float)) else 0) > 0)
+    up_us = sum(1 for x in us_market if _pct_val(x) > 0)
     us_txt = f"{up_us}/{len(us_market)} 上涨" if us_market else "实时数据缺失"
     risk_txt = f"日本加息/套息平仓预警（实时信号 {len(japan_items)} 条）" if japan_items else "暂无日本传导链实时预警"
     items = [
         ("市场状态", state_label, "#1967d2"),
-        ("命中板块", sectors, "#d63031"),
+        ("主线板块", sectors, "#d63031"),
         ("隔夜美股", us_txt, "#e67e22"),
-        ("主线", sectors, "#d63031"),
         ("风险", risk_txt, "#d63031" if japan_items else "#00a865"),
     ]
+    # 市场宽度（真实全市场涨跌家数；缺失则不占格）
+    up_n = market_width.get("up")
+    down_n = market_width.get("down")
+    if isinstance(up_n, (int, float)) and isinstance(down_n, (int, float)) and (up_n + down_n) > 0:
+        up_ratio = up_n / (up_n + down_n) * 100
+        zt, dt = market_width.get("zt"), market_width.get("dt")
+        width_txt = f"{up_ratio:.0f}% 家上涨"
+        if isinstance(zt, int) and isinstance(dt, int):
+            width_txt += f"（涨停 {zt} / 跌停 {dt}）"
+        w_color = "#d63031" if up_ratio >= 55 else ("#00a865" if up_ratio <= 45 else "#1967d2")
+        items.append(("市场宽度", width_txt, w_color))
+    # 近5交易日判断兑现率（3日窗口，真实收盘验证；库不可用则不展示）
+    _hit = judgment_hit_rate()
+    if _hit:
+        _hr = _hit["rate"]
+        _cls_color = "#00a865" if _hr >= 60 else ("#1967d2" if _hr >= 40 else "#d63031")
+        items.append(("判断兑现率(3日)", f"{_hr}%（{_hit['hit']}/{_hit['total']}）", _cls_color))
     cells = ""
     for label, value, color in items:
         cells += f'''<div class="conclusion-item">
@@ -706,22 +1059,187 @@ def resonance_section():
         rows += f'<tr><td><b>风险项</b></td><td><span class="badge b-green">实时</span></td><td>日本传导链 {len(japan_items)} 条信号（详见传导链章节）</td></tr>'
     if tech_items:
         rows += f'<tr><td><b>技术</b></td><td><span class="badge b-blue">实时</span></td><td>{len(tech_items)} 个标的量价信号</td></tr>'
+    hrate = resonance_hit_rate()
+    if hrate:
+        rows += (f'<tr><td><b>历史胜率</b></td><td><span class="badge {rate_badge(hrate["rate"])}">{hrate["rate"]}%</span></td>'
+                 f'<td>历史方向命中率：看多 {hrate["bull"]["rate"]}%（命中 {hrate["bull"]["hit"]} / 共 {hrate["bull"]["total"]} 条）'
+                 f' · 看空 {hrate["bear"]["rate"]}%（命中 {hrate["bear"]["hit"]} / 共 {hrate["bear"]["total"]} 条）'
+                 f'——共 {hrate["total"]} 条已兑现判断（真实收盘验证）</td></tr>')
     if not rows:
         return PLACEHOLDER
     return f'<table><thead><tr><th>方向</th><th>共振</th><th>来源交叉（实时）</th></tr></thead><tbody>{rows}</tbody></table>'
 
 
-def strategy_section():
-    state_label = StrategyPrompts.STATE_LABEL.get(market_state, "中性")
-    idx_line = "；".join(f"{n} {q.get('chg_pct')}%" for n, q in quotes.items() if q.get("chg_pct") is not None) if quotes else "指数实时数据缺失"
-    avoid = [watch_name(c) for c in WATCHLIST if _level_rank(diag_for(c)) >= 2]
-    rows = f'''
-    <tr><td><b>大盘</b></td><td>实时状态 {state_label}；主要指数：{idx_line}。</td></tr>
-    <tr><td><b>仓位</b></td><td>依据实时市场状态 {state_label} 调节，不追高。</td></tr>
-    <tr><td><b>主线</b></td><td>{"、".join(matched_sectors) if matched_sectors else "实时板块信号缺失"}。</td></tr>
-    <tr><td><b>风险</b></td><td>{StrategyPrompts.risk_line(bool(japan_items))}</td></tr>
-    <tr><td><b>回避</b></td><td>{StrategyPrompts.avoid_line(avoid)}</td></tr>'''
-    return f'<table><thead><tr><th style="width:18%">维度</th><th>策略（实时驱动）</th></tr></thead><tbody>{rows}</tbody></table>'
+def resonance_hit_rate():
+    """共振方向的历史兑现率（真实数据：seeds/backtest_results.json，方向命中由收盘验证）。
+
+    仅统计 status=done 且有方向（bullish/bearish）的判断；neutral 不计方向命中。
+    返回 {rate, hit, total, bull: {...}, bear: {...}}；无数据/异常返回 None。
+    """
+    try:
+        import json as _json
+        p = Path(__file__).parent / "seeds" / "backtest_results.json"
+        if not p.exists():
+            return None
+        data = _json.loads(p.read_text(encoding="utf-8"))
+        items = data if isinstance(data, list) else data.get("items", [])
+        done = [it for it in items if it.get("status") == "done"]
+        agg = {"bull": {"hit": 0, "total": 0}, "bear": {"hit": 0, "total": 0}}
+        for it in done:
+            d = it.get("direction")
+            if d not in ("bullish", "bearish"):
+                continue
+            hit = it.get("direction_hit")
+            if hit is None:
+                continue  # 未判定（如方向中性窗口未走完）不统计
+            agg["bull" if d == "bullish" else "bear"]["total"] += 1
+            if hit:
+                agg["bull" if d == "bullish" else "bear"]["hit"] += 1
+        total = agg["bull"]["total"] + agg["bear"]["total"]
+        if not total:
+            return None
+        hit = agg["bull"]["hit"] + agg["bear"]["hit"]
+        for k in ("bull", "bear"):
+            t = agg[k]["total"]
+            agg[k]["rate"] = round(agg[k]["hit"] / t * 100) if t else 0
+        return {"rate": round(hit / total * 100), "hit": hit, "total": total,
+                "bull": agg["bull"], "bear": agg["bear"]}
+    except Exception:
+        return None
+
+
+def rate_badge(rate):
+    """兑现率徽章：>=60% 绿 / 40-60% 蓝 / <40% 红（数字越高越可信）。"""
+    if rate >= 60:
+        return "b-green"
+    if rate >= 40:
+        return "b-blue"
+    return "b-red"
+
+
+def concentration_warning():
+    """自选股行业集中度提示：按行业归类，单一产业链占比过高时给出风险提示。
+
+    基于 config.watchlist_sectors 的真实行业标签，只做归类统计与提示，不伪造。
+    """
+    try:
+        groups = {}
+        for code in WATCHLIST:
+            sec = _load_sector(code) or "未分类"
+            groups.setdefault(sec, []).append(code)
+        total = len(WATCHLIST)
+        if not total:
+            return ""
+        # 产业链归类：半导体设备/材料链（设备/零部件/离子注入/PVD/靶材）+ 算力/AI链 + 其他
+        chain_map = {
+            "半导体设备零部件": "半导体设备/材料",
+            "离子注入机": "半导体设备/材料",
+            "PVD设备": "半导体设备/材料",
+            "靶材": "半导体设备/材料",
+            "连接器+液冷": "算力/AI",
+            "面板+AI封装": "算力/AI",
+            "光通信": "算力/AI",
+            "机器人电机": "机器人",
+        }
+        chain_count = {}
+        for code in WATCHLIST:
+            sec = _load_sector(code) or "未分类"
+            chain = chain_map.get(sec, "其他")
+            chain_count[chain] = chain_count.get(chain, 0) + 1
+        top_chain = max(chain_count.items(), key=lambda x: x[1]) if chain_count else ("", 0)
+        name, n = top_chain
+        ratio = n / total * 100
+        if ratio < 50:
+            return ""  # 集中度不突出，不打扰
+        detail = "、".join(f"{k}×{v}" for k, v in sorted(chain_count.items(), key=lambda x: -x[1]))
+        warn_color = "#d63031" if ratio >= 62.5 else "#e67e22"
+        return (f'<div class="alert-orange" style="margin:6px 0 10px;font-size:12.5px">'
+                f'<b style="color:{warn_color}">组合集中度提示：</b>{name}链占自选股 {n}/{total}（{ratio:.0f}%），'
+                f'行业 beta 高度相关（{detail}）——同涨同跌风险高，建议跨链分散配置以平滑组合波动。</div>')
+    except Exception:
+        return ""
+
+
+def chan_section():
+    """缠论推演（上证指数 5 分钟 · 操作指引）。
+
+    读 data/chan/chan_forecast_<DATE8>.json（chan_analysis.py 生成，真实分钟K线）。
+    缺文件/解析失败返回占位，不伪造。
+    """
+    p = BASE_DIR / "data" / "chan" / f"chan_forecast_{DATE8}.json"
+    if not p.exists():
+        return ""
+    try:
+        import json as _json
+        c = _json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    if not c or c.get("error"):
+        return ""
+    sig = c.get("signal") or {}
+    zs = c.get("zhongshu")
+    beichi = c.get("beichi")
+    pos = c.get("pos", "")
+    pos_cls = {"中枢上方": "b-red", "中枢下方": "b-green", "中枢内": "b-blue"}.get(pos, "b-gray")
+    # 信号徽章
+    sig_cls = sig.get("cls", "b-blue")
+    sig_label = sig.get("signal", "—")
+    # 背驰
+    beichi_html = ""
+    if beichi:
+        bdir = "上涨" if beichi["dir"] == "up" else "下跌"
+        bcls = "b-green" if beichi["dir"] == "up" else "b-red"
+        beichi_html = (f'<tr><td><b>背驰</b></td><td><span class="badge {bcls}">'
+                       f'{bdir}段力度衰减（{beichi["level"]}）</span></td>'
+                       f'<td>进入段 {beichi["enter_power"]} → 离开段 {beichi["leave_power"]}（力度不足90%判背驰）</td></tr>')
+    # 中枢
+    zs_html = ""
+    if zs:
+        zs_html = (f'<tr><td><b>最近中枢</b></td><td><span class="badge b-blue">'
+                   f'[{zs["zd"]:.2f}, {zs["zg"]:.2f}]</span></td>'
+                   f'<td>区间 {zs["range"]:.2f} 点（{zs["start_time"]} 确认，GG {zs["gg"]:.2f} / DD {zs["dd"]:.2f}）</td></tr>')
+    # 最近 5 笔
+    bis_html = ""
+    rb = c.get("recent_bis") or []
+    if rb:
+        rows = "".join(
+            f'<tr><td><span class="badge {"b-red" if b["dir"] == "up" else "b-green"}">'
+            f'{"上" if b["dir"] == "up" else "下"}</span></td>'
+            f'<td>{b["start_time"]} → {b["end_time"]}</td>'
+            f'<td>{b["start_price"]:.2f} → {b["end_price"]:.2f}</td></tr>' for b in rb)
+        bis_html = (f'<tr><td><b>最近5笔</b></td><td colspan="2">'
+                    f'<table style="margin:2px 0"><thead><tr><th>方向</th><th>时间</th><th>价格</th></tr></thead>'
+                    f'<tbody>{rows}</tbody></table></td></tr>')
+    op = _chan_operation(sig_label, pos, beichi)
+    return f'''
+    <div class="card" id="sec-chan">
+      <h2>缠论推演（上证指数 5分钟 · 操作指引）</h2>
+      <p class="muted" style="font-size:12px">数据 {c.get("data_range", "")} ｜ 笔 {c.get("bis", 0)} ｜ 最新价 <b>{c.get("last_price", 0):.2f}</b>（{c.get("last_time", "")}）</p>
+      <table><thead><tr><th style="width:18%">维度</th><th style="width:26%">状态</th><th>说明</th></tr></thead><tbody>
+        <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>相对最近中枢的位置</td></tr>
+        {zs_html}
+        <tr><td><b>缠论信号</b></td><td><span class="badge {sig_cls}">{sig_label}</span></td><td>{_esc(sig.get("text", ""))}</td></tr>
+        {beichi_html}
+        {bis_html}
+        <tr><td><b>操作含义</b></td><td colspan="2">{op}</td></tr>
+      </tbody></table>
+    </div>'''
+
+
+def _chan_operation(signal, pos, beichi):
+    """缠论信号 → 操作含义（面向 5 分钟短线操作指引）。"""
+    if signal == "三买候选":
+        return ('站上中枢上沿后回踩不破则三买，短线偏多——可关注回踩企稳的低吸机会；'
+                + ("但上涨段出现力度衰减，追高需谨慎。" if beichi and beichi.get("dir") == "up" else ""))
+    if signal == "一买候选":
+        return "下跌背驰+价格在中枢下方，若底分型企稳则一买——超跌反弹博弈，严格止损于中枢下沿下方。"
+    if signal == "二买观察":
+        return "中枢内回抽不破前低则二买——中枢内高抛低吸，突破上沿转强、跌破下沿离场。"
+    if signal == "一卖候选":
+        return "上涨背驰+价格在中枢上方，若顶分型则一卖——注意冲高回落，减仓/回避追高。"
+    if signal == "三卖观察":
+        return "跌破中枢下沿后反抽不收回则三卖——短线偏空，反弹减仓。"
+    return "中枢震荡，等待方向选择——跌破下沿防守、突破上沿看多。"
 
 
 def focus_section():
@@ -752,14 +1270,14 @@ def focus_section():
             except Exception:
                 state = None
         if state is None:
-            return ('<div class="card"><h2>限时关注的重点数据解析（实时）</h2>'
+            return ('<div class="card" id="sec-focus"><h2>限时关注的重点数据解析（实时）</h2>'
                     '<p class="muted" style="font-size:12px;">实时数据缺失（外网/代理不可达，'
                     '未能获取各大所日银加息研报研判。'
                     '请先运行 `python focus_monitor.py` 采集后再生成报告）。</p></div>')
         frag = fm.render_focus_html(state, standalone=False, embed=True)
-        return f'<div class="card"><h2>限时关注的重点数据解析（实时）</h2>{frag}</div>'
+        return f'<div class="card" id="sec-focus"><h2>限时关注的重点数据解析（实时）</h2>{frag}</div>'
     except Exception as e:
-        return ('<div class="card"><h2>限时关注的重点数据解析（实时）</h2>'
+        return ('<div class="card" id="sec-focus"><h2>限时关注的重点数据解析（实时）</h2>'
                 f'<p class="muted" style="font-size:12px;">模块加载失败：{_escape(str(e))}</p></div>')
 
 
@@ -938,6 +1456,46 @@ def deconstruct_weibo():
             "stock_mentions": stock_mentions, "key": key, "risks": risks}
 
 
+def _index_snapshot():
+    """主要指数速览（整合进核心结论）：紧凑表格，最新+涨跌点数+涨跌幅，红涨绿跌。"""
+    if not quotes:
+        return ""
+    rows = ""
+    for name, q in quotes.items():
+        chg = q.get("chg")
+        chg_html = ""
+        if isinstance(chg, (int, float)):
+            chg_html = (f'<td class="{up_down(chg)}" style="text-align:right">'
+                        f'{sign(chg)}{fmt(chg)}</td>')
+        else:
+            chg_html = '<td class="muted" style="text-align:right">—</td>'
+        rows += (f'<tr><td>{_esc(name)}</td><td style="text-align:right">{q.get("price")}</td>{chg_html}'
+                 f'<td class="{up_down(q.get("chg_pct"))}" style="text-align:right">{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td></tr>')
+    return (f'<div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px">'
+            f'<div class="cc-grid-title">主要指数（实时）</div>'
+            f'<table style="min-width:320px"><thead><tr><th>指数</th><th style="text-align:right">最新</th>'
+            f'<th style="text-align:right">涨跌</th>'
+            f'<th style="text-align:right">涨跌幅</th></tr></thead><tbody>{rows}</tbody></table></div>')
+
+
+def _strategy_snapshot():
+    """操作策略速览（整合进核心结论）：市场状态 + 参考仓位 + 主线 + 风险/回避。"""
+    state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+    base = {"bullish": "60-80%", "neutral": "40-60%", "bearish": "10-30%"}.get(market_state, "40-60%")
+    main_line = "、".join(matched_sectors) if matched_sectors else "实时板块信号缺失"
+    risk_txt = f"日本传导链预警 {len(japan_items)} 条（详见传导链章节）" if japan_items else "暂无日本传导链预警"
+    avoid = [watch_name(c) for c in WATCHLIST if _level_rank(diag_for(c)) >= 2]
+    avoid_txt = "、".join(avoid) if avoid else "无高危标的"
+    return (f'<div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px">'
+            f'<div class="cc-grid-title">今日操作策略（实时）</div>'
+            f'<table><thead><tr><th style="width:18%">维度</th><th>策略</th></tr></thead><tbody>'
+            f'<tr><td><b>大盘</b></td><td>市场状态 <b>{state_label}</b>；参考仓位 <b class="up">{base}</b>（市场状态基础仓位，个股按诊断±修正，见第八节）</td></tr>'
+            f'<tr><td><b>主线</b></td><td>{_esc(main_line)}</td></tr>'
+            f'<tr><td><b>风险</b></td><td>{_esc(risk_txt)}</td></tr>'
+            f'<tr><td><b>回避</b></td><td>{_esc(avoid_txt)}</td></tr>'
+            f'</tbody></table></div>')
+
+
 def core_conclusion():
     """核心结论：一句话研判 + 状态徽章 + 数据速览。舆情解构细节见第六节。"""
     d = deconstruct_weibo()
@@ -985,6 +1543,8 @@ def core_conclusion():
     <div class="cc-stocks">{badges}</div>
     <div class="cc-grid-title">实时数据速览</div>
     <div class="conclusion-grid">{conclusion_grid()}</div>
+    {_strategy_snapshot()}
+    {_index_snapshot()}
     '''
 
 
@@ -1037,7 +1597,7 @@ def vs_summary():
         consensus_cls = _c.get("direction_cls", "b-blue")
     else:
         consensus_label, consensus_cls = d["consensus"]
-    if not updated_any:
+    if not updated_any and not (llm and (llm.get("consensus", {}) or {}).get("text")):
         consensus_html = WeiboPrompts.NO_UPDATE_CONSENSUS + src_table
     else:
         consensus_html = (f'<div style="margin-bottom:8px"><span class="badge {consensus_cls}" style="font-size:13px">{consensus_label}</span>'
@@ -1087,7 +1647,7 @@ def vs_summary():
                 f'<div class="kp-head"><span class="badge {cls}">{_esc(stance)}</span> <b>{_esc(source)}</b>{meta}</div>'
                 f'<div class="kp-fact"><b>事实：</b>{_esc(fact)}</div>{inf}</div>')
 
-    if not updated_any:
+    if not updated_any and not (llm and llm.get("key_points")):
         key_html = WeiboPrompts.NO_UPDATE_KEY
     elif llm and llm.get("key_points"):
         key_html = "".join(
@@ -1177,80 +1737,74 @@ def _render_html():
 <div class="toc">
 <h2>目录</h2>
 <ol>
-<li>核心结论（实时）</li>
-<li>隔夜美股（实时 · 外网解析）</li>
-<li>CPI与宏观（实时 · 外网解析）</li>
-<li>宏观传导链监控（独立因子·实时）</li>
-<li>地缘政治与原油（事件因子 · 外网解析）</li>
-<li>ETF资金流向（实时）</li>
-<li>微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</li>
-<li>共振信号（多源交叉·实时）</li>
-<li>{len(WATCHLIST)}只自选股操作指引（实时诊断）</li>
-<li>限时关注的重点数据解析（实时）</li>
-<li>今日操作策略（实时驱动）</li>
-<li>主要指数（实时）</li>
+<li><a href="#sec-core">核心结论（实时 · 含今日操作策略与主要指数）</a></li>
+<li><a href="#sec-us">隔夜美股（实时 · 外网解析）</a></li>
+<li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
+<li><a href="#sec-chain">宏观传导链监控（独立因子·实时）</a></li>
+<li><a href="#sec-geo">地缘政治与原油（事件因子 · 外网解析）</a></li>
+<li><a href="#sec-etf">ETF资金流向（实时）</a></li>
+<li><a href="#sec-weibo">微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</a></li>
+<li><a href="#sec-resonance">共振信号（多源交叉·实时）</a></li>
+<li><a href="#sec-watchlist">{len(WATCHLIST)}只自选股操作指引（实时诊断）</a></li>
+<li><a href="#sec-focus">限时关注的重点数据解析（实时）</a></li>
+<li><a href="#sec-chan">缠论推演（上证指数 5分钟 · 操作指引）</a></li>
 </ol>
 </div>
 
-<div class="card">
-<h2>核心结论（实时）</h2>
+<div class="card" id="sec-core">
+<h2>核心结论（实时 · 含今日操作策略与主要指数）</h2>
 {core_conclusion()}
 </div>
 
-<div class="card">
+<div class="card" id="sec-us">
 <h2>一、隔夜美股（实时 · 外网解析）</h2>
 {us_section()}
 {intel_block("us_market")}
 </div>
 
-<div class="card">
+<div class="card" id="sec-macro">
 <h2>二、CPI与宏观（实时 · 外网解析）</h2>
 {intel_block("macro")}
 </div>
 
-<div class="card">
+<div class="card" id="sec-chain">
 <h2>三、宏观传导链监控（独立因子·实时）</h2>
 {chain_svg()}
 <div style="margin-top:12px;">{us_yield_panel()}</div>
 {intel_block("japan")}
 </div>
 
-<div class="card">
+<div class="card" id="sec-geo">
 <h2>四、地缘政治与原油（事件因子 · 外网解析）</h2>
 {intel_block("geopolitics")}
 </div>
 
-<div class="card">
+<div class="card" id="sec-etf">
 <h2>五、ETF资金流向（实时）</h2>
 {etf_section()}
+{fund_section()}
+{market_width_section()}
 </div>
 
-<div class="card">
+<div class="card" id="sec-weibo">
 <h2>六、微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</h2>
 {vs_summary()}
 </div>
 
-<div class="card">
+<div class="card" id="sec-resonance">
 <h2>七、共振信号（多源交叉·实时）</h2>
 {resonance_section()}
 </div>
 
-<div class="card">
+<div class="card" id="sec-watchlist">
 <h2>八、{len(WATCHLIST)}只自选股操作指引（实时诊断）</h2>
+{concentration_warning()}
 {''.join(stock_card(c) for c in WATCHLIST)}
 </div>
 
 {focus_section()}
 
-<div class="card">
-<h2>九、今日操作策略（实时驱动）</h2>
-{strategy_section()}
-</div>
-
-<div class="card">
-<h2>主要指数（实时）</h2>
-{index_section()}
-</div>
+{chan_section()}
 
 <div class="disclaimer">
 <strong>免责声明</strong>：以上内容基于公开数据、大V观点及量化规则自动生成，仅供参考，不构成投资建议。市场有风险，投资需谨慎。任何投资决策应结合个人风险承受能力独立判断，必要时咨询持牌专业机构。过往表现不预示未来收益。
