@@ -7,6 +7,9 @@ pandas==3.0.5
 requests==2.34.2
 psycopg2-binary==2.9.12
 
+# 缠论结构分析引擎（chan_analysis.py 优先使用；未安装时回退纯标准库实现）
+czsc==1.0.1
+
 # 东方财富「妙想」技能（mx-finance-data）子进程依赖：a_stock_agent 的「美股」兜底源调用
 # （ETF 资金流兜底已改为腾讯自选股连接器 westock，不再依赖妙想）
 # ~/.workbuddy/skills/mx-finance-data/scripts/get_data.py 时需要（项目代码本身不 import）

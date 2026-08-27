@@ -1211,18 +1211,37 @@ def chan_section():
                     f'<table style="margin:2px 0"><thead><tr><th>方向</th><th>时间</th><th>价格</th></tr></thead>'
                     f'<tbody>{rows}</tbody></table></td></tr>')
     op = _chan_operation(sig_label, pos, beichi)
+    # 引擎与结构统计（czsc 开源库 / 标准库兜底）
+    engine = str(c.get("engine") or "stdlib")
+    engine_note = ("分型/笔/中枢由开源库 czsc（Rust 核心）识别；背驰与买卖点为适配层口径，判定有主观性，不构成精确预测"
+                   if engine.startswith("czsc") else
+                   "缠论风格简化实现（czsc 未安装，标准库兜底）；背驰与买卖点判定有主观性，不构成精确预测")
+    # 未完成笔（czsc ubi：正在延伸、尚未确认的笔）
+    ubi_html = ""
+    ubi = c.get("ubi")
+    if isinstance(ubi, dict) and ubi.get("start_price") is not None:
+        u_dir = ubi.get("dir")
+        u_cls = "b-red" if u_dir == "up" else "b-green"
+        u_ext = f"{ubi['extreme_price']:.2f}（{ubi.get('extreme_time', '')}）" if ubi.get("extreme_price") is not None else "—"
+        ubi_html = (f'<tr><td><b>未完成笔</b></td><td><span class="badge {u_cls}">{"向上延伸" if u_dir == "up" else "向下延伸"}</span></td>'
+                    f'<td>起点 {ubi["start_price"]:.2f}（{ubi.get("start_time", "")}）→ 极值 {u_ext}；'
+                    f'该笔尚未走完，分型确认前方向仍可能变化。</td></tr>')
+    fx_n = c.get("fractals")
+    fx_txt = f" ｜ 分型 {fx_n}" if isinstance(fx_n, int) else ""
     return f'''
     <div class="card" id="sec-chan">
       <h2>缠论推演（上证指数 5分钟 · 操作指引）</h2>
-      <p class="muted" style="font-size:12px">数据 {c.get("data_range", "")} ｜ 笔 {c.get("bis", 0)} ｜ 最新价 <b>{c.get("last_price", 0):.2f}</b>（{c.get("last_time", "")}）</p>
+      <p class="muted" style="font-size:12px">引擎 <b>{_esc(engine)}</b> ｜ 数据 {c.get("data_range", "")}{fx_txt} ｜ 笔 {c.get("bis", 0)} ｜ 最新价 <b>{c.get("last_price", 0):.2f}</b>（{c.get("last_time", "")}）</p>
       <table><thead><tr><th style="width:18%">维度</th><th style="width:26%">状态</th><th>说明</th></tr></thead><tbody>
         <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>相对最近中枢的位置</td></tr>
         {zs_html}
         <tr><td><b>缠论信号</b></td><td><span class="badge {sig_cls}">{sig_label}</span></td><td>{_esc(sig.get("text", ""))}</td></tr>
         {beichi_html}
         {bis_html}
+        {ubi_html}
         <tr><td><b>操作含义</b></td><td colspan="2">{op}</td></tr>
       </tbody></table>
+      <p class="muted" style="font-size:11px;margin:6px 0 0">{_esc(engine_note)}。</p>
     </div>'''
 
 
