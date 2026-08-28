@@ -1160,11 +1160,80 @@ def concentration_warning():
         return ""
 
 
-def chan_section():
-    """缠论推演（上证指数 5 分钟 · 操作指引）。
+def _chan_level_block(lv):
+    """渲染单个级别的缠论推演表（chan_analysis levels[] 元素）。"""
+    sig = lv.get("signal") or {}
+    zs = lv.get("zhongshu")
+    beichi = lv.get("beichi")
+    pos = lv.get("pos", "")
+    pos_cls = {"中枢上方": "b-red", "中枢下方": "b-green", "中枢内": "b-blue"}.get(pos, "b-gray")
+    sig_cls = sig.get("cls", "b-blue")
+    sig_label = sig.get("signal", "—")
+    horizon = lv.get("horizon", "短线")
+    beichi_html = ""
+    if beichi:
+        bdir = "上涨" if beichi["dir"] == "up" else "下跌"
+        bcls = "b-green" if beichi["dir"] == "up" else "b-red"
+        beichi_html = (f'<tr><td><b>背驰</b></td><td><span class="badge {bcls}">'
+                       f'{bdir}段力度衰减（{beichi["level"]}）</span></td>'
+                       f'<td>进入段 {beichi["enter_power"]} → 离开段 {beichi["leave_power"]}（力度不足90%判背驰）</td></tr>')
+    zs_html = ""
+    if zs:
+        zs_html = (f'<tr><td><b>最近中枢</b></td><td><span class="badge b-blue">'
+                   f'[{zs["zd"]:.2f}, {zs["zg"]:.2f}]</span></td>'
+                   f'<td>区间 {zs["range"]:.2f} 点（{zs["start_time"]} 确认，GG {zs["gg"]:.2f} / DD {zs["dd"]:.2f}）</td></tr>')
+    bis_html = ""
+    rb = lv.get("recent_bis") or []
+    if rb:
+        rows = "".join(
+            f'<tr><td><span class="badge {"b-red" if b["dir"] == "up" else "b-green"}">'
+            f'{"上" if b["dir"] == "up" else "下"}</span></td>'
+            f'<td>{b["start_time"]} → {b["end_time"]}</td>'
+            f'<td>{b["start_price"]:.2f} → {b["end_price"]:.2f}</td></tr>' for b in rb)
+        bis_html = (f'<tr><td><b>最近5笔</b></td><td colspan="2">'
+                    f'<table style="margin:2px 0"><thead><tr><th>方向</th><th>时间</th><th>价格</th></tr></thead>'
+                    f'<tbody>{rows}</tbody></table></td></tr>')
+    ubi_html = ""
+    ubi = lv.get("ubi")
+    if isinstance(ubi, dict) and ubi.get("start_price") is not None:
+        u_dir = ubi.get("dir")
+        u_cls = "b-red" if u_dir == "up" else "b-green"
+        u_ext = f"{ubi['extreme_price']:.2f}（{ubi.get('extreme_time', '')}）" if ubi.get("extreme_price") is not None else "—"
+        ubi_html = (f'<tr><td><b>未完成笔</b></td><td><span class="badge {u_cls}">{"向上延伸" if u_dir == "up" else "向下延伸"}</span></td>'
+                    f'<td>起点 {ubi["start_price"]:.2f}（{ubi.get("start_time", "")}）→ 极值 {u_ext}；'
+                    f'该笔尚未走完，分型确认前方向仍可能变化。</td></tr>')
+    op = _chan_operation(sig_label, pos, beichi, horizon)
+    fx_n = lv.get("fractals")
+    fx_txt = f" ｜ 分型 {fx_n}" if isinstance(fx_n, int) else ""
+    return f'''
+      <div class="chan-lv-head">▸ {lv.get("level", "?")}级别<span class="muted" style="font-weight:400;font-size:11px">（{horizon}视界 ｜ 数据 {lv.get("data_range", "")}{fx_txt} ｜ 笔 {lv.get("bis", 0)} ｜ 最新价 <b>{lv.get("last_price", 0):.2f}</b>）</span></div>
+      <table><thead><tr><th style="width:18%">维度</th><th style="width:26%">状态</th><th>说明</th></tr></thead><tbody>
+        <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>相对最近中枢的位置</td></tr>
+        {zs_html}
+        <tr><td><b>缠论信号</b></td><td><span class="badge {sig_cls}">{sig_label}</span></td><td>{_esc(sig.get("text", ""))}</td></tr>
+        {beichi_html}
+        {bis_html}
+        {ubi_html}
+        <tr><td><b>操作含义</b></td><td colspan="2">{op}</td></tr>
+      </tbody></table>'''
 
-    读 data/chan/chan_forecast_<DATE8>.json（chan_analysis.py 生成，真实分钟K线）。
-    缺文件/解析失败返回占位，不伪造。
+
+def _chan_stance(sig_label):
+    """信号 → 多/空/中性（多级别共振研判用）。"""
+    s = str(sig_label or "")
+    if "买" in s:
+        return "偏多"
+    if "卖" in s:
+        return "偏空"
+    return "震荡"
+
+
+def chan_section():
+    """缠论推演（上证指数 30分钟+日线 多级别 · 操作指引）。
+
+    读 data/chan/chan_forecast_<DATE8>.json（chan_analysis.py 生成，czsc 引擎，真实K线）。
+    levels[] 每级一表；高级别（日线）定方向、低级别（30分钟）找买卖点，底部给共振/分歧研判。
+    缺文件/解析失败返回空，不伪造。
     """
     p = BASE_DIR / "data" / "chan" / f"chan_forecast_{DATE8}.json"
     if not p.exists():
@@ -1176,89 +1245,62 @@ def chan_section():
         return ""
     if not c or c.get("error"):
         return ""
-    sig = c.get("signal") or {}
-    zs = c.get("zhongshu")
-    beichi = c.get("beichi")
-    pos = c.get("pos", "")
-    pos_cls = {"中枢上方": "b-red", "中枢下方": "b-green", "中枢内": "b-blue"}.get(pos, "b-gray")
-    # 信号徽章
-    sig_cls = sig.get("cls", "b-blue")
-    sig_label = sig.get("signal", "—")
-    # 背驰
-    beichi_html = ""
-    if beichi:
-        bdir = "上涨" if beichi["dir"] == "up" else "下跌"
-        bcls = "b-green" if beichi["dir"] == "up" else "b-red"
-        beichi_html = (f'<tr><td><b>背驰</b></td><td><span class="badge {bcls}">'
-                       f'{bdir}段力度衰减（{beichi["level"]}）</span></td>'
-                       f'<td>进入段 {beichi["enter_power"]} → 离开段 {beichi["leave_power"]}（力度不足90%判背驰）</td></tr>')
-    # 中枢
-    zs_html = ""
-    if zs:
-        zs_html = (f'<tr><td><b>最近中枢</b></td><td><span class="badge b-blue">'
-                   f'[{zs["zd"]:.2f}, {zs["zg"]:.2f}]</span></td>'
-                   f'<td>区间 {zs["range"]:.2f} 点（{zs["start_time"]} 确认，GG {zs["gg"]:.2f} / DD {zs["dd"]:.2f}）</td></tr>')
-    # 最近 5 笔
-    bis_html = ""
-    rb = c.get("recent_bis") or []
-    if rb:
-        rows = "".join(
-            f'<tr><td><span class="badge {"b-red" if b["dir"] == "up" else "b-green"}">'
-            f'{"上" if b["dir"] == "up" else "下"}</span></td>'
-            f'<td>{b["start_time"]} → {b["end_time"]}</td>'
-            f'<td>{b["start_price"]:.2f} → {b["end_price"]:.2f}</td></tr>' for b in rb)
-        bis_html = (f'<tr><td><b>最近5笔</b></td><td colspan="2">'
-                    f'<table style="margin:2px 0"><thead><tr><th>方向</th><th>时间</th><th>价格</th></tr></thead>'
-                    f'<tbody>{rows}</tbody></table></td></tr>')
-    op = _chan_operation(sig_label, pos, beichi)
-    # 引擎与结构统计（czsc 开源库 / 标准库兜底）
-    engine = str(c.get("engine") or "stdlib")
+    # 新契约：levels 列表；兼容旧扁平契约（单级别）
+    levels = c.get("levels")
+    if not levels and c.get("signal"):
+        levels = [c]
+    if not levels:
+        return ""
+    ok_levels = [lv for lv in levels if not lv.get("error")]
+    if not ok_levels:
+        return ""
+    engine = str(c.get("engine") or ok_levels[0].get("engine") or "stdlib")
     engine_note = ("分型/笔/中枢由开源库 czsc（Rust 核心）识别；背驰与买卖点为适配层口径，判定有主观性，不构成精确预测"
                    if engine.startswith("czsc") else
                    "缠论风格简化实现（czsc 未安装，标准库兜底）；背驰与买卖点判定有主观性，不构成精确预测")
-    # 未完成笔（czsc ubi：正在延伸、尚未确认的笔）
-    ubi_html = ""
-    ubi = c.get("ubi")
-    if isinstance(ubi, dict) and ubi.get("start_price") is not None:
-        u_dir = ubi.get("dir")
-        u_cls = "b-red" if u_dir == "up" else "b-green"
-        u_ext = f"{ubi['extreme_price']:.2f}（{ubi.get('extreme_time', '')}）" if ubi.get("extreme_price") is not None else "—"
-        ubi_html = (f'<tr><td><b>未完成笔</b></td><td><span class="badge {u_cls}">{"向上延伸" if u_dir == "up" else "向下延伸"}</span></td>'
-                    f'<td>起点 {ubi["start_price"]:.2f}（{ubi.get("start_time", "")}）→ 极值 {u_ext}；'
-                    f'该笔尚未走完，分型确认前方向仍可能变化。</td></tr>')
-    fx_n = c.get("fractals")
-    fx_txt = f" ｜ 分型 {fx_n}" if isinstance(fx_n, int) else ""
+    lv_labels = "+".join(str(lv.get("level", "?")) for lv in ok_levels)
+    blocks = "".join(_chan_level_block(lv) for lv in ok_levels)
+    # 多级别共振/分歧研判（>=2 个有效级别才给结论）
+    synth_html = ""
+    if len(ok_levels) >= 2:
+        stances = [(str(lv.get("level", "?")), _chan_stance((lv.get("signal") or {}).get("signal"))) for lv in ok_levels]
+        uniq = {s for _, s in stances}
+        if len(uniq) == 1 and "震荡" not in uniq:
+            total = "、".join(f"{n}{s}" for n, s in stances)
+            cls = "b-red" if "偏多" in uniq else "b-green"
+            synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px">'
+                          f'<b class="{cls if cls == "b-red" else "down"}">多级别共振：</b>{total}——'
+                          f'方向一致性高，{ "可按低级别信号执行、高级别趋势持有" if "偏多" in uniq else "防御优先，反弹减仓" }。</div>')
+        else:
+            total = "、".join(f"{n}{s}" for n, s in stances)
+            synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px">'
+                          f'<b>多级别研判：</b>{total}——高级别（日线）定方向、低级别（30分钟）找买卖点；'
+                          f'以日线中枢上下沿为关键位，低级别信号服从高级别结构。</div>')
     return f'''
     <div class="card" id="sec-chan">
-      <h2>缠论推演（上证指数 5分钟 · 操作指引）</h2>
-      <p class="muted" style="font-size:12px">引擎 <b>{_esc(engine)}</b> ｜ 数据 {c.get("data_range", "")}{fx_txt} ｜ 笔 {c.get("bis", 0)} ｜ 最新价 <b>{c.get("last_price", 0):.2f}</b>（{c.get("last_time", "")}）</p>
-      <table><thead><tr><th style="width:18%">维度</th><th style="width:26%">状态</th><th>说明</th></tr></thead><tbody>
-        <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>相对最近中枢的位置</td></tr>
-        {zs_html}
-        <tr><td><b>缠论信号</b></td><td><span class="badge {sig_cls}">{sig_label}</span></td><td>{_esc(sig.get("text", ""))}</td></tr>
-        {beichi_html}
-        {bis_html}
-        {ubi_html}
-        <tr><td><b>操作含义</b></td><td colspan="2">{op}</td></tr>
-      </tbody></table>
+      <h2>缠论推演（上证指数 {lv_labels} · 操作指引）</h2>
+      <p class="muted" style="font-size:12px">引擎 <b>{_esc(engine)}</b> ｜ 级别：{lv_labels}（高级别定方向，低级别找买卖点）</p>
+      {blocks}
+      {synth_html}
       <p class="muted" style="font-size:11px;margin:6px 0 0">{_esc(engine_note)}。</p>
     </div>'''
 
 
-def _chan_operation(signal, pos, beichi):
-    """缠论信号 → 操作含义（面向 5 分钟短线操作指引）。"""
+def _chan_operation(signal, pos, beichi, horizon="短线"):
+    """缠论信号 → 操作含义（horizon 为该级别的操作视界：短线/波段）。"""
     if signal == "三买候选":
-        return ('站上中枢上沿后回踩不破则三买，短线偏多——可关注回踩企稳的低吸机会；'
+        return ('站上中枢上沿后回踩不破则三买，' + horizon + '偏多——可关注回踩企稳的低吸机会；'
                 + ("但上涨段出现力度衰减，追高需谨慎。" if beichi and beichi.get("dir") == "up" else ""))
     if signal == "一买候选":
-        return "下跌背驰+价格在中枢下方，若底分型企稳则一买——超跌反弹博弈，严格止损于中枢下沿下方。"
+        return (f"下跌背驰+价格在中枢下方，若底分型企稳则一买——{horizon}超跌反弹博弈，"
+                f"严格止损于中枢下沿下方。")
     if signal == "二买观察":
-        return "中枢内回抽不破前低则二买——中枢内高抛低吸，突破上沿转强、跌破下沿离场。"
+        return f"中枢内回抽不破前低则二买——{horizon}中枢内高抛低吸，突破上沿转强、跌破下沿离场。"
     if signal == "一卖候选":
-        return "上涨背驰+价格在中枢上方，若顶分型则一卖——注意冲高回落，减仓/回避追高。"
+        return f"上涨背驰+价格在中枢上方，若顶分型则一卖——注意冲高回落，{horizon}减仓/回避追高。"
     if signal == "三卖观察":
-        return "跌破中枢下沿后反抽不收回则三卖——短线偏空，反弹减仓。"
-    return "中枢震荡，等待方向选择——跌破下沿防守、突破上沿看多。"
+        return f"跌破中枢下沿后反抽不收回则三卖——{horizon}偏空，反弹减仓。"
+    return f"中枢震荡，等待方向选择——{horizon}跌破下沿防守、突破上沿看多。"
 
 
 def focus_section():
@@ -1766,7 +1808,7 @@ def _render_html():
 <li><a href="#sec-resonance">共振信号（多源交叉·实时）</a></li>
 <li><a href="#sec-watchlist">{len(WATCHLIST)}只自选股操作指引（实时诊断）</a></li>
 <li><a href="#sec-focus">限时关注的重点数据解析（实时）</a></li>
-<li><a href="#sec-chan">缠论推演（上证指数 5分钟 · 操作指引）</a></li>
+<li><a href="#sec-chan">缠论推演（上证指数 30分钟+日线 · 操作指引）</a></li>
 </ol>
 </div>
 

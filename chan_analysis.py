@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""缠论结构分析（chan_analysis）——上证指数分钟级别推演，用于操作指引。
+"""缠论结构分析（chan_analysis）——上证指数多级别推演（30分钟 + 日线），用于操作指引。
 
 引擎（按优先级）：
   1. **czsc**（https://github.com/waditu/czsc，Rust 核心）：分型/笔/中枢识别由开源库
@@ -7,12 +7,17 @@
      背驰与三类买卖点判定为本项目适配层（口径：进入段 vs 离开段力度衰减 >=10%）。
   2. czsc 不可用时回退纯标准库简化实现（保持管线不断，输出契约一致）。
 
+多级别口径（2026-08-28 起）：30分钟（短线节奏）+ 日线（波段方向）两级联立，
+高级别定方向、低级别找买卖点。
+
 输出契约（data/chan/chan_forecast_YYYYMMDD.json，build_report.chan_section() 消费）：
-  level / data_range / bars / fractals / bis / last_price / last_time
-  zhongshu: {zd, zg, gg, dd, range, start_time, end_time}
-  beichi:   {dir(up|down), enter_power, leave_power, level(强|中)}
-  signal:   {signal, cls, text}   recent_bis: [{dir, start_time, end_time, ...}]
-  pos: 中枢上方|中枢下方|中枢内|结构未成    engine: czsc-x.y.z|stdlib
+  engine / generated_at / index_code
+  levels: [{level, horizon, data_range, bars, fractals, bis, last_price, last_time,
+            zhongshu: {zd, zg, gg, dd, range, start_time, end_time, bis_in_zs},
+            beichi:   {dir(up|down), enter_power, leave_power, level(强|中)},
+            signal:   {signal, cls, text},
+            recent_bis: [{dir, start_time, end_time, ...}], ubi: {...},
+            pos: 中枢上方|中枢下方|中枢内|结构未成}]
 """
 import json
 import urllib.request
@@ -24,11 +29,24 @@ BASE_DIR = Path(__file__).parent
 # 东财指数 secid：上证 1.000001 / 深证 0.399001 / 创业板 0.399006 / 科创50 1.000688
 INDEX_SECID = {"000001": "1.000001", "399001": "0.399001", "399006": "0.399006", "000688": "1.000688"}
 
-FREQ_LABEL = {1: "1分钟", 5: "5分钟", 15: "15分钟", 30: "30分钟", 60: "60分钟"}
+FREQ_LABEL = {1: "1分钟", 5: "5分钟", 15: "15分钟", 30: "30分钟", 60: "60分钟", 101: "日线"}
+# 多级别推演配置：（东财 klt, 拉取根数, 操作视界）
+LEVELS_CONF = [(30, 500, "短线"), (101, 250, "波段")]
+
+
+def _parse_dt(s):
+    """K线时间字符串 → datetime。支持 'YYYY-MM-DD'（日线）与 'YYYY-MM-DD HH:MM[:SS]'。"""
+    s = str(s).strip()
+    if len(s) == 10:
+        return datetime.datetime.fromisoformat(s + "T15:00")
+    if len(s) == 16:
+        return datetime.datetime.fromisoformat(s + ":00")
+    return datetime.datetime.fromisoformat(s)
 
 
 def fetch_min_kline(secid="1.000001", klt=5, lmt=600):
-    """分钟 K 线（真实数据，东财优先→新浪兜底）。返回 [{time, open, close, high, low, volume}]，升序。"""
+    """K 线（真实数据，东财优先→新浪兜底）。klt 为东财周期代码（101=日线）。
+    返回 [{time, open, close, high, low, volume}]，升序。"""
     import time
     last_err = None
     # 1) 东财
@@ -54,10 +72,10 @@ def fetch_min_kline(secid="1.000001", klt=5, lmt=600):
         except Exception as e:
             last_err = f"东财 {str(e)[:60]}"
             time.sleep(1.5)
-    # 2) 新浪兜底（symbol 映射：secid 1.xxxxxx -> sh + 6位；0.xxxxxx -> sz + 6位）
+    # 2) 新浪兜底（symbol 映射：secid 1.xxxxxx -> sh + 6位；0.xxxxxx -> sz + 6位；日线 scale=240）
     code6 = secid.split(".")[1]
     sym = ("sh" if secid.startswith("1.") else "sz") + code6
-    scale = {1: 1, 5: 5, 15: 15, 30: 30, 60: 60}.get(klt, 5)
+    scale = {1: 1, 5: 5, 15: 15, 30: 30, 60: 60, 101: 240}.get(klt, 5)
     u2 = (f"https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20t=/CN_MarketDataService.getKLineData"
           f"?symbol={sym}&scale={scale}&ma=no&datalen={lmt}")
     try:
@@ -76,30 +94,35 @@ def fetch_min_kline(secid="1.000001", klt=5, lmt=600):
         return out
     except Exception as e:
         last_err = f"{last_err}; 新浪 {str(e)[:60]}"
-    raise RuntimeError(f"分钟K线获取失败: {last_err}")
+    raise RuntimeError(f"K线获取失败: {last_err}")
 
 
 # ======================================================================
 # 引擎一：czsc（开源库，Rust 核心；分型/笔/中枢由库识别）
 # ======================================================================
 
-def _czsc_engine(kl, klt=5, level_label="5分钟"):
-    """用 czsc 做结构识别，适配层产出背驰与三类买卖点。kl 为升序分钟K线 dict 列表。"""
+def _czsc_engine(kl, klt=5, level_label="5分钟", horizon="短线"):
+    """用 czsc 做结构识别，适配层产出背驰与三类买卖点。kl 为升序K线 dict 列表（分钟或日线）。"""
     import czsc
     from czsc import CZSC, Freq, RawBar
 
-    freq = getattr(Freq, f"F{klt}", None)
+    freq = {"1": Freq.F1, "5": Freq.F5, "15": Freq.F15, "30": Freq.F30,
+            "60": Freq.F60, "101": Freq.D}.get(str(klt))
     if freq is None:
         return None
     bars = []
     for k in kl:
-        dt = k["time"]
-        if len(dt) <= 16:  # "2026-08-27 15:00" → 补秒
-            dt += ":00"
-        bars.append(RawBar(symbol="INDEX", freq=freq, dt=datetime.datetime.fromisoformat(dt),
+        bars.append(RawBar(symbol="INDEX", freq=freq, dt=_parse_dt(k["time"]),
                            open=k["open"], close=k["close"], high=k["high"], low=k["low"],
                            vol=k.get("volume") or 0, amount=0))
     c = CZSC(bars, max_bi_num=100)
+
+    # 日线时间显示为纯日期，分钟级显示到分钟
+    is_daily = str(klt) == "101"
+
+    def _t(dt, short=False):
+        s = str(dt)
+        return s[:10] if is_daily else (s[5:16] if short else s[:16])
 
     def _dir(bi):
         return "up" if str(bi.direction) == "向上" else "down"
@@ -125,8 +148,8 @@ def _czsc_engine(kl, klt=5, level_label="5分钟"):
             "zd": round(zd, 2), "zg": round(zg, 2),
             "gg": round(float(zs.gg), 2), "dd": round(float(zs.dd), 2),
             "range": round(zg - zd, 2),
-            "start_time": str(zs.sdt)[:16] if zs.sdt else "",
-            "end_time": str(zs.edt)[:16] if zs.edt else "",
+            "start_time": _t(zs.sdt) if zs.sdt else "",
+            "end_time": _t(zs.edt) if zs.edt else "",
             "bis_in_zs": len(zs.bis),
         }
 
@@ -146,7 +169,7 @@ def _czsc_engine(kl, klt=5, level_label="5分钟"):
 
     # ---- 买卖点（价格相对中枢位置 + 背驰 + 末笔方向；与旧口径一致的适配层）----
     last_bi_dir = _dir(bis[-1]) if bis else "up"
-    sig = _classify_signal(price, zs_dict, beichi, last_bi_dir)
+    sig = _classify_signal(price, zs_dict, beichi, last_bi_dir, horizon)
 
     # ---- 最近 5 笔（fx_a→fx_b 端点）----
     recent_bis = []
@@ -154,7 +177,7 @@ def _czsc_engine(kl, klt=5, level_label="5分钟"):
         d = _dir(b)
         recent_bis.append({
             "dir": d,
-            "start_time": str(b.fx_a.dt)[5:16], "end_time": str(b.fx_b.dt)[5:16],
+            "start_time": _t(b.fx_a.dt, short=True), "end_time": _t(b.fx_b.dt, short=True),
             "start_price": round(float(b.low if d == "up" else b.high), 2),
             "end_price": round(float(b.high if d == "up" else b.low), 2),
         })
@@ -171,15 +194,16 @@ def _czsc_engine(kl, klt=5, level_label="5分钟"):
             fx_a = u.get("fx_a")
             extreme_bar = u.get("high_bar" if udir == "up" else "low_bar")
             ubi = {"dir": udir,
-                   "start_time": str(fx_a.dt)[:16] if fx_a else "",
+                   "start_time": _t(fx_a.dt) if fx_a else "",
                    "start_price": round(float(fx_a.fx), 2) if fx_a else None,
                    "extreme_price": round(float(u["high"] if udir == "up" else u["low"]), 2),
-                   "extreme_time": str(extreme_bar.dt)[:16] if extreme_bar is not None else ""}
+                   "extreme_time": _t(extreme_bar.dt) if extreme_bar is not None else ""}
     except Exception:
         ubi = None
 
     return {
         "level": level_label,
+        "horizon": horizon,
         "data_range": f"{kl[0]['time']} ~ {last['time']}",
         "bars": len(kl),
         "fractals": len(c.fx_list),
@@ -354,7 +378,7 @@ def detect_beichi(merged, bis, zs, macd_vals, kl):
     return None
 
 
-def _classify_signal(price, zs, beichi, last_bi_dir):
+def _classify_signal(price, zs, beichi, last_bi_dir, horizon="短线"):
     """缠论买卖点判定（两引擎共用）：价格相对中枢位置 + 背驰方向 + 末笔方向。"""
     if zs is None:
         return {"signal": "中枢未成", "cls": "b-gray", "text": "笔结构未构成有效中枢，暂不判定买卖点。"}
@@ -365,12 +389,12 @@ def _classify_signal(price, zs, beichi, last_bi_dir):
     if price > zg and beichi_dir != "down":
         warn = ("；但上涨段力度出现衰减（背驰），注意冲高回落" if beichi_dir == "up" else "")
         return {"signal": "三买候选", "cls": "b-red",
-                "text": f"价格 {price:.2f} 站上中枢上沿 {zg:.2f}；若回踩不破 {zg:.2f} 则三买成立，短线偏多{warn}。"}
+                "text": f"价格 {price:.2f} 站上中枢上沿 {zg:.2f}；若回踩不破 {zg:.2f} 则三买成立，{horizon}偏多{warn}。"}
     # 一买：下跌背驰（离开段力度衰减）且价格在中枢下方
     if beichi_dir == "down" and price < zd:
         return {"signal": "一买候选", "cls": "b-red",
                 "text": f"下跌段力度衰减（背驰），价格 {price:.2f} 在中枢下沿 {zd:.2f} 下方；"
-                        f"若出现底分型企稳则一买成立，关注超跌反弹。"}
+                        f"若出现底分型企稳则一买成立，关注{horizon}超跌反弹。"}
     # 二买：一买后回抽不破前低（价格在中枢内偏下 + 最近一笔向上）
     if last_bi_dir == "up" and zd <= price <= zg:
         return {"signal": "二买观察", "cls": "b-blue",
@@ -384,12 +408,12 @@ def _classify_signal(price, zs, beichi, last_bi_dir):
     # 三卖：向下突破中枢后反抽不破 ZD
     if price < zd and last_bi_dir == "down":
         return {"signal": "三卖观察", "cls": "b-green",
-                "text": f"价格 {price:.2f} 跌破中枢下沿 {zd:.2f}；若反抽不收回 {zd:.2f} 则三卖，短线偏空。"}
+                "text": f"价格 {price:.2f} 跌破中枢下沿 {zd:.2f}；若反抽不收回 {zd:.2f} 则三卖，{horizon}偏空。"}
     return {"signal": "中枢震荡", "cls": "b-blue",
             "text": f"价格 {price:.2f} 处于中枢 [{zd:.2f}, {zg:.2f}] 内震荡，等待方向选择。"}
 
 
-def _stdlib_engine(kl, level_label="5分钟"):
+def _stdlib_engine(kl, level_label="5分钟", horizon="短线"):
     """纯标准库兜底（缠论风格简化实现）。"""
     if len(kl) < 30:
         return {"error": "K线数据不足"}
@@ -402,7 +426,7 @@ def _stdlib_engine(kl, level_label="5分钟"):
     last = kl[-1]
     price = last["close"]
     last_bi_dir = bis[-1][2] if bis else "up"
-    sig = _classify_signal(price, {"zg": zs["zg"], "zd": zs["zd"]} if zs else None, beichi, last_bi_dir)
+    sig = _classify_signal(price, {"zg": zs["zg"], "zd": zs["zd"]} if zs else None, beichi, last_bi_dir, horizon)
     recent_bis = []
     for b in bis[-5:]:
         recent_bis.append({"dir": b[2], "start_time": merged[b[0]]["time"][5:16],
@@ -411,6 +435,7 @@ def _stdlib_engine(kl, level_label="5分钟"):
                            "end_price": round(merged[b[1]]["low" if b[2] == "down" else "high"], 2)})
     return {
         "level": level_label,
+        "horizon": horizon,
         "data_range": f"{kl[0]['time']} ~ {last['time']}",
         "bars": len(kl),
         "merged_bars": len(merged),
@@ -433,43 +458,62 @@ def _stdlib_engine(kl, level_label="5分钟"):
     }
 
 
-def chan_analyze(kl, klt=5):
-    """完整缠论推演：czsc 引擎优先，异常/未安装时回退标准库实现。kl: 分钟K线（升序）。"""
+def chan_analyze(kl, klt=5, horizon="短线"):
+    """完整缠论推演：czsc 引擎优先，异常/未安装时回退标准库实现。kl: K线（升序，分钟或日线）。"""
     level_label = FREQ_LABEL.get(klt, f"{klt}分钟")
     try:
-        r = _czsc_engine(kl, klt, level_label)
+        r = _czsc_engine(kl, klt, level_label, horizon)
         if r and not r.get("error"):
             return r
     except ImportError:
         pass
     except Exception as e:
         print(f"[缠论] czsc 引擎异常，回退标准库实现: {e}")
-    return _stdlib_engine(kl, level_label)
+    return _stdlib_engine(kl, level_label, horizon)
 
 
-def run(index_code="000001", klt=5, lmt=600):
-    """主流程：拉取上证指数 5 分钟 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。"""
+def run(index_code="000001", bars_m30=500, bars_d=250):
+    """主流程：拉取上证指数 30分钟 + 日线两级 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。"""
     secid = INDEX_SECID.get(index_code, "1.000001")
-    kl = fetch_min_kline(secid, klt, lmt)
-    if not kl:
-        return {"error": "K线获取失败"}
-    result = chan_analyze(kl, klt)
+    levels = []
+    engine = None
+    for klt, lmt, horizon in LEVELS_CONF:
+        lmt = bars_m30 if klt == 30 else (bars_d if klt == 101 else lmt)
+        try:
+            kl = fetch_min_kline(secid, klt, lmt)
+            if not kl:
+                raise RuntimeError("K线为空")
+            r = chan_analyze(kl, klt, horizon)
+            if r.get("error"):
+                levels.append({"level": FREQ_LABEL.get(klt, str(klt)), "error": r["error"]})
+                continue
+            levels.append(r)
+            engine = r.get("engine", engine)
+        except Exception as e:
+            levels.append({"level": FREQ_LABEL.get(klt, str(klt)), "error": f"K线获取/分析失败: {str(e)[:80]}"})
+    ok = [l for l in levels if not l.get("error")]
+    if not ok:
+        return {"error": "全部级别K线获取失败", "levels": levels}
+    result = {
+        "levels": levels,
+        "engine": engine or "stdlib",
+        "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "index_code": index_code,
+    }
     today = datetime.datetime.now().strftime("%Y%m%d")
     out_dir = BASE_DIR / "data" / "chan"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"chan_forecast_{today}.json"
-    result["generated_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    result["index_code"] = index_code
-    result["period_min"] = klt
     path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[缠论] {index_code} {klt}分钟推演（引擎 {result.get('engine', '?')}）已写入: {path}")
+    lv_txt = "、".join(f"{l['level']}({l.get('signal', {}).get('signal', '?')})" for l in ok)
+    print(f"[缠论] {index_code} 多级别推演（引擎 {result['engine']}）：{lv_txt} 已写入: {path}")
     return result
 
 
 if __name__ == "__main__":
     import sys
     index = sys.argv[1] if len(sys.argv) > 1 else "000001"
-    period = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-    bars = int(sys.argv[3]) if len(sys.argv) > 3 else 600
-    r = run(index, period, bars)
+    bars_m30 = int(sys.argv[2]) if len(sys.argv) > 2 else 500
+    bars_d = int(sys.argv[3]) if len(sys.argv) > 3 else 250
+    r = run(index, bars_m30, bars_d)
     print(json.dumps(r, ensure_ascii=False, indent=2))
