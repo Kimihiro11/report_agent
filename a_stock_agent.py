@@ -476,10 +476,12 @@ def _parse_weibo_time(created_at):
         return None
 
 
-def fetch_weibo(user_id, name, cookie="", only_today=True):
+def fetch_weibo(user_id, name, cookie="", only_today=True, lookback_days=1):
     """抓取微博用户最新内容（m.weibo.cn API），需在config.json配置weibo_cookie。
 
     only_today=True（默认）：仅保留当日发布的微博；当日无更新返回空列表。
+    lookback_days：允许回溯的天数窗口（1=仅当日，2=当日+昨日）。唐史主任等
+    T1 源在周一早盘常结合周末/昨日观点，由调用方按源层级传 2。
     返回 [{"text":..., "time":...}, ...]，统一结构供下游消费。
     """
     if not cookie:
@@ -504,7 +506,6 @@ def fetch_weibo(user_id, name, cookie="", only_today=True):
             return []
         cards = data.get("data", {}).get("cards", [])
         posts = []
-        today = datetime.now().date()
         for card in cards:
             mblog = card.get("mblog", {})
             if not mblog:
@@ -514,15 +515,76 @@ def fetch_weibo(user_id, name, cookie="", only_today=True):
             created = mblog.get("created_at", "")
             if only_today:
                 dt = _parse_weibo_time(created)
-                if dt is None or dt.date() != today:
-                    continue  # 非当日更新，跳过
+                if dt is None or (datetime.now().date() - dt.date()).days >= lookback_days:
+                    continue  # 超出回溯窗口，跳过
             if clean and len(clean) > 10:
                 posts.append({"text": clean[:500], "time": created})
-        print(f"  获取 {len(posts)} 条微博（{'仅当日' if only_today else '全部'})")
+        print(f"  获取 {len(posts)} 条微博（回溯 {lookback_days} 天）")
         return posts[:10]
     except Exception as e:
         print(f"  [parse error] {e}")
         return []
+
+
+def _fund_override_path():
+    """Agent 经已连接连接器生成的资金面覆盖文件（两融/北向，date==今日 才有效）。"""
+    return OUTPUT_DIR / "data" / "westock_fund_override.json"
+
+
+def fetch_fund_flows():
+    """读取 agent 经 westock-mcp 连接器写入的资金面覆盖文件（date==今日 才有效）。
+
+    平台托管鉴权下脚本无法直接调 MCP；由 agent 经 data_fund_margin /
+    data_north_holding 取真实数据写入本文件，脚本直接消费，绝不伪造。
+    返回 dict：{margin: [...], north_holding: [...], data_date} 或 None。
+    """
+    p = _fund_override_path()
+    if not p.exists():
+        return None
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if obj.get("date") != datetime.now().strftime("%Y%m%d"):
+        return None
+    return obj
+
+
+def fetch_market_width():
+    """抓取全市场当日涨跌家数（东财 getTopicZDFenBu，真实数据）。
+
+    返回 dict {date, up, down, flat, zt, dt} 或 None（接口失败/数据异常）。
+    """
+    try:
+        import urllib.request
+        u = ("https://push2ex.eastmoney.com/getTopicZDFenBu"
+             "?ut=7eea3edcaed734bea9cbfc24409ed989&dpt=wz.ztzt"
+             "&Pageindex=0&pagesize=500&sort=fbt%3Aasc")
+        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0",
+                                                 "Referer": "https://quote.eastmoney.com/"})
+        d = json.loads(urllib.request.urlopen(req, timeout=12).read())
+        data = d.get("data") or {}
+        qdate = str(data.get("qdate") or "")
+        fb = data.get("fenbu") or []
+        # fenbu 为单键 dict 列表：[{"-1": 1128}, {"1": 1078}, ...]
+        pairs = []
+        for item in fb:
+            try:
+                it = next(iter(item.items()))
+                pairs.append((int(it[0]), int(it[1])))
+            except Exception:
+                continue
+        up = sum(v for k, v in pairs if k > 0)
+        down = sum(v for k, v in pairs if k < 0)
+        flat = sum(v for k, v in pairs if k == 0)
+        zt = sum(v for k, v in pairs if k >= 10)
+        dt = sum(v for k, v in pairs if k <= -10)
+        if not qdate or (up + down + flat) == 0:
+            return None
+        return {"date": qdate, "up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
+    except Exception as e:
+        print(f"[宽度] 涨跌家数抓取失败: {e}")
+        return None
 
 
 def fetch_global_source(name, signal_type):
@@ -1078,11 +1140,22 @@ def _persist_to_db(config, snapshot, ta_data):
         if snapshot.get("us_market"):
             db.save_us_market(td, snapshot["us_market"])
         if snapshot.get("etf"):
-            db.save_etf_flows(td, snapshot["etf"])
+            # 真实数据日（westock EndDate）从 override 文件读取，避免盘前/盘后错位
+            _data_date = None
+            try:
+                _ov = json.loads((OUTPUT_DIR / "data" / "westock_etf_override.json").read_text(encoding="utf-8"))
+                _data_date = _ov.get("data_date")
+            except Exception:
+                _data_date = None
+            db.save_etf_flows(td, snapshot["etf"], data_date=_data_date)
         if snapshot.get("weibo_data"):
             db.save_sentiment_batch(td, snapshot["weibo_data"])
         if ta_data:
             db.save_technical(td, ta_data)
+        if snapshot.get("market_width"):
+            mw = snapshot["market_width"]
+            db.save_market_width(mw.get("date"), mw.get("up", 0), mw.get("down", 0),
+                                 mw.get("flat", 0), mw.get("zt", 0), mw.get("dt", 0))
         return True, None
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
@@ -1169,7 +1242,9 @@ def main():
     ta_data = {}
     if not no_fetch:
         for src in config.get("weibo_sources", []):
-            posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie)
+            # T1 源（唐史主任）回溯近 2 天：周一早盘结合周末/昨日观点输出
+            lb = 2 if src.get("tier") == 1 else 1
+            posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie, lookback_days=lb)
             weibo_data[src["name"]] = posts
         for src in config.get("global_sources", []):
             posts = fetch_global_source(src["name"], src.get("signal_type", ""))
@@ -1189,11 +1264,15 @@ def main():
 
     quotes = {}
     us_market, etf, us_yield = [], [], None
+    fund_flows = None
+    market_width = None
     if not no_fetch:
         quotes = fetch_index_quotes()
         us_market = fetch_us_market()
         etf = fetch_etf_flows()
         us_yield = fetch_us_yield()
+        fund_flows = fetch_fund_flows()
+        market_width = fetch_market_width()
 
     analysis = analyze_sentiment(weibo_data, quotes)
 
@@ -1211,6 +1290,8 @@ def main():
         "us_market": us_market,
         "etf": etf,
         "us_yield": us_yield,
+        "fund_flows": fund_flows,
+        "market_width": market_width,
     }
     with open(snap_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)

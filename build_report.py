@@ -212,7 +212,7 @@ def load_context():
     _intel_topics = intel.get("topics", {}) if isinstance(intel, dict) else {}
 
     # 实时大V / 各类信源文本
-    tangshi = wb_texts("唐史主任司马迁")
+    tangshi = wb_texts("唐史主任司马迁", lookback_days=2)  # T1 周一早报结合周末/昨日观点
     touxing_asset = wb_texts("投星资产")
     touxing_yeye = wb_texts("投星大爷")
     macro_items = [t for k in weibo_data if k.startswith("[宏观]") for t in wb_texts(k)]
@@ -355,11 +355,12 @@ def load_tangshi_deep():
         return None
 
 
-def wb_posts(name):
-    """返回信号源条目；微博源严格限报告当日，结构化采集源允许空时间。
+def wb_posts(name, lookback_days=1):
+    """返回信号源条目；微博源默认限报告当日，唐史主任（T1）可回溯昨日。
 
     `[宏观]/[事件]/[日本]/[技术]/[全球]/[国家队]` 等条目由本次快照实时生成，部分没有
     created_at，不能套用微博时间过滤；普通微博源仍严格剔除旧帖/置顶帖。
+    lookback_days=2 时允许昨日帖子（周一早盘结合周末观点）。
     """
     report_date = datetime.strptime(TODAY, "%Y-%m-%d").date()
     is_snapshot_signal = name.startswith("[")
@@ -373,15 +374,15 @@ def wb_posts(name):
         if is_snapshot_signal and d is None:
             out.append({"text": text, "time": raw_time, "date": report_date})
             continue
-        if d != report_date:
+        if d is None or (report_date - d).days >= lookback_days or d > report_date:
             continue
         out.append({"text": text, "time": raw_time, "date": d})
     return out
 
 
-def wb_texts(name):
+def wb_texts(name, lookback_days=1):
     """某大V当日更新的纯文本列表（供解构打分）。"""
-    return [p["text"] for p in wb_posts(name)]
+    return [p["text"] for p in wb_posts(name, lookback_days=lookback_days)]
 
 
 def diag_for(code):
@@ -462,9 +463,7 @@ def us_bar(name, pct, val, sig):
     color = "#d63031" if pf > 0 else "#00a865"
     if pf == 0:
         color = "#888"
-    tip = f"收盘 {val}" if str(val).strip() not in ("", "—") else ""
-    title_attr = f' title="{_esc(tip)}"' if tip else ""
-    return (f'<div class="bar-row"{title_attr}><div class="bar-name">{name}</div>'
+    return (f'<div class="bar-row"><div class="bar-name">{name}</div>'
             f'<div class="bar-wrap"><div class="bar-fill" style="width:{w:.1f}%;background:{color}"></div></div>'
             f'<div class="bar-val {up_down(pf)}">{sign(pf)}{pf}%</div></div>')
 
@@ -676,15 +675,14 @@ def us_yield_panel():
 def us_section():
     if not us_market:
         return PLACEHOLDER
-    # 汇总行：三大指数方向徽章（含点位）+ 涨跌家数 + 领涨/领跌标的（一眼读出美股格局）
+    # 汇总行：三大指数方向徽章（不含点位）+ 涨跌家数 + 领涨/领跌标的（一眼读出美股格局）
     up_n = sum(1 for x in us_market if _pct_val(x) > 0)
     sum_parts = []
     for x in us_market[:3]:
         pf = _pct_val(x)
         cls = "b-red" if pf > 0 else ("b-green" if pf < 0 else "b-gray")
         short = str(x[0]).replace("纳斯达克", "纳指").replace("标普500", "标普")
-        price_txt = f" {fmt(x[2])}" if str(x[2]).strip() not in ("", "—") else ""
-        sum_parts.append(f'<span class="badge {cls}">{_esc(short)} {sign(pf)}{pf}%{price_txt}</span>')
+        sum_parts.append(f'<span class="badge {cls}">{_esc(short)} {sign(pf)}{pf}%</span>')
     sum_parts.append(f'<span class="tag">上涨 {up_n}/{len(us_market)}</span>')
     _valid = [x for x in us_market if _pct_val(x) != 0]
     if _valid:
@@ -748,7 +746,7 @@ def etf_section():
 
 
 def fund_section():
-    """资金面信号（自选股两融 + 北向持仓）。
+    """资金面信号（自选股两融 + 北向持仓，合并一张表）。
 
     数据来自 agent 经 westock 连接器取的真实数据（data_fund_margin 日频、
     data_north_holding 季频），写入 westock_fund_override.json 由快照带入；
@@ -756,37 +754,47 @@ def fund_section():
     """
     if not fund_flows:
         return ""
-    margin = fund_flows.get("margin") or []
-    north = fund_flows.get("north_holding") or []
+    margin = {m.get("code"): m for m in (fund_flows.get("margin") or [])}
+    north = {n.get("code"): n for n in (fund_flows.get("north_holding") or [])}
     data_date = fund_flows.get("data_date", "")
-    parts = []
-    # 两融（日频）
-    if margin:
-        mrows = "".join(
-            f'<tr><td>{_esc(m.get("name", ""))}</td>'
-            f'<td>{m.get("balance", 0) / 1e8:.1f}亿</td>'
-            f'<td class="{up_down(m.get("dod_pct", 0))}">{"+" if (m.get("dod_pct", 0) or 0) > 0 else ""}{m.get("dod_pct", 0)}%</td></tr>'
-            for m in sorted(margin, key=lambda x: -(x.get("balance") or 0)))
-        parts.append(
-            f'<h3 style="font-size:13px;margin:10px 0 4px">自选股融资余额（日频 · {_esc(str(data_date)[:10])}）</h3>'
-            f'<table><thead><tr><th>个股</th><th>融资余额</th><th>较前日</th></tr></thead><tbody>{mrows}</tbody></table>')
-    # 北向持仓（季频）
-    if north:
-        nrows = "".join(
-            f'<tr><td>{_esc(n.get("name", ""))}</td>'
-            f'<td>{(n.get("ratio") or 0):.2f}%</td>'
-            f'<td>{(n.get("cap") or 0) / 1e8:.1f}亿</td>'
-            f'<td class="{up_down(n.get("shares_chg_q") or 0)}">'
-            f'{"+" if (n.get("shares_chg_q") or 0) > 0 else ""}{(n.get("shares_chg_q") or 0) / 1e4:.0f}万股</td></tr>'
-            for n in sorted(north, key=lambda x: -(x.get("ratio") or 0)))
-        parts.append(
-            '<h3 style="font-size:13px;margin:10px 0 4px">自选股北向持仓（季频 · Q2 2026-06-30）</h3>'
-            '<table><thead><tr><th>个股</th><th>持股比例</th><th>持股市值</th><th>Q2 增持/减持</th></tr></thead>'
-            f'<tbody>{nrows}</tbody></table>')
-        parts.append('<p class="muted" style="font-size:11px;margin-top:4px">北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露（真实数据）；融资余额为日频。</p>')
-    if not parts:
+    codes = sorted(margin.keys() or north.keys(),
+                   key=lambda c: -(margin.get(c, {}).get("balance") or 0))
+    if not codes:
         return ""
-    return '<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">' + "".join(parts) + '</div>'
+    rows = ""
+    for c in codes:
+        m = margin.get(c, {})
+        n = north.get(c, {})
+        name = m.get("name") or n.get("name") or c
+        # 两融
+        if m:
+            m_bal = f'{m.get("balance", 0) / 1e8:.1f}亿'
+            m_dod = m.get("dod_pct", 0) or 0
+            m_txt = f'<td class="{up_down(m_dod)}">{"+" if m_dod > 0 else ""}{m_dod}%</td>'
+        else:
+            m_bal, m_txt = "—", '<td class="muted">—</td>'
+        # 北向
+        ratio = n.get("ratio")
+        cap = n.get("cap")
+        chg = n.get("shares_chg_q")
+        if ratio is not None and cap is not None:
+            n_ratio = f'{ratio:.2f}%'
+            n_cap = f'{cap / 1e8:.1f}亿'
+            chg = chg or 0
+            n_chg = f'<td class="{up_down(chg)}">{"+" if chg > 0 else ""}{chg / 1e4:.0f}万股</td>'
+        else:
+            n_ratio = n_cap = "—"
+            n_chg = '<td class="muted">—</td>'
+        rows += (f'<tr><td><b>{_esc(name)}</b></td>'
+                 f'<td>{m_bal}</td>{m_txt}'
+                 f'<td>{n_ratio}</td><td>{n_cap}</td>{n_chg}</tr>')
+    return (f'<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">'
+            f'<h3 style="font-size:13px;margin:6px 0 4px">自选股资金面（两融日频 + 北向季频）</h3>'
+            f'<table><thead><tr><th>个股</th><th>融资余额</th><th>融资较前日</th>'
+            f'<th>北向持股比例</th><th>北向持股市值</th><th>北向季度增减</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table>'
+            f'<p class="muted" style="font-size:11px;margin-top:4px">融资余额日频（{_esc(str(data_date)[:10])}）；'
+            f'北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露（Q2 2026-06-30，真实数据）；"—"表示无数据。</p></div>')
 
 
 def _adl_line_chart(points):
@@ -1394,7 +1402,9 @@ def _build_vs_sources():
     vs_sources = {}
     for s in VS_SOURCES:
         nm = s.get("name", "")
-        texts = wb_texts(nm)
+        # T1 源（唐史主任）回溯近 2 天，与数据引擎抓取窗口一致
+        lb = 2 if int(s.get("tier", 2) or 2) == 1 else 1
+        texts = wb_texts(nm, lookback_days=lb)
         tier = int(s.get("tier", 2) or 2)
         vs_sources[nm] = {
             "texts": texts,
@@ -1667,7 +1677,7 @@ def vs_summary():
             consensus_html += f'<div class="cc-body" style="margin-bottom:8px">{_esc(llm["consensus"]["text"])}</div>'
         consensus_html += src_table
 
-    diverge = (consensus_label == "偏空" and idx_label == "偏多")
+    diverge = (consensus_label != idx_label) and (consensus_label in {"偏多", "偏空"})
     if not updated_any:
         market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 指 {up_n} 涨）。"
                        f"当日无大V更新，情绪面暂无新增信号，研判以指数与技术面为准。")
