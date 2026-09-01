@@ -786,11 +786,42 @@ def etf_section():
     return f'<table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead><tbody>{rows}</tbody></table>{chart}'
 
 
+def _stock_hit_rate_map():
+    """自选股个股维度的回测方向命中率（真实数据：seeds/backtest_results.json）。
+
+    仅统计 status=done 且方向为 bullish/bearish 且 direction_hit 已判定的判断
+    （neutral 不计，与 resonance_hit_rate 口径一致）。返回 {code: {rate, hit, total}}。
+    """
+    try:
+        import json as _json
+        p = Path(__file__).parent / "seeds" / "backtest_results.json"
+        if not p.exists():
+            return {}
+        data = _json.loads(p.read_text(encoding="utf-8"))
+        items = data if isinstance(data, list) else data.get("items", [])
+        agg = {}
+        for it in items:
+            if it.get("status") != "done" or it.get("direction") not in ("bullish", "bearish"):
+                continue
+            hit = it.get("direction_hit")
+            if hit is None:
+                continue  # 未判定（窗口未走完等）不统计
+            a = agg.setdefault(it.get("stock_code"), {"hit": 0, "total": 0})
+            a["total"] += 1
+            if hit:
+                a["hit"] += 1
+        return {c: {"rate": round(a["hit"] / a["total"] * 100), "hit": a["hit"], "total": a["total"]}
+                for c, a in agg.items() if a["total"]}
+    except Exception:
+        return {}
+
+
 def fund_section():
     """资金面信号（自选股两融 + 北向持仓，合并一张表）。
 
     数据来自 agent 经 westock 连接器取的真实数据（data_fund_margin 日频、
     data_north_holding 季频），写入 westock_fund_override.json 由快照带入；
+    另附个股维度回测历史胜率（seeds/backtest_results.json，真实收盘验证）；
     缺失渲染占位，绝不伪造。
     """
     if not fund_flows:
@@ -802,6 +833,7 @@ def fund_section():
                    key=lambda c: -(margin.get(c, {}).get("balance") or 0))
     if not codes:
         return ""
+    hit_map = _stock_hit_rate_map()
     rows = ""
     for c in codes:
         m = margin.get(c, {})
@@ -826,16 +858,30 @@ def fund_section():
         else:
             n_ratio = n_cap = "—"
             n_chg = '<td class="muted">—</td>'
+        # 回测历史胜率（个股维度；无已兑现判断则显示 —）
+        h = hit_map.get(c)
+        if h:
+            hit_html = (f'<span class="badge {rate_badge(h["rate"])}" '
+                        f'title="方向判断命中 {h["hit"]} / 共 {h["total"]} 条（回测收盘验证）">{h["rate"]}%</span>'
+                        f'<span class="muted" style="font-size:10.5px">（{h["hit"]}/{h["total"]}）</span>')
+        else:
+            hit_html = '<span class="muted">—</span>'
         rows += (f'<tr><td><b>{_esc(name)}</b></td>'
                  f'<td>{m_bal}</td>{m_txt}'
-                 f'<td>{n_ratio}</td><td>{n_cap}</td>{n_chg}</tr>')
+                 f'<td>{n_ratio}</td><td>{n_cap}</td>{n_chg}'
+                 f'<td>{hit_html}</td></tr>')
+    n_hit = len(hit_map)
+    hit_note = (f'历史胜率=该股历次报告方向判断经回测收盘验证的命中率（命中/共判定条数，越高越可信）；'
+                f'样本为 {sum(h["total"] for h in hit_map.values())} 条已兑现判断（{n_hit} 只个股有记录）。'
+                if hit_map else '历史胜率暂无已兑现判断样本。')
     return (f'<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">'
             f'<h3 style="font-size:13px;margin:6px 0 4px">自选股资金面（两融日频 + 北向季频）</h3>'
             f'<table><thead><tr><th>个股</th><th>融资余额</th><th>融资较前日</th>'
-            f'<th>北向持股比例</th><th>北向持股市值</th><th>北向季度增减</th></tr></thead>'
+            f'<th>北向持股比例</th><th>北向持股市值</th><th>北向季度增减</th><th>回测历史胜率</th></tr></thead>'
             f'<tbody>{rows}</tbody></table>'
             f'<p class="muted" style="font-size:11px;margin-top:4px">融资余额日频（{_esc(str(data_date)[:10])}）；'
-            f'北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露（Q2 2026-06-30，真实数据）；"—"表示无数据。</p></div>')
+            f'北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露（Q2 2026-06-30，真实数据）；'
+            f'{hit_note}"—"表示无数据。</p></div>')
 
 
 def _adl_line_chart(points):
