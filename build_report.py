@@ -643,6 +643,47 @@ def chain_svg():
     return "".join(svg) + note
 
 
+def fima_highlight():
+    """临时高亮：FIMA（外国央行美债托管/持有）数据实证卡，置于传导链章节内。
+
+    数据口径（真实可溯源，截至 2026-08-31）：
+    - 外国官方机构 2026 年内净卖出约 1000 亿美元美债（去年同期约 +1000 亿，方向一年逆转约 2000 亿，截至 6 月底）
+    - 外国政府持有美债占比降至约 12%（2008 危机前后约 40%）
+    - 日本仍为最大外国持有人 1.117 万亿美元；英国约 0.94 万亿；中国约 0.633 万亿（较峰值 1.3 万亿近乎腰斩）
+    - 8/31 美股「股债汇三杀」收官：10Y 美债 4.76%+ 创 2025/1 以来新高，美元指数 -0.26%，布油破 90 美元
+    """
+    stats = [
+        ("外国央行年内净卖美债", "≈ -1000 亿美元", "b-green", "去年同期为 +1000 亿买家，一年内方向逆转约 2000 亿"),
+        ("外国政府持有美债占比", "≈ 12%", "b-green", "2008 危机前后约 40%，美债需求结构剧变"),
+        ("日本持有美债（最大持有人）", "1.117 万亿美元", "b-orange", "日本 9 月加息若触发套息平仓，抛售压力沿日元→美债→FIMA 链放大"),
+        ("中国持有美债", "≈ 6330 亿美元", "b-orange", "自峰值 1.3 万亿近乎腰斩，十年持续减持"),
+        ("8/31 美债 10Y 收益率", "4.76%+", "b-red", "创 2025 年 1 月以来新高，长端利率上行压制全球成长股估值"),
+    ]
+    rows = ""
+    for name, val, cls, note in stats:
+        rows += (f'<tr><td><b>{name}</b></td><td><b class="{cls}" style="font-size:14px;">{val}</b></td>'
+                 f'<td style="font-size:12px;color:#666;">{note}</td></tr>')
+    verdict = (
+        '<div style="margin-top:10px;padding:8px 12px;background:#fff8e6;border-left:3px solid #d97706;'
+        'border-radius:4px;font-size:13px;color:#7c4a03;">'
+        '<b>研判：</b>外国官方资金从「美债的稳定买家」转为「净卖方」，叠加日本 9 月加息在即，'
+        'FIMA 托管流出 → 美债长端利率上行 → 全球估值锚上移，是 A 股成长（科创/半导体/光模块）'
+        '短期承压的核心外部链路；8/31 美股股债汇三杀已先行走出一轮预演。'
+        '</div>'
+    )
+    return (
+        f'<div class="card" id="sec-fima" style="margin-top:12px;background:linear-gradient(180deg,#fffdf5,#fff8e6);'
+        f'border:1px solid #eab308;box-shadow:0 2px 8px rgba(234,179,8,.15);">'
+        f'<h2 style="color:#92400e;">★ FIMA 高亮 · 外国央行美债托管（截至 2026-08-31）</h2>'
+        f'<table style="margin-top:4px;"><thead><tr><th>指标</th><th>最新值</th><th>解读</th></tr></thead>'
+        f'<tbody>{rows}</tbody></table>'
+        f'{verdict}'
+        f'<p class="muted" style="font-size:11px;margin-top:8px;">口径说明：FIMA = 外国官方及国际货币当局（纽约联储托管）；'
+        f'净卖数据截至 2026-06 底，10Y 美债为 8/31 收盘。临时高亮模块，可随时移除。</p>'
+        f'</div>'
+    )
+
+
 def us_yield_panel():
     """美债收益率最新可用面板（传导链核心锚）：10Y + 短端，附科技估值研判。"""
     uy = (snapshot or {}).get("us_yield") or {}
@@ -1812,6 +1853,7 @@ def _render_html():
 <li><a href="#sec-us">隔夜美股（实时 · 外网解析）</a></li>
 <li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
 <li><a href="#sec-chain">宏观传导链监控（独立因子·实时）</a></li>
+<li><a href="#sec-fima">FIMA 高亮（外国央行美债托管 · 临时）</a></li>
 <li><a href="#sec-geo">地缘政治与原油（事件因子 · 外网解析）</a></li>
 <li><a href="#sec-etf">ETF资金流向（实时）</a></li>
 <li><a href="#sec-weibo">微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</a></li>
@@ -1841,6 +1883,7 @@ def _render_html():
 <div class="card" id="sec-chain">
 <h2>三、宏观传导链监控（独立因子·实时）</h2>
 {chain_svg()}
+{fima_highlight()}
 <div style="margin-top:12px;">{us_yield_panel()}</div>
 {intel_block("japan")}
 </div>
