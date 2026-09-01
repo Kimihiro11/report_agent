@@ -91,6 +91,16 @@ def analyze_stock(code, name='', target_date=None):
             print(f"  [诊断] {code} {name}: peak_detector 返回空结果")
             return None
 
+        # 进攻视角（激进单元）技术面分析：提示词契约的确定性代码化，
+        # 数值全部锚定 calc_indicators 真实日K；失败不阻断防守视角诊断。
+        try:
+            from aggressive_analysis import analyze_aggressive
+            result["aggressive"] = analyze_aggressive(
+                indicators, quote, name=name or (quote or {}).get("name", ""), diag=result, code=code)
+        except Exception as e:
+            print(f"  [诊断] {code} {name}: 进攻视角分析失败: {type(e).__name__}: {e}")
+            result["aggressive"] = {"error": f"进攻视角分析失败: {type(e).__name__}: {e}"}
+
         if not name and quote and quote.get('name'):
             name = quote.get('name')
         result['code'] = code

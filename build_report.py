@@ -547,6 +547,130 @@ def stop_loss_price(d):
     return None
 
 
+def agg_block(d):
+    """进攻视角（激进 · 技术面）子卡：渲染 aggressive_analysis 确定性输出。
+
+    缺失/失败渲染占位，不伪造；看跌时无上行目标（引擎已保证术语统一）。
+    """
+    agg = d.get("aggressive") if isinstance(d, dict) else None
+    if not isinstance(agg, dict) or not agg or agg.get("error"):
+        err = (agg or {}).get("error") if isinstance(agg, dict) else None
+        note = _esc(str(err)[:80]) if err else "未生成（旧版诊断缓存，重跑诊断后生效）"
+        return (f'<div class="agg-box"><div class="agg-head"><span class="agg-title">进攻视角（激进 · 技术面）</span>'
+                f'</div><p class="muted" style="font-size:11.5px;margin:4px 0 0">{note}</p></div>')
+    if not agg.get("data_ok", True):
+        return (f'<div class="agg-box"><div class="agg-head"><span class="agg-title">进攻视角（激进 · 技术面）</span>'
+                f'<span class="badge b-gray">数据不足</span></div>'
+                f'<p class="muted" style="font-size:11.5px;margin:4px 0 0">{_esc(agg.get("data_note", ""))}</p></div>')
+
+    view = agg.get("view", "中性")
+    v_cls = {"看涨": "b-red", "看跌": "b-green"}.get(view, "b-blue")
+    expo = agg.get("exposure") or {}
+    conds = expo.get("conditions_met") or []
+    head = (f'<span class="badge {v_cls}">{view}</span>'
+            f'<span class="agg-expo">建议敞口 ≤<b>{expo.get("pct", "N/A")}%</b>'
+            f'（上调条件 {len(conds)}/4{"：" + "、".join(conds) if conds else ""}）</span>')
+    if expo.get("cap_note"):
+        head += f'<span class="agg-cap">{_esc(expo["cap_note"])}</span>'
+
+    rows = ""
+    def _row(k, v):
+        nonlocal rows
+        rows += f'<tr><td><b>{k}</b></td><td>{v}</td></tr>'
+
+    st = agg.get("short_term") or {}
+    _row("短期趋势", f'{st.get("state", "N/A")}（10 日 <span class="{up_down(st.get("range_chg"))}">{sign(st.get("range_chg"))}{st.get("range_chg")}%</span>'
+                    f'，5 日高低点{st.get("hl_pattern", "N/A")}）'
+                    + (f'；动能{mm.get("judge")}（近3日 {sign(mm.get("last3"))}{mm.get("last3")}% vs 前3日 {sign(mm.get("prev3"))}{mm.get("prev3")}%）'
+                       if (mm := agg.get("momentum")) else ""))
+    bo = agg.get("breakout") or {}
+    if bo.get("resistance") not in (None, "N/A"):
+        bo_txt = f'前高阻力 {bo["resistance"]}，{bo.get("status", "N/A")}'
+        if bo.get("above_pct") is not None and bo.get("status") == "已突破":
+            bo_txt += f'（站上 {bo["above_pct"]}%'
+            if bo.get("vol_ratio"):
+                bo_txt += f'，{bo.get("volume", "")} 量比 {bo["vol_ratio"]}'
+            bo_txt += '）'
+        elif bo.get("status") == "正在测试":
+            bo_txt += f'（距阻力 {bo.get("above_pct")}%）'
+        _row("突破形态", bo_txt)
+    ma = agg.get("ma") or {}
+    if ma.get("ma5") not in (None, "N/A"):
+        over = '，<b style="color:#d63031">偏离 MA20 超 20% 过热</b>' if ma.get("overheat") else ""
+        _row("均线", f'MA5 {ma["ma5"]} / MA10 {ma["ma10"]} / MA20 {ma["ma20"]}，{ma.get("arrange", "N/A")}；'
+                    f'MA5/MA10 {ma.get("cross", "N/A")}；突破力度 {ma.get("strength", "N/A")}；偏离 MA20 {ma.get("ma20_dev", "N/A")}%{over}')
+    mc = agg.get("macd") or {}
+    _row("MACD", f'DIF {mc.get("dif")} / DEA {mc.get("dea")} / 柱 {mc.get("hist")}；{mc.get("cross", "N/A")}，'
+                f'{mc.get("zero", "N/A")}；柱体{mc.get("pattern", "N/A")}')
+    rs = agg.get("rsi") or {}
+    rsi_txt = f'RSI(14) = {rs.get("val")}，{rs.get("zone", "N/A")}；连续 {rs.get("above50_days", 0)} 日位于 50 上方'
+    if rs.get("overbought_note"):
+        rsi_txt += f'；<b>{_esc(rs["overbought_note"])}</b>'
+    _row("RSI", rsi_txt)
+    kd = agg.get("kdj") or {}
+    kd_txt = f'K {kd.get("k")} / D {kd.get("d")} / J {kd.get("j")}；{kd.get("cross", "N/A")}'
+    if kd.get("j_note"):
+        kd_txt += f'；{_esc(kd["j_note"])}'
+    _row("KDJ", kd_txt)
+
+    # 操作与价位表
+    tr = agg.get("trade") or {}
+    price_rows = ""
+    def _prow(label, item, rel_key="rel_pct"):
+        nonlocal price_rows
+        if not item:
+            return
+        p = item.get("price") if isinstance(item, dict) else item
+        if p in (None, "N/A"):
+            price_rows += f'<tr><td>{label}</td><td class="muted">N/A</td><td>—</td><td class="muted">{(item.get("note", "—") if isinstance(item, dict) else "—")}</td></tr>'
+            return
+        rel = item.get(rel_key) if isinstance(item, dict) else None
+        rel_html = f'<span class="{up_down(rel)}">{sign(rel)}{rel}%</span>' if isinstance(rel, (int, float)) else "—"
+        anchor = item.get("anchor", "") if isinstance(item, dict) else ""
+        note = item.get("note", "") if isinstance(item, dict) else ""
+        extra = " / ".join(x for x in (anchor, note) if x)
+        price_rows += f'<tr><td>{label}</td><td><b>{p}</b></td><td>{rel_html}</td><td class="muted">{_esc(str(extra))}</td></tr>'
+
+    entry = tr.get("entry")
+    if entry not in (None, "N/A"):
+        _prow("入场参考", {"price": entry, "note": tr.get("entry_note", "")})
+    else:
+        price_rows += '<tr><td>入场参考</td><td class="muted">N/A</td><td>—</td><td class="muted">观点非看涨/中性，无入场计划</td></tr>'
+    add = tr.get("add")
+    if add not in (None, "N/A"):
+        _prow("加仓触发", {"price": add, "note": tr.get("add_note", "")})
+    for t in (agg.get("targets") or []):
+        _prow(t.get("label", "目标"), t)
+    if (agg.get("targets_note")):
+        price_rows += (f'<tr><td colspan="4" class="muted" style="font-size:11px">'
+                       f'{_esc(agg["targets_note"])}</td></tr>')
+    rk = agg.get("risk") or {}
+    if rk.get("price") not in (None, "N/A"):
+        price_rows += (f'<tr><td><b>风险控制参考位</b></td><td><b style="color:#00a865">{rk["price"]}</b></td>'
+                       f'<td><span class="down">{rk.get("rel_pct", "—")}%</span></td>'
+                       f'<td class="muted">{_esc(rk.get("rule", ""))}</td></tr>')
+    else:
+        price_rows += '<tr><td colspan="4"><b style="color:#d63031">风险控制参考位缺失 → 本条输出无效</b></td></tr>'
+    kl = agg.get("key_levels") or {}
+    if kl.get("strong_support") not in (None, "N/A"):
+        price_rows += (f'<tr><td>强支撑位</td><td>{kl["strong_support"]}</td><td>—</td>'
+                       f'<td class="muted">{_esc(kl.get("support_note", ""))}；突破确认 {kl.get("breakout_confirm", "N/A")}</td></tr>')
+
+    notes = ""
+    sp = agg.get("special_notes") or []
+    if sp:
+        notes = f'<div class="agg-note">⚠ A股特情：{"；".join(_esc(s) for s in sp)}</div>'
+    checks = " ｜ ".join(_esc(x) for x in (agg.get("checks") or []))
+    return f'''
+    <div class="agg-box">
+      <div class="agg-head"><span class="agg-title">进攻视角（激进 · 技术面）</span>{head}</div>
+      {notes}
+      <table class="agg-t"><tbody>{rows}</tbody></table>
+      <table class="agg-t"><thead><tr><th style="width:24%">操作与价位</th><th style="width:16%">价位（元）</th><th style="width:13%">相对现价</th><th>依据 / 锚点</th></tr></thead><tbody>{price_rows}</tbody></table>
+      <p class="muted" style="font-size:10.5px;margin:5px 0 0">自检：{checks}</p>
+    </div>'''
+
+
 def stock_card(code):
     sector = _load_sector(code)
     d = diag_for(code)
@@ -588,6 +712,7 @@ def stock_card(code):
         if sl:
             stop_txt = f"｜ 止损位 <b>{sl}</b>元"
     pos_html = f'<p class="stock-meta">参考仓位 {pos_txt}（市场{ {"bullish":"偏多","neutral":"震荡","bearish":"偏空"}.get(market_state,"震荡") } + 诊断修正）{stop_txt}</p>' if pos_txt else ""
+    agg_html = agg_block(d)
     return f'''
     <div class="stock-card">
       <div class="stock-title">
@@ -599,6 +724,7 @@ def stock_card(code):
       {sig_html}
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
       {pos_html}
+      {agg_html}
     </div>'''
 
 
