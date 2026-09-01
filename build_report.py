@@ -858,8 +858,8 @@ def fund_section():
         else:
             n_ratio = n_cap = "—"
             n_chg = '<td class="muted">—</td>'
-        # 回测历史胜率（个股维度；无已兑现判断则显示 —）
-        h = hit_map.get(c)
+        # 回测历史胜率（个股维度；code 归一化为 6 位数字匹配，无已兑现判断则显示 —）
+        h = hit_map.get(str(c)[-6:])
         if h:
             hit_html = (f'<span class="badge {rate_badge(h["rate"])}" '
                         f'title="方向判断命中 {h["hit"]} / 共 {h["total"]} 条（回测收盘验证）">{h["rate"]}%</span>'
