@@ -161,10 +161,24 @@ class StockAgentDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(stock_code, trade_date)
             )""",
+            """CREATE TABLE IF NOT EXISTS market_width (
+                id SERIAL PRIMARY KEY,
+                width_date DATE NOT NULL UNIQUE,
+                up INT, down INT, flat INT, zt INT, dt INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
             # 回测结果扩展列（幂等，兼容旧表）
             "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS status VARCHAR(10)",
             "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS price_source VARCHAR(10)",
             "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS note TEXT",
+            # ETF 真实数据日列 + 清理重复（保留每 flow_date+code 最新一条）+ 唯一约束（幂等）
+            "ALTER TABLE etf_flows ADD COLUMN IF NOT EXISTS data_date DATE",
+            "DELETE FROM etf_flows WHERE id NOT IN (SELECT MAX(id) FROM etf_flows GROUP BY flow_date, code)",
+            """DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_etf_flows_date_code') THEN
+                    ALTER TABLE etf_flows ADD CONSTRAINT uq_etf_flows_date_code UNIQUE (flow_date, code);
+                END IF;
+            END $$""",
         ]
         with self._cursor() as cur:
             for sql in tables:
@@ -404,8 +418,12 @@ class StockAgentDB:
                 n += 1
         print(f"[DB] 美股行情入库: {n} 条")
 
-    def save_etf_flows(self, flow_date, etf):
-        """ETF 资金流入库。etf: [(name, code, direction, cls, signal), ...]"""
+    def save_etf_flows(self, flow_date, etf, data_date=None):
+        """ETF 资金流入库（UPSERT：同 flow_date+code 覆盖，保留最新）。
+
+        etf: [(name, code, direction, cls, signal), ...]；
+        data_date: 真实行情数据日（westock EndDate），缺省回退 flow_date。
+        """
         import re as _re
         n = 0
         with self._cursor() as cur:
@@ -413,12 +431,70 @@ class StockAgentDB:
                 m = _re.search(r"(净流入|净流出)\s*([\d.]+)\s*亿元", signal or "")
                 amount = float(m.group(2)) * (1 if m.group(1) == "净流入" else -1) if m else None
                 cur.execute(
-                    "INSERT INTO etf_flows (flow_date, name, code, direction, amount, signal) VALUES (%s,%s,%s,%s,%s,%s)",
-                    (flow_date, name, code, direction, amount, signal),
+                    """INSERT INTO etf_flows (flow_date, name, code, direction, amount, signal, data_date)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (flow_date, code) DO UPDATE SET
+                         name=EXCLUDED.name, direction=EXCLUDED.direction,
+                         amount=EXCLUDED.amount, signal=EXCLUDED.signal, data_date=EXCLUDED.data_date""",
+                    (flow_date, name, code, direction, amount, signal, data_date or flow_date),
                 )
                 n += 1
         print(f"[DB] ETF资金流入库: {n} 条")
 
+    def save_market_width(self, width_date, up, down, flat=0, zt=0, dt=0):
+        """市场宽度（涨跌家数）入库，同日期 UPSERT 覆盖。"""
+        with self._cursor() as cur:
+            cur.execute(
+                """INSERT INTO market_width (width_date, up, down, flat, zt, dt)
+                   VALUES (%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (width_date) DO UPDATE SET
+                     up=EXCLUDED.up, down=EXCLUDED.down, flat=EXCLUDED.flat,
+                     zt=EXCLUDED.zt, dt=EXCLUDED.dt""",
+                (width_date, up, down, flat, zt, dt),
+            )
+        print(f"[DB] 市场宽度入库: {width_date} up={up} down={down}")
+
+    def get_market_width(self, days=15):
+        """取最近 days 个交易日市场宽度（升序），返回 [{width_date, up, down, flat, zt, dt}]。"""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT width_date, up, down, flat, zt, dt FROM market_width ORDER BY width_date DESC LIMIT %s",
+                (days,),
+            )
+            rows = cur.fetchall()
+        out = []
+        for d, up, down, flat, zt, dt in reversed(rows):
+            out.append({"width_date": str(d), "up": up, "down": down,
+                        "flat": flat, "zt": zt, "dt": dt})
+        return out
+
+    def get_etf_flows_history(self, days=5):
+        """取最近 days 个真实数据日、每 (flow_date, code) 最新一条的 ETF 主力净流入（亿元）。
+
+        真实数据日 = COALESCE(data_date, flow_date)（data_date 为 override 记录的
+        westock 行情 EndDate，避免盘前/盘后入库导致的日期错位）。
+        返回 {data_date: {name: amount}}，按日期升序；无数据返回空 dict。
+        """
+        with self._cursor() as cur:
+            cur.execute("""
+                SELECT COALESCE(data_date, flow_date) AS ddate, name, amount
+                FROM etf_flows
+                WHERE id IN (SELECT MAX(id) FROM etf_flows GROUP BY flow_date, code)
+                ORDER BY ddate
+            """)
+            rows = cur.fetchall()
+        from collections import OrderedDict
+        out = OrderedDict()
+        for ddate, name, amount in rows:
+            if amount is None:
+                continue
+            out.setdefault(str(ddate), {})[name] = float(amount)
+        # 取最近 days 个日期（跳过数据缺失的周末等）
+        dates = list(out.keys())
+        trimmed = OrderedDict()
+        for d in dates[-days:]:
+            trimmed[d] = out[d]
+        return trimmed
 
 if __name__ == "__main__":
     db = StockAgentDB(password="1q2w3e4r")
