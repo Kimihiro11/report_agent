@@ -1000,13 +1000,15 @@ def fund_section():
     hit_note = (f'历史胜率=该股历次报告方向判断经回测收盘验证的命中率（命中/共判定条数，越高越可信）；'
                 f'样本为 {sum(h["total"] for h in hit_map.values())} 条已兑现判断（{n_hit} 只个股有记录）。'
                 if hit_map else '历史胜率暂无已兑现判断样本。')
+    n_end = fund_flows.get("north_end_date") or ""
+    n_end_txt = f"（最新季度披露截至 {_esc(str(n_end)[:10])}，真实数据）" if n_end else "（最新季度披露，真实数据）"
     return (f'<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">'
             f'<h3 style="font-size:13px;margin:6px 0 4px">自选股资金面（两融日频 + 北向季频）</h3>'
             f'<table><thead><tr><th>个股</th><th>融资余额</th><th>融资较前日</th>'
             f'<th>北向持股比例</th><th>北向持股市值</th><th>北向季度增减</th><th>回测历史胜率</th></tr></thead>'
             f'<tbody>{rows}</tbody></table>'
             f'<p class="muted" style="font-size:11px;margin-top:4px">融资余额日频（{_esc(str(data_date)[:10])}）；'
-            f'北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露（Q2 2026-06-30，真实数据）；'
+            f'北向每日资金流自 2024-08 起不再实时公开，此处为最新季度披露{n_end_txt}；'
             f'{hit_note}"—"表示无数据。</p></div>')
 
 
