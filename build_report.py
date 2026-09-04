@@ -712,7 +712,6 @@ def stock_card(code):
         if sl:
             stop_txt = f"｜ 止损位 <b>{sl}</b>元"
     pos_html = f'<p class="stock-meta">参考仓位 {pos_txt}（市场{ {"bullish":"偏多","neutral":"震荡","bearish":"偏空"}.get(market_state,"震荡") } + 诊断修正）{stop_txt}</p>' if pos_txt else ""
-    agg_html = agg_block(d)
     return f'''
     <div class="stock-card">
       <div class="stock-title">
@@ -724,7 +723,6 @@ def stock_card(code):
       {sig_html}
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
       {pos_html}
-      {agg_html}
     </div>'''
 
 
