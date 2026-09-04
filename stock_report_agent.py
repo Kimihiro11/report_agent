@@ -6,9 +6,9 @@ A股舆情操作指引 Agent（数据引擎）
 全功能 9 章节报告由 build_report.py + WebSearch 实时拼装生成（简版模式已取消）。
 
 用法:
-    python a_stock_agent.py            # 采集数据 → 快照 → 入库（全功能报告另由 build_report 生成）
-    python a_stock_agent.py --no-fetch # 仅用缓存数据生成快照
-    python a_stock_agent.py --backtest # 回测模式（独立，生成回测报告）
+    python stock_report_agent.py            # 采集数据 → 快照 → 入库（全功能报告另由 build_report 生成）
+    python stock_report_agent.py --no-fetch # 仅用缓存数据生成快照
+    python stock_report_agent.py --backtest # 回测模式（独立，生成回测报告）
 
 依赖: 仅需Python标准库（urllib/json/re），无需pip安装
 """
@@ -1126,7 +1126,7 @@ def _persist_to_db(config, snapshot, ta_data):
     try:
         db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
                           user=dc.get("user", "postgres"), password=dc.get("password", ""),
-                          dbname=dc.get("dbname", "a_stock_agent"))
+                          dbname=dc.get("dbname", "stock_report_agent"))
         # 先快速探活，连接不通立即报错提醒
         db.test_connection(timeout=6)
         # 确保数据表存在（自建库自愈合，含新增的 raw_snapshots/us_market_quotes/etf_flows）
@@ -1277,7 +1277,7 @@ def main():
     analysis = analyze_sentiment(weibo_data, quotes)
 
     # 简版模式已取消（2026-08-17）：除回测外一律跑全功能 9 章节报告。
-    # a_stock_agent 作为数据引擎：采集 → 快照 → 入库；
+    # stock_report_agent 作为数据引擎：采集 → 快照 → 入库；
     # 全功能报告由 build_report.py + WebSearch 实时拼装生成。
     ts = datetime.now().strftime("%H%M%S")
     snap_path = snap_dir / f"fetched_{today}_{ts}.json"

@@ -5,7 +5,7 @@
 用法: python build_report.py --date 2026-08-17 --type 早报|盘中|晚报|周报
 
 数据来源（全部实时，无任何写死行情/宏观/原油/ETF 数值）：
-  - 数据引擎 a_stock_agent.py 采集写入 data/snapshots/fetched_YYYYMMDD_HHMMSS.json
+  - 数据引擎 stock_report_agent.py 采集写入 data/snapshots/fetched_YYYYMMDD_HHMMSS.json
     （微博/大V、宏观新闻、事件因子、日本传导链、技术、A股指数、隔夜美股、ETF资金流）
   - 见顶诊断 stock_diagnosis.run_all(自选股) 或 diagnosis_YYYYMMDD.json
 任何数据缺口均渲染为「实时数据缺失」占位，绝不出现假数据。
@@ -19,7 +19,7 @@ from datetime import datetime
 from html import escape as _esc
 from pathlib import Path
 
-import a_stock_agent as agent
+import stock_report_agent as agent
 import news_intel as _ni
 
 # 研判文本模板外置到 templates/prompts.py
@@ -113,7 +113,7 @@ NEG_WORDS = _SENTIMENT_WORDS.get("negation", [])
 
 
 # 数据缺口统一占位（绝不编造数值）
-PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python a_stock_agent.py` 采集后再生成报告）。</p>'
+PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python stock_report_agent.py` 采集后再生成报告）。</p>'
 
 # ---- 模块级状态：由 load_context() 填充；import 本模块无副作用（不解析 argv / 不联网 / 不写盘） ----
 TODAY = datetime.now().strftime("%Y-%m-%d")
@@ -196,7 +196,7 @@ def load_context():
         except Exception as e:
             print(f"[警告] 快照解析失败 {snap_path}: {e}")
     else:
-        print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python a_stock_agent.py` 采集数据。报告仅含占位。")
+        print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python stock_report_agent.py` 采集数据。报告仅含占位。")
 
     weibo_data = snapshot.get("weibo_data", {})
     quotes = snapshot.get("quotes", {})
@@ -870,7 +870,7 @@ def _etf_history_chart():
         dc = (cfg or {}).get("database", {})
         db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
                           user=dc.get("user", "postgres"), password=dc.get("password", ""),
-                          dbname=dc.get("dbname", "a_stock_agent"))
+                          dbname=dc.get("dbname", "stock_report_agent"))
         hist = db.get_etf_flows_history(days=5)
     except Exception:
         return ""
@@ -1088,7 +1088,7 @@ def market_width_section():
         dc = (cfg or {}).get("database", {})
         db = _db.StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
-                              dbname=dc.get("dbname", "a_stock_agent"))
+                              dbname=dc.get("dbname", "stock_report_agent"))
         hist = db.get_market_width(days=15)
         adl = 0
         for r in hist:
@@ -2118,7 +2118,7 @@ def main():
         if dc:
             db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
-                              dbname=dc.get("dbname", "a_stock_agent"))
+                              dbname=dc.get("dbname", "stock_report_agent"))
             td = datetime.strptime(TODAY, "%Y-%m-%d").date()
             db.save_report(td, REPORT_STATE, "A股操作指引·9章节", html)
             print("[DB] 报告入库完成（舆情数据由数据引擎统一入库，避免重复）")

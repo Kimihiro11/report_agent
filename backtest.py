@@ -43,7 +43,7 @@ _DEFAULT_WATCHLIST_NAME = {
 def _load_watchlist_names():
     """从 config.json 的 watchlist_names 读取；缺失时回退内置默认。"""
     try:
-        import a_stock_agent as agent
+        import stock_report_agent as agent
         cfg = agent.load_config()
         names = cfg.get("watchlist_names")
         if names:
@@ -150,7 +150,7 @@ def extract_judgments_from_html(path: Path):
 
     # 2) 兜底：用自选股名单在全文就近扫描操作词
     try:
-        import a_stock_agent as agent
+        import stock_report_agent as agent
         cfg = agent.load_config()
         wl = cfg.get("watchlist_stocks", [])
     except Exception:
@@ -193,7 +193,7 @@ def extract_judgments_from_html(path: Path):
 
 
 def _load_db_cfg():
-    import a_stock_agent as agent
+    import stock_report_agent as agent
     return agent.load_config().get("database", {})
 
 
@@ -202,7 +202,7 @@ def _db_available(cfg):
         from db import StockAgentDB
         db = StockAgentDB(host=cfg.get("host", "localhost"), port=cfg.get("port", 5432),
                           user=cfg.get("user", "postgres"), password=cfg.get("password", ""),
-                          dbname=cfg.get("dbname", "a_stock_agent"))
+                          dbname=cfg.get("dbname", "stock_report_agent"))
         conn = db._conn()
         conn.close()
         return db

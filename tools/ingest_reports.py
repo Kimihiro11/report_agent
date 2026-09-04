@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-把已生成的 9章节 HTML 报告解析后入库到 PostgreSQL (a_stock_agent)。
+把已生成的 9章节 HTML 报告解析后入库到 PostgreSQL (stock_report_agent)。
 覆盖表: daily_reports / sentiment_data / stock_analysis / resonance_signals / technical_indicators
 （index_quotes 报告内无干净的指数收盘行情表，留待实时抓取补充）
 幂等：同一 report_date 先 DELETE 再 INSERT，可重复运行。

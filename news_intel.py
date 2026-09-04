@@ -27,7 +27,7 @@ from pathlib import Path
 import urllib.parse
 import urllib.request
 
-import a_stock_agent as agent
+import stock_report_agent as agent
 from llm_client import call_json
 from templates.prompts import NewsIntelPrompts
 

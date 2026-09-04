@@ -4,7 +4,7 @@
 数据库模块 - A股舆情Agent数据入库
 用法:
     python db.py          # 初始化数据库和表
-    在 a_stock_agent.py 中导入使用
+    在 stock_report_agent.py 中导入使用
 """
 import psycopg2
 from contextlib import contextmanager
@@ -12,7 +12,7 @@ from psycopg2 import sql as _sql
 
 
 class StockAgentDB:
-    def __init__(self, host="localhost", port=5432, user="postgres", password="", dbname="a_stock_agent"):
+    def __init__(self, host="localhost", port=5432, user="postgres", password="", dbname="stock_report_agent"):
         self.conn_params = dict(host=host, port=port, user=user, password=password)
         self.dbname = dbname
 
@@ -499,4 +499,4 @@ class StockAgentDB:
 if __name__ == "__main__":
     db = StockAgentDB(password="1q2w3e4r")
     db.init_database()
-    print("数据库初始化完成，可运行 a_stock_agent.py 开始入库")
+    print("数据库初始化完成，可运行 stock_report_agent.py 开始入库")

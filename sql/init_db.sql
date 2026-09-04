@@ -1,9 +1,9 @@
 -- A股舆情Agent 数据库表结构
--- 数据库名: a_stock_agent
+-- 数据库名: stock_report_agent
 -- 用法: python db.py 自动初始化，或用psql手动执行本文件
 
-CREATE DATABASE a_stock_agent;
-\c a_stock_agent
+CREATE DATABASE stock_report_agent;
+\c stock_report_agent
 
 -- 1. 每日报告（HTML全文入库）
 CREATE TABLE IF NOT EXISTS daily_reports (
