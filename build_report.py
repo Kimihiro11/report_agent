@@ -1065,11 +1065,13 @@ def _adl_line_chart(points):
 
 
 def market_width_section():
-    """市场宽度与腾落指数（ADL）。
+    """市场宽度与腾落指数（ADL）：全市场 + 创业板双口径。
 
-    当日涨跌家数来自东财 getTopicZDFenBu（真实数据，快照 market_width 字段）；
-    ADL 累计 = Σ(上涨家数 - 下跌家数)，从数据库 market_width 表首个记录日起累计
-    （2026-08-27 起采集入库；历史不可得，绝不伪造）。返回 "" 表示无数据。
+    当日涨跌家数来自东财（全市场 getTopicZDFenBu；创业板 clist fs=m:0+t:80，
+    快照 market_width 字段，真实数据）；
+    ADL 累计 = Σ(上涨家数 - 下跌家数)，从数据库 market_width 表逐日累计
+    （全市场 2026-08-27 起入库 + 基线 8/14-8/26；创业板 2026-09-04 起入库；历史不可得，绝不伪造）。
+    返回 "" 表示无数据。
     """
     if not market_width:
         return ""
@@ -1078,46 +1080,80 @@ def market_width_section():
     flat = market_width.get("flat", 0)
     zt = market_width.get("zt", 0)
     dt = market_width.get("dt", 0)
+    cyb_up = market_width.get("cyb_up")
+    cyb_down = market_width.get("cyb_down")
+    cyb_flat = market_width.get("cyb_flat") or 0
     total = up + down + flat or 1
     up_ratio = up / total * 100
-    # ADL 历史（DB 积累）
-    adl_hist = []
-    adl = 0
+    # ADL 历史（DB 积累，全市场与创业板分列）
+    adl_hist, cyb_hist = [], []
+    adl = cyb_adl = 0
     try:
         import db as _db
         dc = (cfg or {}).get("database", {})
         db = _db.StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
-        hist = db.get_market_width(days=15)
+        hist = db.get_market_width(days=20)
         adl = 0
         for r in hist:
+            if r["up"] is None:
+                continue
             adl += (r["up"] or 0) - (r["down"] or 0)
             adl_hist.append({"d": str(r["width_date"])[5:], "v": (r["up"] or 0) - (r["down"] or 0), "adl": adl})
+        cyb_adl = 0
+        for r in hist:
+            if r.get("cyb_up") is None:
+                continue
+            cyb_adl += (r["cyb_up"] or 0) - (r["cyb_down"] or 0)
+            cyb_hist.append({"d": str(r["width_date"])[5:], "v": (r["cyb_up"] or 0) - (r["cyb_down"] or 0), "adl": cyb_adl})
     except Exception:
         pass
     # 今日净差
     net_today = up - down
     # ADL 线图（近 10 个交易日累计曲线）
     chart = _adl_line_chart(adl_hist[-10:]) if adl_hist else ""
+    cyb_chart = _adl_line_chart(cyb_hist[-10:]) if cyb_hist else ""
     if not chart:
         return ""
     width_badge = "偏多" if up_ratio >= 55 else ("偏空" if up_ratio <= 45 else "中性")
     wcolor = "#d63031" if up_ratio >= 55 else ("#00a865" if up_ratio <= 45 else "#1967d2")
     wcls = "b-red" if up_ratio >= 55 else ("b-green" if up_ratio <= 45 else "b-blue")
     adl_txt = f"{adl:+d}" if adl_hist else f"{net_today:+d}"
+    # 创业板当日行（有当日值才渲染；创业板 ADL 自 9/4 起积累）
+    cyb_block = ""
+    if cyb_up is not None and cyb_down is not None:
+        cyb_total = cyb_up + cyb_down + cyb_flat or 1
+        cyb_ratio = cyb_up / cyb_total * 100
+        cyb_badge = "偏多" if cyb_ratio >= 55 else ("偏空" if cyb_ratio <= 45 else "中性")
+        cyb_cls = "b-red" if cyb_ratio >= 55 else ("b-green" if cyb_ratio <= 45 else "b-blue")
+        cyb_net = cyb_up - cyb_down
+        cyb_txt = f"{cyb_adl:+d}" if cyb_hist else f"{cyb_net:+d}"
+        cyb_color = "#d63031" if cyb_adl >= 0 else "#00a865"
+        cyb_block = (f'<p style="font-size:12.5px;margin:4px 0">创业板 上涨 <b class="up">{cyb_up}</b>'
+                     f' / 下跌 <b class="down">{cyb_down}</b> / 平 {cyb_flat} ｜ 上涨占比 {cyb_ratio:.0f}%'
+                     f' <span class="badge {cyb_cls}">{cyb_badge}</span></p>'
+                     f'<p style="font-size:12.5px;margin:4px 0">创业板腾落(ADL) <b style="color:{cyb_color}">{cyb_txt}</b>'
+                     f' <span class="muted" style="font-size:11px">（自 9/4 起 {len(cyb_hist)} 个交易日累计，真实数据）</span></p>')
+    # 两张 ADL 图（全市场 + 创业板）并排
+    charts = f'<div style="margin-top:6px">{chart}</div>'
+    if cyb_chart:
+        charts = (f'<div style="display:flex;gap:12px;margin-top:6px">'
+                  f'<div style="flex:1;min-width:0">{chart}</div>'
+                  f'<div style="flex:1;min-width:0">{cyb_chart}</div></div>')
     return (f'<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">'
-            f'<h3 style="font-size:13px;margin:6px 0 4px">市场宽度与腾落指数（实时 · 全市场）</h3>'
-            f'<p style="font-size:12.5px;margin:4px 0">上涨 <b class="up">{up}</b> / 下跌 <b class="down">{down}</b>'
+            f'<h3 style="font-size:13px;margin:6px 0 4px">市场宽度与腾落指数（实时 · 全市场 + 创业板）</h3>'
+            f'<p style="font-size:12.5px;margin:4px 0">全市场 上涨 <b class="up">{up}</b> / 下跌 <b class="down">{down}</b>'
             f' / 平 {flat} 家 ｜ 涨停 {zt} / 跌停 {dt} ｜ 上涨占比 {up_ratio:.0f}%'
             f' <span class="badge {wcls}">{width_badge}</span></p>'
             f'<p style="font-size:12.5px;margin:4px 0">腾落指数(ADL) <b style="color:{wcolor}">{adl_txt}</b>'
             f' <span class="muted" style="font-size:11px">（Σ上涨-下跌，近{len(adl_hist)}个交易日累计；'
             f'基线 8/14-8/26 westock 全市场统计 + 每日入库积累，真实数据）</span></p>'
-            f'<div style="margin-top:6px">{chart}</div>'
+            f'{cyb_block}'
+            f'{charts}'
             f'<p class="muted" style="font-size:11px;margin:4px 0 0">'
-            f'线=ADL 累计（上涨家数-下跌家数逐日累加），红点=当日上涨家数占优、绿点=下跌占优；'
-            f'ADL 持续回升表示市场宽度修复。</p></div>')
+            f'左=全市场 ADL 累计（上涨家数-下跌家数逐日累加），右=创业板 ADL；'
+            f'红点=当日上涨家数占优、绿点=下跌占优；ADL 持续回升表示市场宽度修复。</p></div>')
 
 
 _INTEL_DIR_CLS = {"偏多": "b-red", "偏空": "b-green", "中性": "b-blue", "利多": "b-red", "利空": "b-green"}

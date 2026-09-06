@@ -550,10 +550,92 @@ def fetch_fund_flows():
     return obj
 
 
-def fetch_market_width():
-    """抓取全市场当日涨跌家数（东财 getTopicZDFenBu，真实数据）。
+def _http_json(url, retry=3, timeout=12):
+    """标准 UA/Referer 抓东财 JSON，带重试；失败返回 None。"""
+    import urllib.request
+    import time as _t
+    for i in range(retry):
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Referer": "https://quote.eastmoney.com/",
+                "Accept": "*/*"})
+            return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+        except Exception:
+            if i == retry - 1:
+                return None
+            _t.sleep(1.5 + i)
 
-    返回 dict {date, up, down, flat, zt, dt} 或 None（接口失败/数据异常）。
+
+def fetch_cyb_width():
+    """抓取创业板当日涨跌家数（东财 clist fs=m:0+t:80 全量分页本地统计，真实数据）。
+
+    停牌股（f2/f3 缺失）不计入涨/跌/平。涨跌停按 ±19.9% 近似（创业板 20cm 口径）。
+    返回 {up, down, flat, zt, dt} 或 None（接口失败）。
+    """
+    try:
+        import urllib.parse as _up
+        hosts = ("push2delay.eastmoney.com", "push2.eastmoney.com")  # delay 主源，push2 兜底
+        pz = 100
+        fs = _up.quote("m:0+t:80", safe="")
+        ut = "bd1d9ddb04089700cf9c27f6f7426281"
+        total = None
+        pn = 1
+        up = down = flat = zt = dt = 0
+        while True:
+            d = None
+            for host in hosts:
+                u = (f"https://{host}/api/qt/clist/get?pn={pn}&pz={pz}&po=1&np=1"
+                     f"&ut={ut}&fltt=2&invt=2&fid=f3&fs={fs}&fields=f2,f3")
+                d = _http_json(u, retry=2)
+                if d:
+                    break
+            if not d:
+                break
+            dd = d.get("data") or {}
+            if total is None:
+                total = dd.get("total")
+            diff = dd.get("diff") or []
+            if not diff:
+                break
+            for x in diff:
+                pct = x.get("f3")
+                px = x.get("f2")
+                try:
+                    if pct is None or px is None or pct == "-" or px == "-":
+                        continue  # 停牌/无行情不计
+                    pct = float(pct)
+                    px = float(px)
+                except (TypeError, ValueError):
+                    continue
+                if pct > 0:
+                    up += 1
+                elif pct < 0:
+                    down += 1
+                else:
+                    flat += 1
+                if pct >= 19.9:
+                    zt += 1
+                elif pct <= -19.9:
+                    dt += 1
+            if total is not None and pn * pz >= int(total):
+                break
+            pn += 1
+            if pn > 60:  # 安全上限
+                break
+        if (up + down + flat) == 0:
+            return None
+        return {"up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
+    except Exception as e:
+        print(f"[宽度] 创业板涨跌家数抓取失败: {e}")
+        return None
+
+
+def fetch_market_width():
+    """抓取全市场 + 创业板当日涨跌家数（东财 getTopicZDFenBu + clist，真实数据）。
+
+    返回 dict {date, up, down, flat, zt, dt, cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt}
+    或 None（接口失败/数据异常）。cyb_* 为 None 表示创业板采集失败（不伪造）。
     """
     try:
         import urllib.request
@@ -581,7 +663,16 @@ def fetch_market_width():
         dt = sum(v for k, v in pairs if k <= -10)
         if not qdate or (up + down + flat) == 0:
             return None
-        return {"date": qdate, "up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
+        out = {"date": qdate, "up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
+        # 创业板腾落口径（失败置 None，绝不伪造）
+        cyb = fetch_cyb_width()
+        if cyb:
+            out.update({"cyb_up": cyb["up"], "cyb_down": cyb["down"], "cyb_flat": cyb["flat"],
+                        "cyb_zt": cyb["zt"], "cyb_dt": cyb["dt"]})
+        else:
+            out.update({"cyb_up": None, "cyb_down": None, "cyb_flat": None,
+                        "cyb_zt": None, "cyb_dt": None})
+        return out
     except Exception as e:
         print(f"[宽度] 涨跌家数抓取失败: {e}")
         return None
@@ -1155,7 +1246,10 @@ def _persist_to_db(config, snapshot, ta_data):
         if snapshot.get("market_width"):
             mw = snapshot["market_width"]
             db.save_market_width(mw.get("date"), mw.get("up", 0), mw.get("down", 0),
-                                 mw.get("flat", 0), mw.get("zt", 0), mw.get("dt", 0))
+                                 mw.get("flat", 0), mw.get("zt", 0), mw.get("dt", 0),
+                                 cyb_up=mw.get("cyb_up"), cyb_down=mw.get("cyb_down"),
+                                 cyb_flat=mw.get("cyb_flat"), cyb_zt=mw.get("cyb_zt"),
+                                 cyb_dt=mw.get("cyb_dt"))
         return True, None
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
