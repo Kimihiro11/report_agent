@@ -567,17 +567,17 @@ def _http_json(url, retry=3, timeout=12):
             _t.sleep(1.5 + i)
 
 
-def fetch_cyb_width():
-    """抓取创业板当日涨跌家数（东财 clist fs=m:0+t:80 全量分页本地统计，真实数据）。
+def _fetch_board_width(fs_raw, label, zt_th):
+    """抓取指定板块（东财 clist fs 组合）当日涨跌家数（全量分页本地统计，真实数据）。
 
-    停牌股（f2/f3 缺失）不计入涨/跌/平。涨跌停按 ±19.9% 近似（创业板 20cm 口径）。
-    返回 {up, down, flat, zt, dt} 或 None（接口失败）。
+    停牌股（f2/f3 缺失或 '-'）不计入涨/跌/平。涨跌停按 ±zt_th 近似。
+    返回 {up, down, flat, zt, dt} 或 None（接口失败/全停牌）。
     """
     try:
         import urllib.parse as _up
         hosts = ("push2delay.eastmoney.com", "push2.eastmoney.com")  # delay 主源，push2 兜底
         pz = 100
-        fs = _up.quote("m:0+t:80", safe="")
+        fs = _up.quote(fs_raw, safe="")
         ut = "bd1d9ddb04089700cf9c27f6f7426281"
         total = None
         pn = 1
@@ -614,9 +614,9 @@ def fetch_cyb_width():
                     down += 1
                 else:
                     flat += 1
-                if pct >= 19.9:
+                if pct >= zt_th:
                     zt += 1
-                elif pct <= -19.9:
+                elif pct <= -zt_th:
                     dt += 1
             if total is not None and pn * pz >= int(total):
                 break
@@ -627,15 +627,27 @@ def fetch_cyb_width():
             return None
         return {"up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
     except Exception as e:
-        print(f"[宽度] 创业板涨跌家数抓取失败: {e}")
+        print(f"[宽度] {label}涨跌家数抓取失败: {e}")
         return None
 
 
-def fetch_market_width():
-    """抓取全市场 + 创业板当日涨跌家数（东财 getTopicZDFenBu + clist，真实数据）。
+def fetch_cyb_width():
+    """抓取创业板当日涨跌家数（东财 clist fs=m:0+t:80；20cm 口径，涨跌停按 ±19.9% 近似）。"""
+    return _fetch_board_width("m:0+t:80", "创业板", 19.9)
 
-    返回 dict {date, up, down, flat, zt, dt, cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt}
-    或 None（接口失败/数据异常）。cyb_* 为 None 表示创业板采集失败（不伪造）。
+
+def fetch_main_width():
+    """抓取沪深主板当日涨跌家数（fs=深主板 m:0+t:6 + 沪主板 m:1+t:2；10cm 口径，涨跌停按 ±9.9% 近似）。"""
+    return _fetch_board_width("m:0+t:6,m:1+t:2", "主板", 9.9)
+
+
+def fetch_market_width():
+    """抓取全市场 + 沪深主板 + 创业板当日涨跌家数（东财，真实数据）。
+
+    返回 {date, up, down, flat, zt, dt,           # 全市场（沪深京全部 A 股，含创业/科创，作参考）
+           main_up, main_down, main_flat, main_zt, main_dt,   # 沪深主板（独立，不含创业板）
+           cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt}        # 创业板（独立）
+    主板/创业板采集失败对应字段置 None（绝不伪造）。
     """
     try:
         import urllib.request
@@ -664,14 +676,17 @@ def fetch_market_width():
         if not qdate or (up + down + flat) == 0:
             return None
         out = {"date": qdate, "up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
-        # 创业板腾落口径（失败置 None，绝不伪造）
-        cyb = fetch_cyb_width()
-        if cyb:
-            out.update({"cyb_up": cyb["up"], "cyb_down": cyb["down"], "cyb_flat": cyb["flat"],
-                        "cyb_zt": cyb["zt"], "cyb_dt": cyb["dt"]})
-        else:
-            out.update({"cyb_up": None, "cyb_down": None, "cyb_flat": None,
-                        "cyb_zt": None, "cyb_dt": None})
+        # 沪深主板 / 创业板独立口径（失败置 None，绝不伪造）
+        for prefix, fn in (("main", fetch_main_width), ("cyb", fetch_cyb_width)):
+            b = fn()
+            if b:
+                out.update({f"{prefix}_up": b["up"], f"{prefix}_down": b["down"],
+                            f"{prefix}_flat": b["flat"], f"{prefix}_zt": b["zt"],
+                            f"{prefix}_dt": b["dt"]})
+            else:
+                out.update({f"{prefix}_up": None, f"{prefix}_down": None,
+                            f"{prefix}_flat": None, f"{prefix}_zt": None,
+                            f"{prefix}_dt": None})
         return out
     except Exception as e:
         print(f"[宽度] 涨跌家数抓取失败: {e}")
@@ -1247,6 +1262,9 @@ def _persist_to_db(config, snapshot, ta_data):
             mw = snapshot["market_width"]
             db.save_market_width(mw.get("date"), mw.get("up", 0), mw.get("down", 0),
                                  mw.get("flat", 0), mw.get("zt", 0), mw.get("dt", 0),
+                                 main_up=mw.get("main_up"), main_down=mw.get("main_down"),
+                                 main_flat=mw.get("main_flat"), main_zt=mw.get("main_zt"),
+                                 main_dt=mw.get("main_dt"),
                                  cyb_up=mw.get("cyb_up"), cyb_down=mw.get("cyb_down"),
                                  cyb_flat=mw.get("cyb_flat"), cyb_zt=mw.get("cyb_zt"),
                                  cyb_dt=mw.get("cyb_dt"))

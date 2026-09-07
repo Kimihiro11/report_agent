@@ -165,10 +165,16 @@ class StockAgentDB:
                 id SERIAL PRIMARY KEY,
                 width_date DATE NOT NULL UNIQUE,
                 up INT, down INT, flat INT, zt INT, dt INT,
+                main_up INT, main_down INT, main_flat INT, main_zt INT, main_dt INT,
                 cyb_up INT, cyb_down INT, cyb_flat INT, cyb_zt INT, cyb_dt INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""",
-            # market_width 创业板腾落列（幂等，兼容旧表）
+            # market_width 主板/创业板腾落列（幂等，兼容旧表）
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_up INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_down INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_flat INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_zt INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_dt INT",
             "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_up INT",
             "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_down INT",
             "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_flat INT",
@@ -449,42 +455,63 @@ class StockAgentDB:
         print(f"[DB] ETF资金流入库: {n} 条")
 
     def save_market_width(self, width_date, up, down, flat=0, zt=0, dt=0,
+                          main_up=None, main_down=None, main_flat=None,
+                          main_zt=None, main_dt=None,
                           cyb_up=None, cyb_down=None, cyb_flat=None, cyb_zt=None, cyb_dt=None):
         """市场宽度（涨跌家数）入库，同日期 UPSERT 覆盖。
 
-        cyb_*: 创业板涨跌家数（腾落指数创业板口径），None 表示当日未采集。
+        up/down...: 全市场口径（沪深京全部 A 股，参考用）；
+        main_*: 沪深主板口径（独立，不含创业板）；cyb_*: 创业板口径。
+        main_*/cyb_* 为 None 表示当日未采集（不覆盖已存值由 UPSERT 语义保证）。
         """
         with self._cursor() as cur:
             cur.execute(
                 """INSERT INTO market_width (width_date, up, down, flat, zt, dt,
+                                             main_up, main_down, main_flat, main_zt, main_dt,
                                              cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (width_date) DO UPDATE SET
                      up=EXCLUDED.up, down=EXCLUDED.down, flat=EXCLUDED.flat,
                      zt=EXCLUDED.zt, dt=EXCLUDED.dt,
-                     cyb_up=EXCLUDED.cyb_up, cyb_down=EXCLUDED.cyb_down,
-                     cyb_flat=EXCLUDED.cyb_flat, cyb_zt=EXCLUDED.cyb_zt,
-                     cyb_dt=EXCLUDED.cyb_dt""",
+                     main_up=COALESCE(EXCLUDED.main_up, market_width.main_up),
+                     main_down=COALESCE(EXCLUDED.main_down, market_width.main_down),
+                     main_flat=COALESCE(EXCLUDED.main_flat, market_width.main_flat),
+                     main_zt=COALESCE(EXCLUDED.main_zt, market_width.main_zt),
+                     main_dt=COALESCE(EXCLUDED.main_dt, market_width.main_dt),
+                     cyb_up=COALESCE(EXCLUDED.cyb_up, market_width.cyb_up),
+                     cyb_down=COALESCE(EXCLUDED.cyb_down, market_width.cyb_down),
+                     cyb_flat=COALESCE(EXCLUDED.cyb_flat, market_width.cyb_flat),
+                     cyb_zt=COALESCE(EXCLUDED.cyb_zt, market_width.cyb_zt),
+                     cyb_dt=COALESCE(EXCLUDED.cyb_dt, market_width.cyb_dt)""",
                 (width_date, up, down, flat, zt, dt,
+                 main_up, main_down, main_flat, main_zt, main_dt,
                  cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt),
             )
         print(f"[DB] 市场宽度入库: {width_date} up={up} down={down}"
+              + (f" main_up={main_up} main_down={main_down}" if main_up is not None else "")
               + (f" cyb_up={cyb_up} cyb_down={cyb_down}" if cyb_up is not None else ""))
 
     def get_market_width(self, days=15):
-        """取最近 days 个交易日市场宽度（升序），返回 [{width_date, up, down, flat, zt, dt, cyb_*}]。"""
+        """取最近 days 个交易日市场宽度（升序），返回
+        [{width_date, up, down, flat, zt, dt, main_*, cyb_*}]（板块列无值日期为 None）。"""
         with self._cursor() as cur:
             cur.execute(
                 """SELECT width_date, up, down, flat, zt, dt,
+                          main_up, main_down, main_flat, main_zt, main_dt,
                           cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt
                    FROM market_width ORDER BY width_date DESC LIMIT %s""",
                 (days,),
             )
             rows = cur.fetchall()
         out = []
-        for d, up, down, flat, zt, dt, c_up, c_down, c_flat, c_zt, c_dt in reversed(rows):
+        for r in reversed(rows):
+            (d, up, down, flat, zt, dt,
+             m_up, m_down, m_flat, m_zt, m_dt,
+             c_up, c_down, c_flat, c_zt, c_dt) = r
             out.append({"width_date": str(d), "up": up, "down": down,
                         "flat": flat, "zt": zt, "dt": dt,
+                        "main_up": m_up, "main_down": m_down, "main_flat": m_flat,
+                        "main_zt": m_zt, "main_dt": m_dt,
                         "cyb_up": c_up, "cyb_down": c_down, "cyb_flat": c_flat,
                         "cyb_zt": c_zt, "cyb_dt": c_dt})
         return out
