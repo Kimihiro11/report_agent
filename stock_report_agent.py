@@ -899,6 +899,10 @@ def fetch_index_quotes():
         try:
             prev_close = float(vals[2])
             price = float(vals[3])
+            # 盘前/休市：新浪对部分指数（深成指/创业板指等）现价字段返回 0，
+            # 若按 0 计算会得到 chg=昨收、chg_pct=-100 的假跌幅 → 回退昨收、涨幅 0。
+            if price == 0 and prev_close > 0:
+                price = prev_close
             chg = price - prev_close
             chg_pct = (chg / prev_close * 100) if prev_close else 0
             result[name] = {
