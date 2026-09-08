@@ -34,11 +34,18 @@ except ImportError:
 
         @staticmethod
         def verdict_no_update(idx_label, idx_n, up_n, main_line, risk_label):
+            if idx_label == "待开盘":
+                return (f"盘前基于上一交易日收盘与舆情：大盘待开盘（昨收基准），大V当日未更新微博。"
+                        f"主线聚焦「{main_line}」；{risk_label}。")
             return f"综合实时指数：大盘 {idx_label}。主线聚焦「{main_line}」；{risk_label}。"
 
         @staticmethod
         def verdict_with_consensus(idx_label, idx_n, up_n, consensus_label, consensus_cls,
                                    stance, main_line, risk_label):
+            if idx_label == "待开盘":
+                return (f"盘前综合舆情与隔夜外盘信息研判（指数未开盘，以上一交易日收盘为基准）："
+                        f"大V意见领袖共识 {consensus_label}。{stance}。"
+                        f"主线聚焦「{main_line}」；{risk_label}。")
             return f"综合实时指数与微博舆情解构：大盘 {idx_label}，大V共识 {consensus_label}。{stance}。"
 
     class StrategyPrompts:
@@ -136,6 +143,7 @@ fund_flows = {}
 market_width = {}
 market_state = "neutral"
 matched_sectors = []
+PRE_MARKET = False  # 盘前（早报 + 指数未开盘=全 0 涨跌）语义标志
 intel = {}
 _intel_topics = {}
 tangshi = []
@@ -154,7 +162,7 @@ def load_context():
     global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE
     global cfg, WATCHLIST, VS_NAMES, VS_SOURCES
     global snap_path, snapshot, weibo_data, quotes, us_market, etf, fund_flows, market_state, matched_sectors
-    global market_width
+    global market_width, PRE_MARKET
     global intel, _intel_topics
     global tangshi, touxing_asset, touxing_yeye
     global macro_items, event_items, japan_items, tech_items, global_items
@@ -206,6 +214,15 @@ def load_context():
     market_width = snapshot.get("market_width") or {}
     market_state = snapshot.get("market_state", "neutral")
     matched_sectors = snapshot.get("matched_sectors", []) or []
+    # 盘前判定：早报 且 指数行情未开盘（现价=昨收、涨跌≈0 或 volume=0）→ 渲染层以
+    # 「上一交易日收盘基准」语义出报（宽度/ADL 回退 DB 最近交易日），不显示伪 0 涨跌。
+    _is_pre = REPORT_TYPE == "早报" and bool(quotes)
+    if _is_pre:
+        _zero_chg = all(abs((q.get("chg_pct") or 0)) < 0.005 for q in quotes.values())
+        _zero_vol = all((q.get("volume") in (None, "", "0", 0)) for q in quotes.values())
+        PRE_MARKET = _zero_chg or _zero_vol
+    else:
+        PRE_MARKET = False
 
     # ---- 外网资讯解析（英文源抓取 + 正文解析，Agent 总结为中文结论） ----
     intel = _ni.load_intel(TODAY)
@@ -901,13 +918,41 @@ def _etf_history_chart():
 
 
 def etf_section():
-    if not etf:
+    rows = ""
+    note = ""
+    if PRE_MARKET:
+        # 盘前：当日盘中主力资金未生成（东财返回 0 值假数据）→ 回退 DB 最近真实数据日
+        try:
+            from db import StockAgentDB
+            dc = (cfg or {}).get("database", {})
+            db = StockAgentDB(host=dc.get("host", "localhost"), port=dc.get("port", 5432),
+                              user=dc.get("user", "postgres"), password=dc.get("password", ""),
+                              dbname=dc.get("dbname", "stock_report_agent"))
+            hist = db.get_etf_flows_history(days=3)
+        except Exception:
+            hist = {}
+        if hist:
+            _d = list(hist.keys())[-1]
+            for nm, amt in list(hist[_d].items()):
+                dr = "净流入" if amt > 0 else "净流出"
+                cls = "b-red" if amt > 0 else "b-green"
+                rows += (f'<tr><td>{_esc(nm)}</td><td>—</td>'
+                         f'<td><span class="badge {cls}">{dr}</span></td>'
+                         f'<td>主力 {amt:+.2f}亿元</td></tr>')
+            note = f'<p class="muted" style="font-size:11px;margin:2px 0 6px">早报 · 上一交易日（{_d[5:]}）收盘主力净流入，开盘后自动更新为当日盘中。</p>'
+        elif etf:
+            rows = "".join(
+                f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>'
+                for e in etf)
+    elif etf:
+        rows = "".join(
+            f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>'
+            for e in etf)
+    if not rows:
         return PLACEHOLDER
-    rows = "".join(
-        f'<tr><td>{e[0]}</td><td>{e[1]}</td><td><span class="badge {e[3]}">{e[2]}</span></td><td>{e[4]}</td></tr>'
-        for e in etf)
     chart = _etf_history_chart()
-    return f'<table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead><tbody>{rows}</tbody></table>{chart}'
+    return (f'{note}<table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table>{chart}')
 
 
 def _stock_hit_rate_map():
@@ -1074,7 +1119,7 @@ def market_width_section():
     主板/创业板均自 2026-09-04 起入库（东财 clist 无板块历史，绝不伪造）。
     返回 "" 表示无数据。
     """
-    if not market_width:
+    if not market_width and not PRE_MARKET:
         return ""
     # 全市场（沪深京全部 A 股，含创业板/科创板）——参考行
     up = market_width.get("up") or 0
@@ -1097,6 +1142,7 @@ def market_width_section():
     # ADL 历史（DB 积累：主板与创业板各自独立累计，起点均为 9/4）
     main_hist, cyb_hist = [], []
     main_adl = cyb_adl = 0
+    _fallback_date = ""  # 盘前回退：上一交易日口径标签
     try:
         import db as _db
         dc = (cfg or {}).get("database", {})
@@ -1104,6 +1150,28 @@ def market_width_section():
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
         hist = db.get_market_width(days=20)
+        # 盘前回退：快照无当日宽度（开盘前东财无当日口径）→ 用 DB 最近一个交易日展示，
+        # 标注「上一交易日」语义；非盘前仍按原逻辑（缺失即不展示）。
+        if PRE_MARKET and not market_width and hist:
+            _last = hist[-1]
+            if _last.get("main_up") is not None or _last.get("cyb_up") is not None:
+                _fallback_date = str(_last["width_date"])[5:]
+                if main_up is None:
+                    main_up = _last.get("main_up")
+                if main_down is None:
+                    main_down = _last.get("main_down")
+                if main_up is not None:
+                    main_flat = _last.get("main_flat") or 0
+                    main_zt = _last.get("main_zt") or 0
+                    main_dt = _last.get("main_dt") or 0
+                if cyb_up is None:
+                    cyb_up = _last.get("cyb_up")
+                if cyb_down is None:
+                    cyb_down = _last.get("cyb_down")
+                if cyb_up is not None:
+                    cyb_flat = _last.get("cyb_flat") or 0
+                    cyb_zt = _last.get("cyb_zt") or 0
+                    cyb_dt = _last.get("cyb_dt") or 0
         for r in hist:
             if r.get("main_up") is None:
                 continue
@@ -1121,6 +1189,8 @@ def market_width_section():
     # 当日两板块均无数据 → 整块跳过（不占格）
     if main_up is None and cyb_up is None:
         return ""
+    _fb = f'（早报 · 上一交易日 {_fallback_date} 收盘口径，开盘后自动更新为当日）' if _fallback_date else ''
+    _fb_note = f'<p class="muted" style="font-size:11px;margin:2px 0 4px">{_fb}</p>' if _fb else ''
     main_chart = _adl_line_chart(main_hist[-10:]) if main_hist else ""
     cyb_chart = _adl_line_chart(cyb_hist[-10:]) if cyb_hist else ""
     # 主板当日行 + ADL
@@ -1175,6 +1245,7 @@ def market_width_section():
         charts = '<p class="muted" style="font-size:11px;margin:4px 0">（板块 ADL 需积累 ≥2 个交易日后出图）</p>'
     return (f'<div style="margin-top:12px;border-top:1px dashed #e0e3e8;padding-top:6px">'
             f'<h3 style="font-size:13px;margin:6px 0 4px">市场宽度与腾落指数（沪深主板 + 创业板 · 分口径）</h3>'
+            f'{_fb_note}'
             f'<p class="muted" style="font-size:11.5px;margin:3px 0">'
             f'全市场（含创业板/科创板）涨 <b>{up}</b> / 跌 <b>{down}</b> / 平 {flat}'
             f' · 涨停 {zt} / 跌停 {dt}（仅参考；主板与创业板分列如下）</p>'
@@ -1296,7 +1367,10 @@ def judgment_hit_rate(days=5, window=3):
 
 
 def conclusion_grid():
-    state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+    if PRE_MARKET:
+        state_label = "待开盘"  # 盘前指数未开，状态以舆情/隔夜研判为准（见正文）
+    else:
+        state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
     sectors = "、".join(matched_sectors) or "—"
     up_us = sum(1 for x in us_market if _pct_val(x) > 0)
     us_txt = f"{up_us}/{len(us_market)} 上涨" if us_market else "实时数据缺失"
@@ -1808,22 +1882,33 @@ def deconstruct_weibo():
 
 
 def _index_snapshot():
-    """主要指数速览（整合进核心结论）：紧凑表格，最新+涨跌点数+涨跌幅，红涨绿跌。"""
+    """主要指数速览（整合进核心结论）：紧凑表格，最新+涨跌点数+涨跌幅，红涨绿跌。
+
+    盘前（PRE_MARKET）语义：行情未开盘，price 为上一交易日收盘基准，涨跌幅列显示
+    「待开盘」，避免把 0 涨跌误读为当日实时。
+    """
     if not quotes:
         return ""
     rows = ""
+    title = "主要指数（实时）"
     for name, q in quotes.items():
         chg = q.get("chg")
-        chg_html = ""
-        if isinstance(chg, (int, float)):
-            chg_html = (f'<td class="{up_down(chg)}" style="text-align:right">'
-                        f'{sign(chg)}{fmt(chg)}</td>')
-        else:
+        if PRE_MARKET:
             chg_html = '<td class="muted" style="text-align:right">—</td>'
+            pct_html = '<td class="muted" style="text-align:right">待开盘</td>'
+            title = "主要指数（上一交易日收盘基准）"
+        else:
+            if isinstance(chg, (int, float)):
+                chg_html = (f'<td class="{up_down(chg)}" style="text-align:right">'
+                            f'{sign(chg)}{fmt(chg)}</td>')
+            else:
+                chg_html = '<td class="muted" style="text-align:right">—</td>'
+            pct_html = (f'<td class="{up_down(q.get("chg_pct"))}" style="text-align:right">'
+                        f'{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td>')
         rows += (f'<tr><td>{_esc(name)}</td><td style="text-align:right">{q.get("price")}</td>{chg_html}'
-                 f'<td class="{up_down(q.get("chg_pct"))}" style="text-align:right">{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td></tr>')
+                 f'{pct_html}</tr>')
     return (f'<div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px">'
-            f'<div class="cc-grid-title">主要指数（实时）</div>'
+            f'<div class="cc-grid-title">{title}</div>'
             f'<table style="min-width:320px"><thead><tr><th>指数</th><th style="text-align:right">最新</th>'
             f'<th style="text-align:right">涨跌</th>'
             f'<th style="text-align:right">涨跌幅</th></tr></thead><tbody>{rows}</tbody></table></div>')
@@ -1831,16 +1916,21 @@ def _index_snapshot():
 
 def _strategy_snapshot():
     """操作策略速览（整合进核心结论）：市场状态 + 参考仓位 + 主线 + 风险/回避。"""
-    state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
-    base = {"bullish": "60-80%", "neutral": "40-60%", "bearish": "10-30%"}.get(market_state, "40-60%")
+    if PRE_MARKET:
+        # 盘前：市场状态由舆情共识/隔夜外盘驱动，未开盘不标「震荡」伪状态；仓位用中性区间
+        state_label = "盘前研判"
+        base = "40-60%"
+    else:
+        state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+        base = {"bullish": "60-80%", "neutral": "40-60%", "bearish": "10-30%"}.get(market_state, "40-60%")
     main_line = "、".join(matched_sectors) if matched_sectors else "实时板块信号缺失"
     risk_txt = f"日本传导链预警 {len(japan_items)} 条（详见传导链章节）" if japan_items else "暂无日本传导链预警"
     avoid = [watch_name(c) for c in WATCHLIST if _level_rank(diag_for(c)) >= 2]
     avoid_txt = "、".join(avoid) if avoid else "无高危标的"
     return (f'<div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px">'
-            f'<div class="cc-grid-title">今日操作策略（实时）</div>'
+            f'<div class="cc-grid-title">今日操作策略（{"盘前研判" if PRE_MARKET else "实时"}）</div>'
             f'<table><thead><tr><th style="width:18%">维度</th><th>策略</th></tr></thead><tbody>'
-            f'<tr><td><b>大盘</b></td><td>市场状态 <b>{state_label}</b>；参考仓位 <b class="up">{base}</b>（市场状态基础仓位，个股按诊断±修正，见第八节）</td></tr>'
+            f'<tr><td><b>大盘</b></td><td>市场状态 <b>{state_label}</b>；参考仓位 <b class="up">{base}</b>（中性基准，个股按诊断±修正，见第八节）</td></tr>'
             f'<tr><td><b>主线</b></td><td>{_esc(main_line)}</td></tr>'
             f'<tr><td><b>风险</b></td><td>{_esc(risk_txt)}</td></tr>'
             f'<tr><td><b>回避</b></td><td>{_esc(avoid_txt)}</td></tr>'
@@ -1865,6 +1955,8 @@ def core_conclusion():
     else:
         consensus_label, consensus_cls = d["consensus"]
     idx_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
+    if PRE_MARKET:
+        idx_label = "待开盘"  # 盘前行情未开，指数方向留白，不把 0 涨跌误判为震荡
     up_n = sum(1 for q in quotes.values() if q.get("chg_pct", 0) > 0) if quotes else 0
     idx_n = len(quotes) if quotes else 0
 
@@ -1882,9 +1974,10 @@ def core_conclusion():
         cons_badge_cls = consensus_cls
         cons_badge_label = f"大V共识 {consensus_label}"
 
+    _idx_badge_cls = "b-blue" if PRE_MARKET else "b-red"
     badges = (
         f'<span class="badge {cons_badge_cls}">{cons_badge_label}</span>'
-        f'<span class="badge b-red">指数 {idx_label}</span>'
+        f'<span class="badge {_idx_badge_cls}">指数 {idx_label}</span>'
         f'<span class="badge b-orange">主线 {main_line}</span>'
         f'<span class="badge {"b-green" if japan_items else "b-blue"}">风险 {risk_label}</span>'
     )
@@ -1958,7 +2051,10 @@ def vs_summary():
         consensus_html += src_table
 
     diverge = (consensus_label != idx_label) and (consensus_label in {"偏多", "偏空"})
-    if not updated_any:
+    if PRE_MARKET:
+        market_view = (f"指数待开盘（以上一交易日收盘为基准），大V共识 <b class='{consensus_cls}'>{consensus_label}</b> "
+                       f"—— 盘前研判以舆情/隔夜信息与技术面为主，开盘后由当日行情验证。")
+    elif not updated_any:
         market_view = (f"指数层面 <b>{idx_label}</b>（{idx_n} 指 {up_n} 涨）。"
                        f"当日无大V更新，情绪面暂无新增信号，研判以指数与技术面为准。")
     else:

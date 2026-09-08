@@ -38,6 +38,11 @@ class ConclusionPrompts:
 
     @staticmethod
     def verdict_no_update(idx_label, idx_n, up_n, main_line, risk_label):
+        if idx_label == "待开盘":
+            return (
+                f"盘前基于上一交易日收盘与舆情研判：大盘待开盘（昨收基准），大V当日未更新微博。"
+                f"主线聚焦「{main_line}」；{risk_label}。"
+            )
         return (
             f"综合实时指数：大盘 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨）。"
             f"大V当日未更新微博，情绪面暂无新增信号。"
@@ -47,6 +52,12 @@ class ConclusionPrompts:
     @staticmethod
     def verdict_with_consensus(idx_label, idx_n, up_n, consensus_label, consensus_cls,
                                stance, main_line, risk_label):
+        if idx_label == "待开盘":
+            return (
+                f"盘前综合舆情与隔夜外盘信息研判（指数未开盘，以上一交易日收盘为基准）："
+                f"大V意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b>。{stance}。"
+                f"主线聚焦「{main_line}」；{risk_label}。"
+            )
         return (
             f"综合实时指数与微博舆情解构：大盘 <b>{idx_label}</b>（{idx_n} 个主要指数中 {up_n} 个上涨），"
             f"大V意见领袖共识 <b class='{consensus_cls}'>{consensus_label}</b>。{stance}。"
