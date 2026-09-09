@@ -214,13 +214,20 @@ def load_context():
     market_width = snapshot.get("market_width") or {}
     market_state = snapshot.get("market_state", "neutral")
     matched_sectors = snapshot.get("matched_sectors", []) or []
-    # 盘前判定：早报 且 指数行情未开盘（现价=昨收、涨跌≈0 或 volume=0）→ 渲染层以
-    # 「上一交易日收盘基准」语义出报（宽度/ADL 回退 DB 最近交易日），不显示伪 0 涨跌。
+    # 盘前判定：早报 且 指数行情未开盘 → 渲染层以「上一交易日收盘基准」语义出报
+    # （宽度/ADL 回退 DB 最近交易日，不显示伪 0 涨跌）。
+    # 触发条件（任一）：①现价=昨收（涨跌≈0）；②volume=0；③运行时刻在 09:30 开盘前——
+    #   新浪盘前可能直接返回上一交易日完整收盘数据（真实涨跌+量），仅凭数值会误判为盘中实时。
     _is_pre = REPORT_TYPE == "早报" and bool(quotes)
     if _is_pre:
         _zero_chg = all(abs((q.get("chg_pct") or 0)) < 0.005 for q in quotes.values())
         _zero_vol = all((q.get("volume") in (None, "", "0", 0)) for q in quotes.values())
-        PRE_MARKET = _zero_chg or _zero_vol
+        try:
+            _hhmm = int(datetime.now().strftime("%H%M"))
+        except Exception:
+            _hhmm = 2359
+        _time_pre = _hhmm < 930  # 开盘前运行必然盘前
+        PRE_MARKET = _zero_chg or _zero_vol or _time_pre
     else:
         PRE_MARKET = False
 
@@ -1894,9 +1901,18 @@ def _index_snapshot():
     for name, q in quotes.items():
         chg = q.get("chg")
         if PRE_MARKET:
-            chg_html = '<td class="muted" style="text-align:right">—</td>'
-            pct_html = '<td class="muted" style="text-align:right">待开盘</td>'
             title = "主要指数（上一交易日收盘基准）"
+            # 新浪盘前可能直接回上一交易日完整收盘（真实涨跌+量）→ 显示数值；
+            # 仅当日未开盘（涨跌≈0 且 0 量）的行显示「待开盘」。
+            _real = abs((q.get("chg_pct") or 0)) >= 0.005 or q.get("volume") not in (None, "", "0", 0)
+            if _real:
+                chg_html = (f'<td class="{up_down(chg)}" style="text-align:right">'
+                            f'{sign(chg)}{fmt(chg)}</td>')
+                pct_html = (f'<td class="{up_down(q.get("chg_pct"))}" style="text-align:right">'
+                            f'{sign(q.get("chg_pct"))}{q.get("chg_pct")}%</td>')
+            else:
+                chg_html = '<td class="muted" style="text-align:right">—</td>'
+                pct_html = '<td class="muted" style="text-align:right">待开盘</td>'
         else:
             if isinstance(chg, (int, float)):
                 chg_html = (f'<td class="{up_down(chg)}" style="text-align:right">'
