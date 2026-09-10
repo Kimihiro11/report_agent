@@ -387,6 +387,10 @@ def wb_posts(name, lookback_days=1):
     lookback_days=2 时允许昨日帖子（周一早盘结合周末观点）。
     """
     report_date = datetime.strptime(TODAY, "%Y-%m-%d").date()
+    # 早报盘前：前一交易日盘后至当日早盘的帖即"最新舆情"（隔夜信息），放宽回溯窗口，
+    # 否则 T2 源（源深等）会被误判"当日未更新"，而其晚间观点正是早报核心素材。
+    if PRE_MARKET and lookback_days < 2:
+        lookback_days = 2
     is_snapshot_signal = name.startswith("[")
     out = []
     for p in weibo_data.get(name, []) or []:
