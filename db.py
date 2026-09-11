@@ -516,6 +516,17 @@ class StockAgentDB:
                         "cyb_zt": c_zt, "cyb_dt": c_dt})
         return out
 
+    def get_etf_code_map(self):
+        """返回 {ETF名称: 代码} 映射（供报告盘前回退渲染补全「代码」列）。"""
+        with self._cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT ON (name) name, code
+                FROM etf_flows
+                WHERE code IS NOT NULL
+                ORDER BY name, id DESC
+            """)
+            return {n: c for n, c in cur.fetchall()}
+
     def get_etf_flows_history(self, days=5):
         """取最近 days 个真实数据日、每 (flow_date, code) 最新一条的 ETF 主力净流入（亿元）。
 

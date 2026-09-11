@@ -940,14 +940,16 @@ def etf_section():
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
             hist = db.get_etf_flows_history(days=3)
+            code_map = db.get_etf_code_map()
         except Exception:
             hist = {}
+            code_map = {}
         if hist:
             _d = list(hist.keys())[-1]
             for nm, amt in list(hist[_d].items()):
                 dr = "净流入" if amt > 0 else "净流出"
                 cls = "b-red" if amt > 0 else "b-green"
-                rows += (f'<tr><td>{_esc(nm)}</td><td>—</td>'
+                rows += (f'<tr><td>{_esc(nm)}</td><td>{_esc(code_map.get(nm, "—"))}</td>'
                          f'<td><span class="badge {cls}">{dr}</span></td>'
                          f'<td>主力 {amt:+.2f}亿元</td></tr>')
             note = f'<p class="muted" style="font-size:11px;margin:2px 0 6px">早报 · 上一交易日（{_d[5:]}）收盘主力净流入，开盘后自动更新为当日盘中。</p>'
