@@ -244,6 +244,17 @@ class StockAgentDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(lab, vendor)
             )""",
+            """CREATE TABLE IF NOT EXISTS ai_capex_quarterly (
+                id SERIAL PRIMARY KEY,
+                quarter VARCHAR(12) NOT NULL,
+                company VARCHAR(30) NOT NULL,
+                capex NUMERIC(12,2),
+                is_total BOOLEAN DEFAULT FALSE,
+                unit VARCHAR(20) DEFAULT '百万美元',
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(quarter, company)
+            )""",
         ]
         with self._cursor() as cur:
             for sql in tables:
@@ -366,6 +377,41 @@ class StockAgentDB:
                          lb.get("note"), as_of))
                     n_l += 1
         print(f"[DB] AI 资本开支入库: 云厂商 {n_q} 家 / 指引路径 {n_p} 条 / 实验室承诺 {n_l} 条")
+
+        # 季度序列（折线图数据源）
+        qh = data.get("quarterly_history") or {}
+        quarters = qh.get("quarters") or []
+        series = qh.get("series") or {}
+        if quarters and series:
+            n_qtz = 0
+            with self._cursor() as cur:
+                for comp, vals in series.items():
+                    for i, q in enumerate(quarters):
+                        if i >= len(vals):
+                            continue
+                        cur.execute(
+                            """INSERT INTO ai_capex_quarterly
+                               (quarter, company, capex, is_total, unit, as_of)
+                               VALUES (%s,%s,%s,%s,%s,%s)
+                               ON CONFLICT (quarter, company) DO UPDATE SET
+                                 capex=EXCLUDED.capex, is_total=EXCLUDED.is_total,
+                                 unit=EXCLUDED.unit, as_of=EXCLUDED.as_of""",
+                            (q, comp, vals[i], False, qh.get("unit", "百万美元"), as_of))
+                        n_qtz += 1
+                for i, q in enumerate(quarters):
+                    tot = (qh.get("total") or [])[i] if i < len(qh.get("total") or []) else None
+                    if tot is None:
+                        continue
+                    cur.execute(
+                        """INSERT INTO ai_capex_quarterly
+                           (quarter, company, capex, is_total, unit, as_of)
+                           VALUES (%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (quarter, company) DO UPDATE SET
+                             capex=EXCLUDED.capex, is_total=EXCLUDED.is_total,
+                             unit=EXCLUDED.unit, as_of=EXCLUDED.as_of""",
+                        (q, "四家合计", tot, True, qh.get("unit", "百万美元"), as_of))
+                    n_qtz += 1
+            print(f"[DB] AI 资本开支季度序列入库: {n_qtz} 条（{len(quarters)} 个季度 × {len(series)+1} 条线）")
 
     def save_sentiment_batch(self, record_date, weibo_data, source_patterns=None):
         """批量写入舆情数据。

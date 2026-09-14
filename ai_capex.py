@@ -50,6 +50,81 @@ def _dir_badge(direction: str) -> str:
     return f'<span class="badge b-gray">{s or "—"}</span>'
 
 
+_CHART_COLORS = [
+    ("亚马逊", "#d63031"),
+    ("谷歌", "#1967d2"),
+    ("微软", "#0f9d58"),
+    ("Meta", "#8250df"),
+]
+
+
+def _quarterly_chart(qh: dict) -> str:
+    """四家云厂商季度资本开支折线图（自包含 SVG，纵轴单位：亿美元）。
+
+    数据源 seeds/ai_capex.json → quarterly_history（原始单位百万美元，此处换算）。
+    """
+    quarters = qh.get("quarters") or []
+    series = qh.get("series") or {}
+    if len(quarters) < 2 or not series:
+        return ""
+    vals = {k: [v / 100.0 for v in vs] for k, vs in series.items()}
+    ymax = max((max(v) for v in vals.values() if v), default=1) * 1.18
+    W, H = 640, 252
+    pl, pr, pt, pb = 56, 96, 16, 34
+    iw, ih = W - pl - pr, H - pt - pb
+    n = len(quarters)
+
+    def _x(i):
+        return pl + iw * i / (n - 1)
+
+    def _y(v):
+        return pt + ih * (1 - v / ymax)
+
+    parts = []
+    for k in range(5):
+        vv = ymax * k / 4
+        yy = _y(vv)
+        parts.append(f'<line x1="{pl}" y1="{yy:.1f}" x2="{pl + iw}" y2="{yy:.1f}" '
+                     f'stroke="#eceff4" stroke-width="0.8"/>')
+        parts.append(f'<text x="{pl - 8}" y="{yy:.1f}" text-anchor="end" dominant-baseline="central" '
+                     f'font-size="10" fill="#888780">{vv:,.0f}</text>')
+    for i, q in enumerate(quarters):
+        parts.append(f'<text x="{_x(i):.1f}" y="{H - pb + 15}" text-anchor="middle" font-size="10" '
+                     f'fill="#888780">{q}</text>')
+    for name, color in _CHART_COLORS:
+        vs = vals.get(name)
+        if not vs:
+            continue
+        pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(vs))
+        parts.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2" '
+                     f'stroke-linejoin="round" stroke-linecap="round"/>')
+        for i, v in enumerate(vs):
+            parts.append(f'<circle cx="{_x(i):.1f}" cy="{_y(v):.1f}" r="2.6" fill="{color}"/>')
+        parts.append(f'<text x="{_x(len(vs) - 1) + 9:.1f}" y="{_y(vs[-1]):.1f}" '
+                     f'dominant-baseline="central" font-size="11" fill="{color}">'
+                     f'{name} {vs[-1]:,.0f}</text>')
+    return f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" style="margin:4px 0 2px">{"".join(parts)}</svg>'
+
+
+def _growth_note(qh: dict) -> str:
+    """基于季度序列给出环比/同比增速（数据不足则留空）。"""
+    quarters = qh.get("quarters") or []
+    total = qh.get("total") or []
+    if len(total) < 2:
+        return ""
+    seg = []
+    if len(total) >= 2:
+        qoq = (total[-1] / total[-2] - 1) * 100
+        seg.append(f"合计环比 <b>{qoq:+.1f}%</b>（{total[-2] / 100:,.0f} → {total[-1] / 100:,.0f} 亿美元）")
+    if len(total) >= 5:
+        yoy = (total[-1] / total[-5] - 1) * 100
+        seg.append(f"同比 <b>{yoy:+.1f}%</b>（{quarters[-5]} → {quarters[-1]}）")
+    if len(total) >= 6:
+        first_last = (total[-1] / total[0] - 1) * 100
+        seg.append(f"6 个季度累计增幅 <b>{first_last:+.1f}%</b>")
+    return " ｜ ".join(seg)
+
+
 def render_section() -> str:
     d = load_baseline()
     if not d:
@@ -63,6 +138,10 @@ def render_section() -> str:
     a = analyze(d)
     if not hs:
         return ""
+
+    qh = d.get("quarterly_history") or {}
+    chart_html = _quarterly_chart(qh)
+    growth_txt = _growth_note(qh)
 
     # ---------- 1) 云厂商：最新季 + 2026 指引 ----------
     rows = ""
@@ -98,16 +177,20 @@ def render_section() -> str:
         cover = ""
         if isinstance(cm, (int, float)) and isinstance(arr, (int, float)) and arr:
             cover = f'{cm / arr:.1f}× ARR'
-        commit_txt = f'{cm:,.0f}' if isinstance(cm, (int, float)) else "—"
+        # xAI 为自建模式（无对外算力承诺），单独表述避免与「承诺」混淆
+        commit_txt = f'{cm:,.0f}' if isinstance(cm, (int, float)) else "自建为主"
+        arr_txt = (f'ARR {arr} 亿（{lb.get("arr_period")}）' if isinstance(arr, (int, float))
+                   else 'ARR 未披露')
         sub = lb.get("commitments") or []
         sub_txt = "；".join(f"{n} {v}" for n, v, *_ in sub) if sub else "—"
         lab_rows += (
             f'<tr><td><b>{lb.get("name")}</b><br>'
-            f'<span class="muted" style="font-size:11px">ARR {arr} 亿（{lb.get("arr_period")}）</span></td>'
+            f'<span class="muted" style="font-size:11px">{_esc(arr_txt)}</span></td>'
             f'<td style="text-align:right">{commit_txt}</td>'
             f'<td>{cover or "—"}</td>'
             f'<td class="muted" style="font-size:11.5px">{_esc(lb.get("power_secured") or "—")}</td>'
-            f'<td class="muted" style="font-size:11.5px">{_esc(sub_txt)}</td></tr>')
+            f'<td class="muted" style="font-size:11.5px">'
+            f'{_esc(lb.get("commitment_note") or sub_txt)}</td></tr>')
 
     # ---------- 5) 约束 ----------
     cons_rows = "".join(
@@ -159,6 +242,14 @@ def render_section() -> str:
       <table><thead><tr><th>公司</th><th style="text-align:right">最新季资本开支</th><th style="text-align:right">2026 指引</th><th>指引变动</th><th>投入回收路径</th></tr></thead>
       <tbody>{rows}</tbody></table>
 
+      <div class="chan-lv-head">▸ 季度资本开支走势（纵轴单位：亿美元）</div>
+      {chart_html}
+      <p class="muted" style="font-size:11.5px;margin:2px 0 0">{growth_txt}</p>
+      <p class="muted" style="font-size:11px;margin:2px 0 0">
+        注：微软财年与自然季不一致，此处按自然季折算；亚马逊始终为单季最大投入方。
+        「投入是否见顶」看两条——指引是否出现真实下修、季度环比是否连续两季走平。
+      </p>
+
       <div class="chan-lv-head">▸ 全年指引的上修轨迹（只上不下）</div>
       <table><thead><tr><th style="width:14%">公司</th><th>指引调整路径</th></tr></thead>
       <tbody>{path_rows}</tbody></table>
@@ -166,7 +257,9 @@ def render_section() -> str:
         穆迪口径：六家科技巨头 2026 年资本开支约 {agg.get("moody_forecast", {}).get("2026", 0):,.0f} 亿美元，
         2027 年{_esc(str(agg.get("moody_forecast", {}).get("2027", "")))}；
         {_esc(agg.get("cumulative_note", ""))}；
-        2026 年全球 AI 公司数据中心支出预计接近 {agg.get("global_ai_dc_spend_2026", 0):,.0f} 亿美元。
+        含 OpenAI（Stargate）与 xAI（Colossus）在内的八大科技公司，2026 年 AI 基建支出区间约
+        {_esc(str(agg.get("big_tech_2026_range", "")))} 亿美元；
+        全球 AI 公司数据中心支出预计接近 {agg.get("global_ai_dc_spend_2026", 0):,.0f} 亿美元。
       </p>
 
       <div class="chan-lv-head">▸ 钱花在哪：短周期算力 vs 长周期设施</div>
@@ -180,8 +273,9 @@ def render_section() -> str:
       <table><thead><tr><th>公司</th><th style="text-align:right">算力承诺合计</th><th>承诺 ÷ ARR</th><th>已锁定电力</th><th>主要合约</th></tr></thead>
       <tbody>{lab_rows}</tbody></table>
       <p class="muted" style="font-size:11.5px;margin:4px 0 0">
-        两家模型公司的算力承诺均远超自身收入，依赖持续股权融资与复杂债务结构支撑；
-        这些多为期数年的 take-or-pay 容量预定，并非当期表内负债，但「预定容量与实际付费需求之间的缺口」是真正的尾部风险。
+        模型公司的算力承诺普遍远超自身收入，依赖持续股权融资与复杂债务结构支撑；这些多为数年期的 take-or-pay 容量预定，
+        并非当期表内负债，但「预定容量与实际付费需求之间的缺口」是真正的尾部风险。
+        {_esc(agg.get("cashflow_timing", ""))}；{_esc(agg.get("revenue_dependency", ""))}。
       </p>
 
       <div class="chan-lv-head">▸ 约束与风险</div>

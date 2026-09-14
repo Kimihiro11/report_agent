@@ -41,8 +41,8 @@
       "name": "微软",
       "ticker": "MSFT",
       "segment": "Azure",
-      "fiscal": "FY26Q4",
-      "quarterly_capex": 299,
+      "fiscal": "2026Q2",
+      "quarterly_capex": 358.02,
       "guidance_2026_mid": 1750,
       "guidance_2026": "约 1750",
       "guidance_path": [
@@ -87,9 +87,22 @@
       "note": "持续扩建与英伟达合作的 AI 算力集群；是「订单→交付→收入」链条兑现最快的观察样本"
     }
   ],
+  "quarterly_history": {
+    "unit": "百万美元",
+    "note": "四家云厂商单季资本开支。微软按自然季折算（FY 与自然季不一致）；口径以各公司公告为准。",
+    "source": "各公司公告 / Visible Alpha / 浦银国际",
+    "quarters": ["1Q2025", "2Q2025", "3Q2025", "4Q2025", "1Q2026", "2Q2026"],
+    "series": {
+      "微软": [16745, 17079, 19394, 29876, 30876, 35802],
+      "谷歌": [17197, 22446, 23953, 27851, 35674, 44924],
+      "亚马逊": [25019, 32183, 35095, 39522, 44203, 54208],
+      "Meta": [12941, 16538, 18829, 21383, 18997, 30116]
+    },
+    "total": [71902, 88246, 97271, 118632, 129750, 165050]
+  },
   "aggregate": {
-    "big4_q2_2026_total": 1591,
-    "big4_q2_2026_note": "亚马逊 542 + 谷歌 449 + Meta 301 + 微软 299（含指标口径差异，仅供量级参考）",
+    "big4_q2_2026_total": 1650,
+    "big4_q2_2026_note": "亚马逊 542 + 谷歌 449 + Meta 301 + 微软 358（亿美元）；环比上一季约 +27%，同比去年同期约 +87%",
     "cumulative_since_2023": 11000,
     "cumulative_note": "2023 年 AI 热潮以来，谷歌/亚马逊/微软/Meta 四家已在 AI 领域投入约 1.1 万亿美元",
     "moody_forecast": {
@@ -97,7 +110,11 @@
       "2027": "逼近 10000",
       "note": "六家科技巨头合计；穆迪同时警示 AI 投资正侵蚀自由现金流并推高资产负债表风险"
     },
-    "global_ai_dc_spend_2026": 7000
+    "global_ai_dc_spend_2026": 7000,
+    "big_tech_2026_range": "6500-8000",
+    "big_tech_2026_note": "含 OpenAI Stargate 与 xAI Colossus 在内的八大科技公司 2026 年 AI 基建支出区间",
+    "cashflow_timing": "四大科技巨头 2026 财年合计资本开支超 6000 亿美元，绝大部分要到 2027-2030 年才陆续转化为收入",
+    "revenue_dependency": "微软/亚马逊/谷歌/甲骨文的 AI 相关收入中约 70% 来自 Anthropic 与 OpenAI——巨头的 AI 叙事最终押在两三家初创公司的成败上"
   },
   "capex_mix": {
     "short_cycle": {
@@ -117,34 +134,57 @@
   },
   "ai_labs": [
     {
-      "name": "Anthropic",
-      "arr": 650,
-      "arr_period": "2026-07 年化",
-      "latest_quarter_revenue": 109,
-      "latest_quarter": "2026Q2",
-      "profit_note": "2026Q2 Non-GAAP 营业利润约 5.59 亿美元，有望首次实现季度盈利（调整后口径）",
-      "compute_commitments_total": 2750,
-      "commitments": [
-        ["AWS", "1000 亿 / 10 年", "最高 5GW Trainium 容量"],
-        ["Fluidstack", "500 亿", "第三方 neocloud 算力"],
-        ["Nscale", "450 亿 / 6 年", "西弗吉尼亚 460MW，部署 Vera Rubin"],
-        ["SpaceX", "450 亿", "每月约 12.5 亿，至 2029-05"],
-        ["Lambda", "350 亿", "约 350MW（Hut 8 数据中心）"]
-      ],
-      "power_secured": "11 个月内锁定至少 14.8GW 电力容量",
-      "note": "算力承诺总额超 2750 亿美元；承诺额约为其私有估值的 30%"
-    },
-    {
       "name": "OpenAI",
       "arr": 400,
       "arr_period": "2026-07 年化",
       "latest_quarter_revenue": null,
-      "compute_commitments_total": null,
+      "compute_commitments_total": 4000,
+      "commitment_note": "Stargate 体系累计承诺超 4000 亿美元（四年 5000 亿目标、10GW）",
+      "power_secured": "规划约 7GW（另签约 8GW PORTS-Pike 协议）；2030 年 30GW 目标",
+      "funding": "2025-12 SoftBank 投资 410 亿（约 11%）；2026-03 完成 1220 亿融资、投后估值 8520 亿",
       "commitments": [
-        ["AWS", "约 2GW Trainium（2027 起）", "在 Azure 之外开辟第二算力来源"]
+        ["Oracle", "3000 亿 / 5 年", "4.5GW 容量；旗舰 Abilene 1.2GW、45 万+ GB200，8 栋建筑 2026 年底完成"],
+        ["NVIDIA", "至少 10GW 容量", "需数百万颗 GPU；另承诺向 OpenAI 投资最高 1000 亿美元"],
+        ["AMD", "6GW Instinct GPU", "约 1GW 于 2026 下半年上线"],
+        ["Broadcom", "定制 AI 芯片", "降低对英伟达的长期依赖"],
+        ["AWS", "约 2GW Trainium", "2027 年起，在 Azure 之外开辟第二算力来源"],
+        ["CoreWeave", "额外云容量", "与 Stargate 自建站点互补"]
       ],
-      "power_secured": "2030 年 30GW 目标",
-      "note": "CEO 公开警示行业存在「不可持续的愚蠢」（unsustainable silliness）"
+      "note": "Stargate 为 OpenAI+SoftBank+Oracle+MGX 合资，覆盖面从 Abilene 延伸至新墨西哥、俄亥俄、密歇根等 9 个美国园区；CEO 公开警示行业存在「不可持续的愚蠢」"
+    },
+    {
+      "name": "xAI（马斯克）",
+      "arr": null,
+      "arr_period": "未披露",
+      "latest_quarter_revenue": null,
+      "compute_commitments_total": null,
+      "commitment_note": "以自建为主（非对外承诺），GPU 采购约 180 亿美元、总建设成本 350-400 亿美元",
+      "power_secured": "Colossus 合计 2GW（目标 2026 年底超 100 万张 GPU、突破 3GW）",
+      "funding": "2026-01 完成 200 亿美元 E 轮（估值 2300 亿）；2026-02 并入 SpaceX（合并实体约 1.25 万亿）；SpaceX 2026-06 以 1.77 万亿 IPO",
+      "commitments": [
+        ["Colossus（自建 · 孟菲斯）", "55.5 万张英伟达 GPU / 约 180 亿美元", "约 52 万 GB200+GB300 与 3 万 H100/H200，集中度全球最高"],
+        ["Tesla Megapack", "储能配套", "以表后储能绕开电网接入瓶颈，代替等待输电扩容"],
+        ["在轨数据中心（Starmind）", "申报最多 100 万颗卫星", "尚未获批；首批原型目标 2027 年初"]
+      ],
+      "note": "Colossus 从选址到运行仅 19 天（传统数据中心约 4 年）；满负荷散热需求约 1.8GW、几乎与算力功耗相当——是液冷/散热需求最直观的实证；环保争议（燃气轮机排放）在建"
+    },
+    {
+      "name": "Anthropic",
+      "arr": 650,
+      "arr_period": "2026-07 年化",
+      "latest_quarter_revenue": 109,
+      "compute_commitments_total": 2750,
+      "commitment_note": "五笔算力合约合计超 2750 亿美元，约为其私有估值的 30%",
+      "power_secured": "11 个月内锁定至少 14.8GW 电力容量",
+      "funding": "推进 IPO，潜在估值或达 2 万亿美元（当前估值约 9650 亿）",
+      "commitments": [
+        ["AWS", "1000 亿 / 10 年", "最高 5GW Trainium 容量"],
+        ["Fluidstack", "500 亿", "第三方 neocloud 算力"],
+        ["Nscale", "450 亿 / 6 年", "西弗吉尼亚 460MW，部署 Vera Rubin"],
+        ["SpaceX", "450 亿", "每月约 12.5 亿，至 2029-05（即租用 xAI 的 Colossus）"],
+        ["Lambda", "350 亿", "约 350MW（Hut 8 数据中心）"]
+      ],
+      "note": "2026Q2 Non-GAAP 营业利润约 5.59 亿美元，有望首次实现季度盈利（调整后口径）"
     }
   ],
   "constraints": [
@@ -172,6 +212,11 @@
       "name": "产能与订单兑现",
       "level": "中",
       "evidence": "各家为尚未产生的需求提前锁定多年容量，take-or-pay 条款下的利用率无人披露，是尾部风险来源"
+    },
+    {
+      "name": "需求集中度",
+      "level": "高",
+      "evidence": "云厂商 AI 相关收入中约 70% 来自 Anthropic 与 OpenAI——四巨头的 AI 叙事最终押在两三家初创公司的成败上，初创端的融资或增长一旦放缓会直接反噬云厂商的投入回报"
     }
   ],
   "market_readthrough": {
