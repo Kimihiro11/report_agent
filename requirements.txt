@@ -15,3 +15,6 @@ czsc==1.0.1
 # ~/.workbuddy/skills/mx-finance-data/scripts/get_data.py 时需要（项目代码本身不 import）
 httpx==0.28.1
 openpyxl==3.1.5
+
+# tools/read_edge_cookies.py：解密 Edge/Chrome cookie（AES-256-GCM）
+cryptography==50.0.1

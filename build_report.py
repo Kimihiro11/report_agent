@@ -21,6 +21,7 @@ from pathlib import Path
 
 import stock_report_agent as agent
 import news_intel as _ni
+import view as _view
 
 # 研判文本模板外置到 templates/prompts.py
 try:
@@ -143,7 +144,7 @@ fund_flows = {}
 market_width = {}
 market_state = "neutral"
 matched_sectors = []
-PRE_MARKET = False  # 盘前（早报 + 指数未开盘=全 0 涨跌）语义标志
+VIEW = _view.ViewState()  # 口径视图：basis（盘前/盘中/收盘）+ data_date（行情所属交易日）
 intel = {}
 _intel_topics = {}
 tangshi = []
@@ -162,7 +163,7 @@ def load_context():
     global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE
     global cfg, WATCHLIST, VS_NAMES, VS_SOURCES
     global snap_path, snapshot, weibo_data, quotes, us_market, etf, fund_flows, market_state, matched_sectors
-    global market_width, PRE_MARKET
+    global market_width, VIEW
     global intel, _intel_topics
     global tangshi, touxing_asset, touxing_yeye
     global macro_items, event_items, japan_items, tech_items, global_items
@@ -214,22 +215,12 @@ def load_context():
     market_width = snapshot.get("market_width") or {}
     market_state = snapshot.get("market_state", "neutral")
     matched_sectors = snapshot.get("matched_sectors", []) or []
-    # 盘前判定：早报 且 指数行情未开盘 → 渲染层以「上一交易日收盘基准」语义出报
-    # （宽度/ADL 回退 DB 最近交易日，不显示伪 0 涨跌）。
-    # 触发条件（任一）：①现价=昨收（涨跌≈0）；②volume=0；③运行时刻在 09:30 开盘前——
-    #   新浪盘前可能直接返回上一交易日完整收盘数据（真实涨跌+量），仅凭数值会误判为盘中实时。
-    _is_pre = REPORT_TYPE == "早报" and bool(quotes)
-    if _is_pre:
-        _zero_chg = all(abs((q.get("chg_pct") or 0)) < 0.005 for q in quotes.values())
-        _zero_vol = all((q.get("volume") in (None, "", "0", 0)) for q in quotes.values())
-        try:
-            _hhmm = int(datetime.now().strftime("%H%M"))
-        except Exception:
-            _hhmm = 2359
-        _time_pre = _hhmm < 930  # 开盘前运行必然盘前
-        PRE_MARKET = _zero_chg or _zero_vol or _time_pre
-    else:
-        PRE_MARKET = False
+    # ---- 口径视图：basis（盘前/盘中/收盘）+ data_date（行情所属交易日）----
+    # 优先采用快照 meta（采集时由 stock_report_agent 写入，最权威）；
+    # 历史快照无 meta 时按运行时刻 + 报告类型推断（view.infer_basis）。
+    # 盘前语义下：行情为上一交易日收盘基准，宽度/ADL 回退 DB 最近交易日，不显示伪 0 涨跌。
+    VIEW = _view.build_view(REPORT_TYPE, snapshot.get("meta"), quotes)
+    print(f"[口径] {VIEW.describe()}")
 
     # ---- 外网资讯解析（英文源抓取 + 正文解析，Agent 总结为中文结论） ----
     intel = _ni.load_intel(TODAY)
@@ -389,7 +380,7 @@ def wb_posts(name, lookback_days=1):
     report_date = datetime.strptime(TODAY, "%Y-%m-%d").date()
     # 早报盘前：前一交易日盘后至当日早盘的帖即"最新舆情"（隔夜信息），放宽回溯窗口，
     # 否则 T2 源（源深等）会被误判"当日未更新"，而其晚间观点正是早报核心素材。
-    if PRE_MARKET and lookback_days < 2:
+    if VIEW.is_pre_market and lookback_days < 2:
         lookback_days = 2
     is_snapshot_signal = name.startswith("[")
     out = []
@@ -931,7 +922,7 @@ def _etf_history_chart():
 def etf_section():
     rows = ""
     note = ""
-    if PRE_MARKET:
+    if VIEW.is_pre_market:
         # 盘前：当日盘中主力资金未生成（东财返回 0 值假数据）→ 回退 DB 最近真实数据日
         try:
             from db import StockAgentDB
@@ -1132,7 +1123,7 @@ def market_width_section():
     主板/创业板均自 2026-09-04 起入库（东财 clist 无板块历史，绝不伪造）。
     返回 "" 表示无数据。
     """
-    if not market_width and not PRE_MARKET:
+    if not market_width and not VIEW.is_pre_market:
         return ""
     # 全市场（沪深京全部 A 股，含创业板/科创板）——参考行
     up = market_width.get("up") or 0
@@ -1165,7 +1156,7 @@ def market_width_section():
         hist = db.get_market_width(days=20)
         # 盘前回退：快照无当日宽度（开盘前东财无当日口径）→ 用 DB 最近一个交易日展示，
         # 标注「上一交易日」语义；非盘前仍按原逻辑（缺失即不展示）。
-        if PRE_MARKET and not market_width and hist:
+        if VIEW.is_pre_market and not market_width and hist:
             _last = hist[-1]
             if _last.get("main_up") is not None or _last.get("cyb_up") is not None:
                 _fallback_date = str(_last["width_date"])[5:]
@@ -1380,7 +1371,7 @@ def judgment_hit_rate(days=5, window=3):
 
 
 def conclusion_grid():
-    if PRE_MARKET:
+    if VIEW.is_pre_market:
         state_label = "待开盘"  # 盘前指数未开，状态以舆情/隔夜研判为准（见正文）
     else:
         state_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
@@ -1897,7 +1888,7 @@ def deconstruct_weibo():
 def _index_snapshot():
     """主要指数速览（整合进核心结论）：紧凑表格，最新+涨跌点数+涨跌幅，红涨绿跌。
 
-    盘前（PRE_MARKET）语义：行情未开盘，price 为上一交易日收盘基准，涨跌幅列显示
+    盘前（VIEW.is_pre_market）语义：行情未开盘，price 为上一交易日收盘基准，涨跌幅列显示
     「待开盘」，避免把 0 涨跌误读为当日实时。
     """
     if not quotes:
@@ -1906,8 +1897,10 @@ def _index_snapshot():
     title = "主要指数（实时）"
     for name, q in quotes.items():
         chg = q.get("chg")
-        if PRE_MARKET:
-            title = "主要指数（上一交易日收盘基准）"
+        if VIEW.is_pre_market:
+            # 盘前口径：标题带具体数据日（VIEW.data_date 来自快照 meta），消歧"哪天的收盘"
+            title = (f"主要指数（{VIEW.data_date} 收盘基准）" if VIEW.data_date
+                     else "主要指数（上一交易日收盘基准）")
             # 新浪盘前可能直接回上一交易日完整收盘（真实涨跌+量）→ 显示数值；
             # 仅当日未开盘（涨跌≈0 且 0 量）的行显示「待开盘」。
             _real = abs((q.get("chg_pct") or 0)) >= 0.005 or q.get("volume") not in (None, "", "0", 0)
@@ -1938,7 +1931,7 @@ def _index_snapshot():
 
 def _strategy_snapshot():
     """操作策略速览（整合进核心结论）：市场状态 + 参考仓位 + 主线 + 风险/回避。"""
-    if PRE_MARKET:
+    if VIEW.is_pre_market:
         # 盘前：市场状态由舆情共识/隔夜外盘驱动，未开盘不标「震荡」伪状态；仓位用中性区间
         state_label = "盘前研判"
         base = "40-60%"
@@ -1950,7 +1943,7 @@ def _strategy_snapshot():
     avoid = [watch_name(c) for c in WATCHLIST if _level_rank(diag_for(c)) >= 2]
     avoid_txt = "、".join(avoid) if avoid else "无高危标的"
     return (f'<div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px">'
-            f'<div class="cc-grid-title">今日操作策略（{"盘前研判" if PRE_MARKET else "实时"}）</div>'
+            f'<div class="cc-grid-title">今日操作策略（{"盘前研判" if VIEW.is_pre_market else "实时"}）</div>'
             f'<table><thead><tr><th style="width:18%">维度</th><th>策略</th></tr></thead><tbody>'
             f'<tr><td><b>大盘</b></td><td>市场状态 <b>{state_label}</b>；参考仓位 <b class="up">{base}</b>（中性基准，个股按诊断±修正，见第八节）</td></tr>'
             f'<tr><td><b>主线</b></td><td>{_esc(main_line)}</td></tr>'
@@ -1977,7 +1970,7 @@ def core_conclusion():
     else:
         consensus_label, consensus_cls = d["consensus"]
     idx_label = {"bullish": "偏多", "bearish": "偏空", "neutral": "震荡"}.get(market_state, "震荡")
-    if PRE_MARKET:
+    if VIEW.is_pre_market:
         idx_label = "待开盘"  # 盘前行情未开，指数方向留白，不把 0 涨跌误判为震荡
     up_n = sum(1 for q in quotes.values() if q.get("chg_pct", 0) > 0) if quotes else 0
     idx_n = len(quotes) if quotes else 0
@@ -1996,7 +1989,7 @@ def core_conclusion():
         cons_badge_cls = consensus_cls
         cons_badge_label = f"大V共识 {consensus_label}"
 
-    _idx_badge_cls = "b-blue" if PRE_MARKET else "b-red"
+    _idx_badge_cls = "b-blue" if VIEW.is_pre_market else "b-red"
     badges = (
         f'<span class="badge {cons_badge_cls}">{cons_badge_label}</span>'
         f'<span class="badge {_idx_badge_cls}">指数 {idx_label}</span>'
@@ -2073,7 +2066,7 @@ def vs_summary():
         consensus_html += src_table
 
     diverge = (consensus_label != idx_label) and (consensus_label in {"偏多", "偏空"})
-    if PRE_MARKET:
+    if VIEW.is_pre_market:
         market_view = (f"指数待开盘（以上一交易日收盘为基准），大V共识 <b class='{consensus_cls}'>{consensus_label}</b> "
                        f"—— 盘前研判以舆情/隔夜信息与技术面为主，开盘后由当日行情验证。")
     elif not updated_any:

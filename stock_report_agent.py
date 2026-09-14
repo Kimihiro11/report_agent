@@ -35,6 +35,13 @@ try:
 except ImportError:
     DB_AVAILABLE = False
 
+# 统一口径层（纯标准库，不破坏「基础采集仅标准库」约定）：
+# 为快照写入 meta（data_date 行情所属交易日 / as_of 采集时刻 / basis 盘前盘中收盘）。
+try:
+    import view as _view
+except Exception:
+    _view = None
+
 CONFIG_PATH = Path(__file__).parent / "config.json"
 OUTPUT_DIR = Path(__file__).parent
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -1222,6 +1229,27 @@ def analyze_sentiment(weibo_data, quotes):
     }
 
 
+def _etf_amount_valid(rows):
+    """ETF 资金流行是否含有效金额。
+
+    盘前东财 push2 常返回「净流入 0.00亿元」的占位值（并非真实数据），
+    若直接入库会污染历史（2026-09-11 曾产生 data_date 错乱的假 0 行）。
+    全部为 0 或解析不到金额时返回 False。
+    """
+    if not rows:
+        return False
+    for r in rows:
+        txt = r[4] if isinstance(r, (list, tuple)) and len(r) > 4 else ""
+        m = re.search(r"(-?\d+(?:\.\d+)?)\s*亿元", str(txt))
+        if m:
+            try:
+                if abs(float(m.group(1))) > 1e-9:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
 def _persist_to_db(config, snapshot, ta_data):
     """强制将所有采集数据写入 PostgreSQL。
 
@@ -1242,11 +1270,19 @@ def _persist_to_db(config, snapshot, ta_data):
         # 确保数据表存在（自建库自愈合，含新增的 raw_snapshots/us_market_quotes/etf_flows）
         db.init_database()
         td = datetime.now().date()
+        # 行情所属交易日（盘前采集 → 上一交易日），避免指数行情整体错位一天
+        _meta = snapshot.get("meta") or {}
+        _qdate = td
+        if _meta.get("data_date"):
+            try:
+                _qdate = datetime.strptime(_meta["data_date"], "%Y-%m-%d").date()
+            except Exception:
+                _qdate = td
         # 1) 完整原始快照（兜底：确保『所有数据』都在库里）
         db.save_snapshot(td, snapshot)
         # 2) 结构化表
         if snapshot.get("quotes"):
-            db.save_index_quotes(td, snapshot["quotes"])
+            db.save_index_quotes(_qdate, snapshot["quotes"])
         if snapshot.get("us_market"):
             db.save_us_market(td, snapshot["us_market"])
         if snapshot.get("etf"):
@@ -1257,7 +1293,11 @@ def _persist_to_db(config, snapshot, ta_data):
                 _data_date = _ov.get("data_date")
             except Exception:
                 _data_date = None
-            db.save_etf_flows(td, snapshot["etf"], data_date=_data_date)
+            # 盘前 push2 常返回 0.00 假值 → 全部为 0 时视为无效，不入库（防止脏行污染历史）
+            if _etf_amount_valid(snapshot["etf"]):
+                db.save_etf_flows(td, snapshot["etf"], data_date=_data_date)
+            else:
+                print("  [DB] ETF 资金流全部为 0（盘前无效值），跳过入库")
         if snapshot.get("weibo_data"):
             db.save_sentiment_batch(td, snapshot["weibo_data"])
         if ta_data:
@@ -1397,8 +1437,11 @@ def main():
     # 全功能报告由 build_report.py + WebSearch 实时拼装生成。
     ts = datetime.now().strftime("%H%M%S")
     snap_path = snap_dir / f"fetched_{today}_{ts}.json"
+    # 统一口径：盘前采集到的行情属于上一交易日，data_date 由口径层判定（根治历史错位）
+    meta = _view.build_snapshot_meta() if _view else {}
     snapshot = {
         "date": today,
+        "meta": meta,
         "market_state": analysis["market_state"],
         "matched_sectors": analysis["matched_sectors"],
         "weibo_data": weibo_data,
