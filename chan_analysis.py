@@ -472,8 +472,23 @@ def chan_analyze(kl, klt=5, horizon="短线"):
     return _stdlib_engine(kl, level_label, horizon)
 
 
-def run(index_code="000001", bars_m30=500, bars_d=250):
-    """主流程：拉取上证指数 30分钟 + 日线两级 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。"""
+def run(index_code="000001", bars_m30=500, bars_d=600):
+    """主流程：拉取上证指数 30分钟 + 日线两级 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。
+
+    参数守卫（2026-09-14 新增）：30分钟/日线根数过小会导致结构无法成立——
+    历史上曾以 `chan_analysis.py 000001 5 600` 调用（第二个参数被误当作级别），
+    使 30 分钟级别只取 5 根、永远输出「中枢未成」。根数不足时自动回退并告警。
+    """
+    # 参数守卫：经敏感性实测，30分钟 ≥250 根、日线 ≥250 根后中枢与信号才稳定
+    MIN_BARS_M30, MIN_BARS_D = 250, 250
+    if bars_m30 < MIN_BARS_M30:
+        print(f"[缠论] ⚠️ 30分钟 K 线根数 {bars_m30} 过小（<{MIN_BARS_M30}），"
+              f"该级别无法构成有效笔/中枢，已回退为 {MIN_BARS_M30} 根")
+        bars_m30 = MIN_BARS_M30
+    if bars_d < MIN_BARS_D:
+        print(f"[缠论] ⚠️ 日线 K 线根数 {bars_d} 过小（<{MIN_BARS_D}），"
+              f"中枢识别不稳定，已回退为 {MIN_BARS_D} 根")
+        bars_d = MIN_BARS_D
     secid = INDEX_SECID.get(index_code, "1.000001")
     levels = []
     engine = None
@@ -514,6 +529,6 @@ if __name__ == "__main__":
     import sys
     index = sys.argv[1] if len(sys.argv) > 1 else "000001"
     bars_m30 = int(sys.argv[2]) if len(sys.argv) > 2 else 500
-    bars_d = int(sys.argv[3]) if len(sys.argv) > 3 else 250
+    bars_d = int(sys.argv[3]) if len(sys.argv) > 3 else 600
     r = run(index, bars_m30, bars_d)
     print(json.dumps(r, ensure_ascii=False, indent=2))

@@ -1540,14 +1540,16 @@ def _chan_level_block(lv):
     if beichi:
         bdir = "上涨" if beichi["dir"] == "up" else "下跌"
         bcls = "b-green" if beichi["dir"] == "up" else "b-red"
-        beichi_html = (f'<tr><td><b>背驰</b></td><td><span class="badge {bcls}">'
-                       f'{bdir}段力度衰减（{beichi["level"]}）</span></td>'
-                       f'<td>进入段 {beichi["enter_power"]} → 离开段 {beichi["leave_power"]}（力度不足90%判背驰）</td></tr>')
+        beichi_html = (f'<tr><td><b>背驰</b><br><span class="muted" style="font-size:11px">同向力度衰减</span></td>'
+                       f'<td><span class="badge {bcls}">{bdir}段力度衰减（{beichi["level"]}）</span></td>'
+                       f'<td>进入段力度 {beichi["enter_power"]} → 离开段 {beichi["leave_power"]}'
+                       f'（离开段不足进入段 90% 视为背驰，提示原方向动能减弱、可能转势）</td></tr>')
     zs_html = ""
     if zs:
-        zs_html = (f'<tr><td><b>最近中枢</b></td><td><span class="badge b-blue">'
-                   f'[{zs["zd"]:.2f}, {zs["zg"]:.2f}]</span></td>'
-                   f'<td>区间 {zs["range"]:.2f} 点（{zs["start_time"]} 确认，GG {zs["gg"]:.2f} / DD {zs["dd"]:.2f}）</td></tr>')
+        zs_html = (f'<tr><td><b>最近中枢</b><br><span class="muted" style="font-size:11px">多空成本密集区</span></td>'
+                   f'<td><span class="badge b-blue">[{zs["zd"]:.2f}, {zs["zg"]:.2f}]</span></td>'
+                   f'<td>下沿 ZD <b>{zs["zd"]:.2f}</b>（支撑）／上沿 ZG <b>{zs["zg"]:.2f}</b>（压力）；'
+                   f'区间宽 {zs["range"]:.2f} 点，{zs["start_time"]} 起确认（GG {zs["gg"]:.2f} / DD {zs["dd"]:.2f}）</td></tr>')
     bis_html = ""
     rb = lv.get("recent_bis") or []
     if rb:
@@ -1574,7 +1576,7 @@ def _chan_level_block(lv):
     return f'''
       <div class="chan-lv-head">▸ {lv.get("level", "?")}级别<span class="muted" style="font-weight:400;font-size:11px">（{horizon}视界 ｜ 数据 {lv.get("data_range", "")}{fx_txt} ｜ 笔 {lv.get("bis", 0)} ｜ 最新价 <b>{lv.get("last_price", 0):.2f}</b>）</span></div>
       <table><thead><tr><th style="width:18%">维度</th><th style="width:26%">状态</th><th>说明</th></tr></thead><tbody>
-        <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>相对最近中枢的位置</td></tr>
+        <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>当前价相对最近中枢的位置：上方偏多、下方偏空、区间内为震荡整理</td></tr>
         {zs_html}
         <tr><td><b>缠论信号</b></td><td><span class="badge {sig_cls}">{sig_label}</span></td><td>{_esc(sig.get("text", ""))}</td></tr>
         {beichi_html}
@@ -1625,6 +1627,22 @@ def chan_section():
                    if engine.startswith("czsc") else
                    "缠论风格简化实现（czsc 未安装，标准库兜底）；背驰与买卖点判定有主观性，不构成精确预测")
     lv_labels = "+".join(str(lv.get("level", "?")) for lv in ok_levels)
+    # 数据截止标注：日线盘中不更新（当日 K 线未收盘），必须显式说明，否则易被误读为「数据过期」
+    cut_txt = " ｜ ".join(
+        f"{lv.get('level', '?')} {str(lv.get('last_time') or '').replace(' 00:00', '')}"
+        for lv in ok_levels)
+    _d_stale = any(str(lv.get("level", "")).startswith("日线")
+                   and str(lv.get("last_time", ""))[:10] != TODAY for lv in ok_levels)
+    stale_note = "（日线只取已收盘 K 线：当日未收盘不纳入，避免用未完成的 K 线判分型/笔）" if _d_stale else ""
+    readme_html = (
+        '<div class="muted" style="font-size:11.5px;background:#fafbff;border:1px solid #e8eaf6;'
+        'border-radius:8px;padding:8px 12px;margin:8px 0 4px;line-height:1.75">'
+        '<b>怎么读这一节：</b>「中枢」是多空反复争夺的价格密集区——'
+        '上沿 ZG 为压力、下沿 ZD 为支撑；「笔」是一段明确的方向（上/下）；'
+        '「位置」是当前价相对中枢的位置（上方偏多、下方偏空、区间内为震荡）；'
+        '「二买」指回调不破前低后的右侧买点；「背驰」指同向力度衰减、提示可能反转。'
+        '高级别（日线）定方向，低级别（30分钟）找买卖点，两者共振时可靠性更高。'
+        '</div>')
     blocks = "".join(_chan_level_block(lv) for lv in ok_levels)
     # 多级别共振/分歧研判（>=2 个有效级别才给结论）
     synth_html = ""
@@ -1646,6 +1664,8 @@ def chan_section():
     <div class="card" id="sec-chan">
       <h2>缠论推演（上证指数 {lv_labels} · 操作指引）</h2>
       <p class="muted" style="font-size:12px">引擎 <b>{_esc(engine)}</b> ｜ 级别：{lv_labels}（高级别定方向，低级别找买卖点）</p>
+      <p class="muted" style="font-size:12px">数据截至：<b>{_esc(cut_txt)}</b>{_esc(stale_note)}</p>
+      {readme_html}
       {blocks}
       {synth_html}
       <p class="muted" style="font-size:11px;margin:6px 0 0">{_esc(engine_note)}。</p>
