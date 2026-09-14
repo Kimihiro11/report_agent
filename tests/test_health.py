@@ -15,12 +15,15 @@
   - 报告缺章节（沙箱抓取失败导致）→ 8 月修过
   - requirements 漏登记依赖 → 9/12 发现缺 cryptography
 """
+import copy
 import json
 import re
 import sys
+import tempfile
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
@@ -147,6 +150,69 @@ class TestEtfGuard(unittest.TestCase):
         self.assertTrue(sra._etf_amount_valid(rows))
 
 
+class TestAiCapexGating(unittest.TestCase):
+    """AI 资本开支章节按「数据指纹变化」呈现。
+
+    该章节是季度频率的静态内容，每天重复占版面没有信息增量；
+    无更新时不应出现，有更新时必须出现并带「本期更新」标注。
+    """
+
+    def setUp(self):
+        import ai_capex
+        self.ac = ai_capex
+        seed = BASE / "seeds" / "ai_capex.json"
+        if not seed.exists():
+            self.skipTest("缺少 seeds/ai_capex.json")
+        self.base = json.loads(seed.read_text(encoding="utf-8"))
+        self._tmp = tempfile.TemporaryDirectory()
+        self.state = Path(self._tmp.name) / "state.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _with_baseline(self, d):
+        return mock.patch.object(self.ac, "load_baseline", lambda: d)
+
+    def test_fingerprint_stable_but_sensitive(self):
+        fp = self.ac.data_fingerprint(self.base)
+        self.assertEqual(fp, self.ac.data_fingerprint(self.base), "同数据指纹必须稳定")
+        cosmetic = copy.deepcopy(self.base)
+        cosmetic["as_of"] = "2099-01-01"
+        cosmetic["note"] = "版面文案调整"
+        self.assertEqual(fp, self.ac.data_fingerprint(cosmetic),
+                         "装饰性字段变化不应触发章节重现")
+        changed = copy.deepcopy(self.base)
+        changed["hyperscalers"][0]["guidance_2026"] = "9999"
+        self.assertNotEqual(fp, self.ac.data_fingerprint(changed),
+                            "指引变化必须改变指纹")
+
+    def test_presents_once_then_stays_silent(self):
+        with self._with_baseline(self.base):
+            first = self.ac.render_if_updated("auto", state_path=self.state)
+            self.assertIn("sec-aicapex", first, "首次（无状态）应呈现")
+            self.assertTrue(self.ac.commit_state("2026-09-14"))
+            self.assertEqual("", self.ac.render_if_updated("auto", state_path=self.state),
+                             "数据未更新时不应再次呈现")
+            self.assertFalse(self.ac.commit_state("2026-09-15"), "未呈现时 commit 应为空操作")
+
+    def test_presents_again_on_update_with_badge(self):
+        changed = copy.deepcopy(self.base)
+        h0 = changed["hyperscalers"][0]
+        h0["guidance_path"] = (h0.get("guidance_path") or []) + [["9月", "新增指引"]]
+        with self._with_baseline(self.base):
+            self.ac.render_if_updated("auto", state_path=self.state)
+            self.ac.commit_state("2026-09-14")
+        with self._with_baseline(changed):
+            html = self.ac.render_if_updated("auto", state_path=self.state)
+        self.assertIn("sec-aicapex", html, "数据更新后必须重新呈现")
+        self.assertIn("本期更新", html, "重新呈现时须标注本期更新")
+
+    def test_never_and_always_modes(self):
+        with self._with_baseline(self.base):
+            self.assertEqual("", self.ac.render_if_updated("never", state_path=self.state))
+            self.assertIn("sec-aicapex", self.ac.render_if_updated("always", state_path=self.state))
+
+
 class TestReportAnchors(unittest.TestCase):
     """报告章节缺失是最容易静默发生的回归（抓取失败→整章消失）。"""
 
@@ -159,6 +225,12 @@ class TestReportAnchors(unittest.TestCase):
     def test_section_anchors_present(self):
         missing = [a for a in SECTION_ANCHORS if a not in self.html]
         self.assertEqual([], missing, f"{self.path.name} 缺少章节: {missing}")
+
+    def test_section_count_matches_ai_capex_presence(self):
+        """章节数须与 AI 资本开支章节是否出现一致（该章节按数据更新动态出现）。"""
+        has = "sec-aicapex" in self.html
+        self.assertIn(f"{10 if has else 9}章节", self.html,
+                      f"章节数与 AI 资本开支章节存在性（{has}）不一致")
 
     def test_no_unrendered_placeholder_leak(self):
         """模板占位符外泄说明渲染分支出错。"""

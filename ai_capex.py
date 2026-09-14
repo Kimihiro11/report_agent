@@ -12,11 +12,21 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 SEED_PATH = BASE_DIR / "seeds" / "ai_capex.json"
+STATE_PATH = BASE_DIR / "data" / "ai_capex_state.json"
+
+# 指纹只覆盖「投入与指引」类字段：版面文案（note/as_of 等）调整不应触发章节重现
+_FP_H_FIELDS = ("name", "quarterly_capex", "guidance_2026", "guidance_path", "direction", "recycle")
+_FP_L_FIELDS = ("name", "arr", "compute_commitments_total", "power_secured")
+
+# 本次渲染待落盘的指纹（报告真正写出后由 commit_state 落盘，避免「渲染了但报告没落盘」也标记为已呈现）
+_PENDING_FP = None
+_PENDING_META = {}
 
 
 def load_baseline() -> dict:
@@ -24,6 +34,45 @@ def load_baseline() -> dict:
         return json.loads(SEED_PATH.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def data_fingerprint(d: dict | None = None) -> str:
+    """数据指纹：季度 capex / 全年指引 / 指引调整路径 / 模型公司承诺 的稳定摘要。
+
+    用于判断「是否出现了新的指引数据」，从而决定该章节本期是否呈现。
+    """
+    d = d if d is not None else load_baseline()
+    qh = d.get("quarterly_history") or {}
+    payload = {
+        "hyperscalers": [{k: h.get(k) for k in _FP_H_FIELDS} for h in (d.get("hyperscalers") or [])],
+        "quarters": qh.get("quarters"),
+        "total": qh.get("total"),
+        "labs": [{k: lb.get(k) for k in _FP_L_FIELDS} for lb in (d.get("ai_labs") or [])],
+    }
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _state_path(state_path=None) -> Path:
+    return Path(state_path) if state_path else STATE_PATH
+
+
+def load_state(state_path=None) -> dict:
+    try:
+        return json.loads(_state_path(state_path).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_state(state_path, state: dict) -> None:
+    p = _state_path(state_path)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(p)
+    except Exception as e:
+        print(f"[警告] AI 资本开支呈现状态写入失败: {e}")
 
 
 def analyze(d: dict) -> dict:
@@ -125,10 +174,8 @@ def _growth_note(qh: dict) -> str:
     return " ｜ ".join(seg)
 
 
-def render_section() -> str:
-    d = load_baseline()
-    if not d:
-        return ""
+def _render(d: dict, is_new: bool = False, prev_shown: str | None = None) -> str:
+    """章节 HTML 主体（无门控，由 render_if_updated / render_section 调用）。"""
     hs = d.get("hyperscalers") or []
     agg = d.get("aggregate") or {}
     mix = d.get("capex_mix") or {}
@@ -224,10 +271,14 @@ def render_section() -> str:
         '③模型公司「算力承诺 ÷ 自身收入」的倍数，是这轮投入可持续性的核心度量。'
         '</div>')
 
+    badge = ('<span class="badge b-red" style="margin-left:8px;vertical-align:middle">本期更新</span>'
+             if is_new else '')
+    prev_txt = (f' ｜ 上次呈现：{_esc(prev_shown)}' if (is_new and prev_shown) else '')
+
     return f'''
     <div class="card" id="sec-aicapex">
-      <h2>海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）</h2>
-      <p class="muted" style="font-size:12px">数据截至 {_esc(d.get("as_of", ""))} ｜ 覆盖 {a["n"]} 家云厂商 + {len(labs)} 家模型公司 ｜ 金额单位：亿美元</p>
+      <h2>海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）{badge}</h2>
+      <p class="muted" style="font-size:12px">数据截至 {_esc(d.get("as_of", ""))} ｜ 覆盖 {a["n"]} 家云厂商 + {len(labs)} 家模型公司 ｜ 金额单位：亿美元{prev_txt}</p>
       {readme}
 
       <div class="in-struct" style="margin:6px 0 10px">
@@ -290,6 +341,55 @@ def render_section() -> str:
         资本开支就不会降速；反之若指引出现真实下修，才应启动对算力链的需求下修。
       </p>
     </div>'''
+
+
+def render_if_updated(force: str = "auto", state_path=None) -> str:
+    """按需渲染：仅当数据指纹变化（出现新指引）时返回章节，否则返回空串。
+
+    force: auto（默认，指纹变化才渲染）｜ always（强制渲染）｜ never（永不渲染）
+    渲染时把指纹记为 pending，待报告真正写出后由 commit_state() 落盘——
+    避免「渲染了但报告没写出去」也被当成已呈现。
+    """
+    global _PENDING_FP, _PENDING_META
+    if force == "never":
+        return ""
+    d = load_baseline()
+    if not d:
+        return ""
+    fp = data_fingerprint(d)
+    state = load_state(state_path)
+    is_new = fp != state.get("last_fingerprint")
+    if not is_new and force != "always":
+        return ""
+    _PENDING_FP = fp
+    _PENDING_META = {"state_path": state_path}
+    return _render(d, is_new=is_new, prev_shown=state.get("last_shown_date"))
+
+
+def render_section(d: dict | None = None) -> str:
+    """无条件渲染（手动查看 / 回测用）。日报走 render_if_updated() 的门控。"""
+    d = d if d is not None else load_baseline()
+    return _render(d) if d else ""
+
+
+def commit_state(report_date: str) -> bool:
+    """报告落盘后调用：把本次呈现的指纹记为「已呈现」。未呈现则空操作。"""
+    global _PENDING_FP, _PENDING_META
+    if not _PENDING_FP:
+        return False
+    path = _PENDING_META.get("state_path")
+    old = load_state(path)
+    hist = list(old.get("history") or [])[-7:]
+    hist.append({"date": report_date, "fingerprint": _PENDING_FP})
+    _write_state(path, {
+        "last_fingerprint": _PENDING_FP,
+        "last_shown_date": report_date,
+        "shown_count": int(old.get("shown_count") or 0) + 1,
+        "history": hist,
+    })
+    _PENDING_FP = None
+    _PENDING_META = {}
+    return True
 
 
 def _esc(s) -> str:

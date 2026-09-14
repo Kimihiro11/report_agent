@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成 A股操作指引 9 章节报告（参数化日期与类型），数据全部来自实时快照。
+"""生成 A股操作指引报告（9~10 章节，参数化日期与类型），数据全部来自实时快照。
+AI 资本开支章节为季度频率内容，默认仅在数据有更新（指纹变化）时出现，见 ai_capex.render_if_updated。
 
 用法: python build_report.py --date 2026-08-17 --type 早报|盘中|晚报|周报
 
@@ -23,6 +24,12 @@ import stock_report_agent as agent
 import news_intel as _ni
 import view as _view
 import ai_capex as _aic
+
+# AI 资本开支章节呈现策略（--ai-capex 覆盖）：
+#   auto   —— 该章节为季度频率的静态内容，仅在数据指纹变化（出现新指引）时呈现
+#   always —— 强制呈现（手动查看当期数据）
+#   never  —— 永不呈现
+AI_CAPEX_MODE = "auto"
 
 # 研判文本模板外置到 templates/prompts.py
 try:
@@ -161,7 +168,7 @@ diag_raw = []
 
 def load_context():
     """解析命令行参数，并加载全部实时数据上下文（配置/快照/外网解析/个股诊断）到模块全局。"""
-    global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE
+    global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE, AI_CAPEX_MODE
     global cfg, WATCHLIST, VS_NAMES, VS_SOURCES
     global snap_path, snapshot, weibo_data, quotes, us_market, etf, fund_flows, market_state, matched_sectors
     global market_width, VIEW
@@ -171,10 +178,12 @@ def load_context():
     global diag_raw
 
     # ---- 参数：--date 报告日期(YYYY-MM-DD) / --type 报告类型(决定写入目录) ----
-    ap = argparse.ArgumentParser(description="生成 A股操作指引 9 章节报告（实时数据）")
+    ap = argparse.ArgumentParser(description="生成 A股操作指引报告（9~10 章节，实时数据）")
     ap.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"), help="报告日期 YYYY-MM-DD")
     ap.add_argument("--type", default="早报", choices=["早报", "盘中", "晚报", "周报"],
                     help="报告类型：早报/盘中/晚报/周报，决定写入 reports/<类型>/ 目录")
+    ap.add_argument("--ai-capex", default="auto", choices=["auto", "always", "never"],
+                    help="AI 资本开支章节呈现策略：auto=仅在有新指引数据时出现（默认）/ always=强制 / never=关闭")
     _args = ap.parse_args()
     TODAY = _args.date
     DATE8 = TODAY.replace("-", "")
@@ -182,6 +191,7 @@ def load_context():
     NOW = datetime.now().strftime("%Y-%m-%d %H:%M")
     REPORT_LABEL = _TYPE_LABEL.get(REPORT_TYPE, "盘前版")
     REPORT_STATE = _TYPE_STATE.get(REPORT_TYPE, "盘前")
+    AI_CAPEX_MODE = _args.ai_capex
 
     # ---- 加载配置（自选股 + 大V 源，避免写死） ----
     cfg = agent.load_config()
@@ -1617,13 +1627,14 @@ def _chan_stance(sig_label):
 
 
 def ai_capex_section():
-    """海外 AI 巨头资本开支追踪（总量 / 结构 / 市场映射）。
+    """海外 AI 巨头资本开支追踪（总量 / 结构 / 市场映射）—— 按数据更新呈现。
 
-    数据源 seeds/ai_capex.json（随财报季人工更新），渲染逻辑在 ai_capex.py。
-    渲染失败不影响其它章节，返回空串由装配层跳过。
+    该章节是季度频率的静态内容（随财报季人工更新 seeds/ai_capex.json），
+    每天重复呈现没有信息增量，故默认按需出现：数据指纹与上次呈现不同才渲染。
+    --ai-capex always 可强制呈现、never 关闭。渲染失败不影响其它章节，返回空串。
     """
     try:
-        return _aic.render_section()
+        return _aic.render_if_updated(AI_CAPEX_MODE)
     except Exception as e:
         print(f"[警告] AI 资本开支章节渲染失败: {e}")
         return ""
@@ -2227,19 +2238,24 @@ def vs_summary():
 
 def _render_html():
     css = _load_css()
+    # AI 资本开支章节按数据更新出现 —— 章节数与目录项随之动态调整（无更新时回到 9 章节）
+    aic_html = ai_capex_section()
+    n_sec = 10 if aic_html else 9
+    aic_toc = ('<li><a href="#sec-aicapex">海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）</a></li>'
+               if aic_html else "")
     return f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A股舆情操作指引 · 10章节 · {TODAY}（{REPORT_LABEL}）</title>
+<title>A股舆情操作指引 · {n_sec}章节 · {TODAY}（{REPORT_LABEL}）</title>
 <style>{css}</style>
 </head>
 <body>
 <div class="wrap">
 
 <div class="header">
-<h1>A股舆情操作指引 · 10章节完整报告</h1>
+<h1>A股舆情操作指引 · {n_sec}章节完整报告</h1>
 <div class="sub">微博舆情 + 全球人物 + 宏观 + 事件因子 + 行情资金 + 技术走势 + 国家队 + 自选股（{REPORT_LABEL}）</div>
 <div class="meta">
 <span>报告日期：{TODAY}（{REPORT_LABEL}）</span>
@@ -2253,7 +2269,7 @@ def _render_html():
 <h2>目录</h2>
 <ol>
 <li><a href="#sec-core">核心结论（实时 · 含今日操作策略与主要指数）</a></li>
-<li><a href="#sec-aicapex">海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）</a></li>
+{aic_toc}
 <li><a href="#sec-us">隔夜美股（实时 · 外网解析）</a></li>
 <li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
 <li><a href="#sec-chain">宏观传导链监控（独立因子·实时）</a></li>
@@ -2273,7 +2289,7 @@ def _render_html():
 {core_conclusion()}
 </div>
 
-{ai_capex_section()}
+{aic_html}
 
 <div class="card" id="sec-us">
 <h2>一、隔夜美股（实时 · 外网解析）</h2>
@@ -2345,6 +2361,10 @@ def main():
         f.write(html)
     print(f"报告已生成: {out} ({out.stat().st_size // 1024} KB)")
 
+    # 报告已落盘 → 记录本期呈现的 AI 资本开支数据指纹（本期未呈现则空操作）
+    if _aic.commit_state(TODAY):
+        print(f"[AI资本开支] 本期呈现（数据有更新），指纹已记录 @ {TODAY}")
+
     # ---------- 写入数据库 ----------
     try:
         from db import StockAgentDB
@@ -2354,7 +2374,8 @@ def main():
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
             td = datetime.strptime(TODAY, "%Y-%m-%d").date()
-            db.save_report(td, REPORT_STATE, "A股操作指引·10章节", html)
+            _n_sec = 10 if "sec-aicapex" in html else 9
+            db.save_report(td, REPORT_STATE, f"A股操作指引·{_n_sec}章节", html)
             print("[DB] 报告入库完成（舆情数据由数据引擎统一入库，避免重复）")
         else:
             print("[DB] 未配置 database，跳过入库")
