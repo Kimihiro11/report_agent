@@ -22,6 +22,7 @@ from pathlib import Path
 import stock_report_agent as agent
 import news_intel as _ni
 import view as _view
+import ai_capex as _aic
 
 # 研判文本模板外置到 templates/prompts.py
 try:
@@ -188,7 +189,10 @@ def load_context():
     VS_NAMES = [s.get("name", "") for s in cfg.get("weibo_sources", [])]
     VS_SOURCES = cfg.get("weibo_sources", []) or []
 
-    # ---- 加载实时快照（数据引擎产出，位于 data/snapshots/，取当日最新一份） ----
+    # ---- 加载实时快照（数据引擎产出，位于 data/snapshots/）----
+    # 按报告类型选择口径：早报优先盘前快照（basis=pre_market，盘前采集的舆情最完整），
+    # 晚报/周报优先收盘快照（basis=close）；同口径多份取最新。
+    # 修复：此前一律取「最新一份」，导致早报重生成时误用收盘快照、舆情章节缩水。
     _snap_dir = BASE_DIR / "data" / "snapshots"
     _candidates = sorted(_snap_dir.glob(f"fetched_{DATE8}*.json")) if _snap_dir.exists() else []
     if not _candidates:
@@ -196,6 +200,22 @@ def load_context():
         _old = BASE_DIR / "data" / f"fetched_{DATE8}.json"
         if _old.exists():
             _candidates = [_old]
+
+    def _snap_basis(p):
+        try:
+            return (json.loads(p.read_text(encoding="utf-8")).get("meta") or {}).get("basis") or ""
+        except Exception:
+            return ""
+
+    if len(_candidates) > 1:
+        _want = "pre_market" if REPORT_TYPE == "早报" else "close"
+        _matched = [p for p in _candidates if _snap_basis(p) == _want]
+        if _matched:
+            _candidates = _matched
+        else:
+            _with_meta = [p for p in _candidates if _snap_basis(p)]
+            if _with_meta:
+                _candidates = _with_meta
     snap_path = _candidates[-1] if _candidates else None
     snapshot = {}
     if snap_path is not None and snap_path.exists():
@@ -1596,6 +1616,19 @@ def _chan_stance(sig_label):
     return "震荡"
 
 
+def ai_capex_section():
+    """海外 AI 巨头资本开支追踪（总量 / 结构 / 市场映射）。
+
+    数据源 seeds/ai_capex.json（随财报季人工更新），渲染逻辑在 ai_capex.py。
+    渲染失败不影响其它章节，返回空串由装配层跳过。
+    """
+    try:
+        return _aic.render_section()
+    except Exception as e:
+        print(f"[警告] AI 资本开支章节渲染失败: {e}")
+        return ""
+
+
 def chan_section():
     """缠论推演（上证指数 30分钟+日线 多级别 · 操作指引）。
 
@@ -2199,14 +2232,14 @@ def _render_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>A股舆情操作指引 · 9章节 · {TODAY}（{REPORT_LABEL}）</title>
+<title>A股舆情操作指引 · 10章节 · {TODAY}（{REPORT_LABEL}）</title>
 <style>{css}</style>
 </head>
 <body>
 <div class="wrap">
 
 <div class="header">
-<h1>A股舆情操作指引 · 9章节完整报告</h1>
+<h1>A股舆情操作指引 · 10章节完整报告</h1>
 <div class="sub">微博舆情 + 全球人物 + 宏观 + 事件因子 + 行情资金 + 技术走势 + 国家队 + 自选股（{REPORT_LABEL}）</div>
 <div class="meta">
 <span>报告日期：{TODAY}（{REPORT_LABEL}）</span>
@@ -2220,6 +2253,7 @@ def _render_html():
 <h2>目录</h2>
 <ol>
 <li><a href="#sec-core">核心结论（实时 · 含今日操作策略与主要指数）</a></li>
+<li><a href="#sec-aicapex">海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）</a></li>
 <li><a href="#sec-us">隔夜美股（实时 · 外网解析）</a></li>
 <li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
 <li><a href="#sec-chain">宏观传导链监控（独立因子·实时）</a></li>
@@ -2238,6 +2272,8 @@ def _render_html():
 <h2>核心结论（实时 · 含今日操作策略与主要指数）</h2>
 {core_conclusion()}
 </div>
+
+{ai_capex_section()}
 
 <div class="card" id="sec-us">
 <h2>一、隔夜美股（实时 · 外网解析）</h2>
@@ -2318,7 +2354,7 @@ def main():
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
             td = datetime.strptime(TODAY, "%Y-%m-%d").date()
-            db.save_report(td, REPORT_STATE, "A股操作指引·9章节", html)
+            db.save_report(td, REPORT_STATE, "A股操作指引·10章节", html)
             print("[DB] 报告入库完成（舆情数据由数据引擎统一入库，避免重复）")
         else:
             print("[DB] 未配置 database，跳过入库")
