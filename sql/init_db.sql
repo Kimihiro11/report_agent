@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
 );
 
 -- 2. 指数行情
+-- 唯一约束 (quote_date, index_name)：采集端按此 UPSERT，避免重复累积
 CREATE TABLE IF NOT EXISTS index_quotes (
     id SERIAL PRIMARY KEY,
     quote_date DATE NOT NULL,
@@ -24,7 +25,8 @@ CREATE TABLE IF NOT EXISTS index_quotes (
     price NUMERIC(12,2),
     change_pct NUMERIC(8,2),
     volume VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(quote_date, index_name)
 );
 
 -- 3. 舆情数据（微博/全球人物/宏观/事件/技术 全部统一入库）

@@ -1165,6 +1165,11 @@ def fetch_etf_flows():
     print("[ETF] 抓取 ETF 资金净流（东方财富 push2 优先，腾讯自选股连接器兜底）...")
     res = _fetch_with_fallback([("东方财富push2", _etf_push2), ("腾讯自选股", _etf_westock)], label="ETF资金流")
     res = res or []
+    # 假 0 检测：东财 push2 在盘前/收盘结算前常返回「净流入 0.00亿元」占位值（非真实数据）。
+    # 明确告警而不是静默降级——入库侧另有 _etf_amount_valid() 拦截，此处提示改用妙想补录。
+    if res and not _etf_amount_valid(res):
+        print("  [ETF] ⚠️ 全部为 0.00 占位值（push2 未返回真实数据）：该批数据无效、将跳过入库；"
+              "如需当日真实值，请用妙想查询「<ETF> YYYY年M月D日主力资金净流入」后补录")
     print(f"  获取 {len(res)} 只 ETF 资金流")
     return res
 
@@ -1396,45 +1401,86 @@ def main():
     weibo_cookie = config.get("weibo_cookie", "")
     weibo_data = {}
     ta_data = {}
-    if not no_fetch:
-        for src in config.get("weibo_sources", []):
-            # T1 源（唐史主任）回溯近 2 天：周一早盘结合周末/昨日观点输出
-            lb = 2 if src.get("tier") == 1 else 1
-            posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie, lookback_days=lb)
-            weibo_data[src["name"]] = posts
-        for src in config.get("global_sources", []):
-            posts = fetch_global_source(src["name"], src.get("signal_type", ""))
-            weibo_data[f"[全球] {src['name']}"] = posts
-        macro_data = fetch_macro_data(config.get("macro_indicators", {}))
-        weibo_data.update(macro_data)
-        event_data = fetch_event_factors(config.get("event_factors", {}))
-        weibo_data.update(event_data)
-        ta_data = fetch_technical_analysis(config.get("technical_analysis", {}))
-        for sym, kline in ta_data.items():
-            desc = f"收盘{kline['close']} MA5={kline['ma5']} MA10={kline['ma10']} MA20={kline['ma20']} 趋势:{kline['trend']} 近5日高{kline['high5']} 低{kline['low5']}"
-            weibo_data[f"[技术] {sym}"] = [{"text": desc, "time": ""}]
-        nt_data = fetch_national_team(config.get("national_team", {}))
-        weibo_data.update(nt_data)
-        jp_data = fetch_japan_carry(config.get("japan_carry", {}))
-        weibo_data.update(jp_data)
 
+    # ---- 采集整体时间预算：防止单个外部源长尾拖死整个流程 ----
+    # 背景：2026-09-13 周报卡 1h45m、2026-09-14 收盘采集卡 4m54s，
+    # 均为「单次有 timeout、但多源多次重试叠加且无总预算」所致。
+    # 预算耗尽后跳过剩余采集，保证主流程按时产出（缺口由报告渲染占位，绝不造假）。
+    _t0 = _time_mod.monotonic()
+    BUDGET_SEC = 180
+
+    def _budget_left():
+        return BUDGET_SEC - (_time_mod.monotonic() - _t0)
+
+    def _budget_ok(label, need=15):
+        left = _budget_left()
+        if left < need:
+            print(f"  [预算] 剩余 {left:.0f}s < {need}s，跳过：{label}")
+            return False
+        return True
+
+    # ---- 行情优先：指数/美股/ETF/宽度是报告骨架，先采，避免被舆情源耗尽预算 ----
+    # （2026-09-14 实测：舆情源先跑吃掉全部 180s，导致指数/美股/ETF 全被跳过、产出空骨架快照）
     quotes = {}
     us_market, etf, us_yield = [], [], None
     fund_flows = None
     market_width = None
     if not no_fetch:
-        quotes = fetch_index_quotes()
-        us_market = fetch_us_market()
-        etf = fetch_etf_flows()
-        us_yield = fetch_us_yield()
-        fund_flows = fetch_fund_flows()
-        market_width = fetch_market_width()
+        quotes = fetch_index_quotes() if _budget_ok("指数行情", need=10) else {}
+        us_market = fetch_us_market() if _budget_ok("隔夜美股") else []
+        etf = fetch_etf_flows() if _budget_ok("ETF资金流") else []
+        us_yield = fetch_us_yield() if _budget_ok("美债收益率") else None
+        fund_flows = fetch_fund_flows() if _budget_ok("资金面") else None
+        market_width = fetch_market_width() if _budget_ok("市场宽度") else None
+        print(f"[数据引擎] 行情采集完成（耗时 {_time_mod.monotonic() - _t0:.0f}s，剩余 {_budget_left():.0f}s）")
+
+    if not no_fetch:
+        for src in config.get("weibo_sources", []):
+            if not _budget_ok(f"微博源 {src['name']}"):
+                weibo_data[src["name"]] = []
+                continue
+            # T1 源（唐史主任）回溯近 2 天：周一早盘结合周末/昨日观点输出
+            lb = 2 if src.get("tier") == 1 else 1
+            posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie, lookback_days=lb)
+            weibo_data[src["name"]] = posts
+        for src in config.get("global_sources", []):
+            if not _budget_ok(f"全球源 {src['name']}"):
+                weibo_data[f"[全局] {src['name']}"] = []
+                continue
+            posts = fetch_global_source(src["name"], src.get("signal_type", ""))
+            weibo_data[f"[全球] {src['name']}"] = posts
+        if _budget_ok("宏观数据"):
+            macro_data = fetch_macro_data(config.get("macro_indicators", {}))
+            weibo_data.update(macro_data)
+        if _budget_ok("事件因子"):
+            event_data = fetch_event_factors(config.get("event_factors", {}))
+            weibo_data.update(event_data)
+        if _budget_ok("技术分析", need=25):
+            ta_data = fetch_technical_analysis(config.get("technical_analysis", {}))
+        for sym, kline in ta_data.items():
+            desc = f"收盘{kline['close']} MA5={kline['ma5']} MA10={kline['ma10']} MA20={kline['ma20']} 趋势:{kline['trend']} 近5日高{kline['high5']} 低{kline['low5']}"
+            weibo_data[f"[技术] {sym}"] = [{"text": desc, "time": ""}]
+        if _budget_ok("国家队"):
+            nt_data = fetch_national_team(config.get("national_team", {}))
+            weibo_data.update(nt_data)
+        if _budget_ok("日本传导链", need=20):
+            jp_data = fetch_japan_carry(config.get("japan_carry", {}))
+            weibo_data.update(jp_data)
+        print(f"[数据引擎] 舆情采集完成（总耗时 {_time_mod.monotonic() - _t0:.0f}s）")
 
     analysis = analyze_sentiment(weibo_data, quotes)
 
     # 简版模式已取消（2026-08-17）：除回测外一律跑全功能 9 章节报告。
     # stock_report_agent 作为数据引擎：采集 → 快照 → 入库；
     # 全功能报告由 build_report.py + WebSearch 实时拼装生成。
+    # 空骨架保护：核心行情为空（预算耗尽或全部源失败）时不写快照、不入库，
+    # 避免空快照按时间排序覆盖掉同日的有效快照（2026-09-14 实测踩到：15:15 产生的
+    # 空骨架快照会让 build_report 读取到「指数 0 个」的快照，报告全变占位）。
+    if not quotes and not weibo_data:
+        print("[数据引擎] ⚠️ 核心数据为空（指数与舆情均未取到），跳过写快照与入库，"
+              "避免污染当日有效快照。请检查网络/数据源后重跑。")
+        return
+
     ts = datetime.now().strftime("%H%M%S")
     snap_path = snap_dir / f"fetched_{today}_{ts}.json"
     # 统一口径：盘前采集到的行情属于上一交易日，data_date 由口径层判定（根治历史错位）

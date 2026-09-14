@@ -185,6 +185,21 @@ class TestEnvironmentContract(unittest.TestCase):
                    "core_conclusion", "_index_snapshot"):
             self.assertTrue(hasattr(br, fn), f"build_report 缺少 {fn}")
 
+    def test_collector_has_budget_and_empty_snapshot_guard(self):
+        """采集端必须保留「整体时间预算」与「空骨架快照保护」两道守卫。
+
+        背景：2026-09-13 周报卡 1h45m、09-14 采集卡 4m54s 且产出空骨架快照，
+        两者都会让主流程产出废报告。
+        """
+        src = (BASE / "stock_report_agent.py").read_text(encoding="utf-8")
+        self.assertIn("_budget_ok(", src, "采集端缺少整体时间预算守卫")
+        self.assertIn("BUDGET_SEC", src)
+        self.assertIn("核心数据为空", src, "采集端缺少空骨架快照保护")
+        # 行情必须先于舆情采集（否则舆情源会耗尽预算、行情全被跳过）
+        # 注意：用带 _budget_ok( 前缀的精确锚点，避免匹配到同名的日志文案
+        self.assertLess(src.index('_budget_ok("指数行情"'), src.index('_budget_ok(f"微博源'),
+                        "行情采集必须排在舆情之前，避免预算被舆情耗尽")
+
     def test_rendering_layer_has_no_own_date_math(self):
         """口径必须来自 VIEW / DB，渲染层不得自行推算交易日。"""
         src = (BASE / "build_report.py").read_text(encoding="utf-8")
@@ -214,6 +229,16 @@ class TestDatabaseConsistency(unittest.TestCase):
         with self.db._cursor() as cur:
             cur.execute(sql)
             return cur.fetchall()
+
+    def test_index_quotes_has_unique_constraint(self):
+        """index_quotes 必须有 (quote_date, index_name) 唯一约束。
+
+        该表此前是裸表（无约束 + 纯 INSERT），每次采集追加一份，
+        2026-09-14 一次清理出 131 行重复。
+        """
+        rows = self._rows("""SELECT conname FROM pg_constraint
+                             WHERE conrelid='index_quotes'::regclass AND contype='u'""")
+        self.assertTrue(rows, "index_quotes 缺少唯一约束（重复行会持续累积）")
 
     def test_index_quotes_no_weekend_rows(self):
         """指数行情不应落在周末（盘前错位的典型征兆）。"""

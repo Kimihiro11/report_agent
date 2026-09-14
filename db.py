@@ -51,7 +51,8 @@ class StockAgentDB:
                 price NUMERIC(12,2),
                 change_pct NUMERIC(8,2),
                 volume VARCHAR(50),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(quote_date, index_name)
             )""",
             """CREATE TABLE IF NOT EXISTS sentiment_data (
                 id SERIAL PRIMARY KEY,
@@ -192,6 +193,17 @@ class StockAgentDB:
                     ALTER TABLE etf_flows ADD CONSTRAINT uq_etf_flows_date_code UNIQUE (flow_date, code);
                 END IF;
             END $$""",
+            # index_quotes 清理重复 + 唯一约束（幂等）
+            # 该表此前是裸表（无约束 + 纯 INSERT），每次采集都会追加一份，
+            # 长期累积大量重复行（2026-09-14 一次清理出 131 行）。
+            "DELETE FROM index_quotes WHERE id NOT IN "
+            "(SELECT MAX(id) FROM index_quotes GROUP BY quote_date, index_name)",
+            """DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_index_quotes_date_name') THEN
+                    ALTER TABLE index_quotes ADD CONSTRAINT uq_index_quotes_date_name
+                        UNIQUE (quote_date, index_name);
+                END IF;
+            END $$""",
         ]
         with self._cursor() as cur:
             for sql in tables:
@@ -244,10 +256,15 @@ class StockAgentDB:
         print(f"[DB] 报告入库: {report_date}")
 
     def save_index_quotes(self, quote_date, quotes):
+        """指数行情入库（UPSERT：同 quote_date+index_name 覆盖，避免重复累积）。"""
         with self._cursor() as cur:
             for name, q in quotes.items():
                 cur.execute(
-                    "INSERT INTO index_quotes (quote_date, index_name, price, change_pct, volume) VALUES (%s,%s,%s,%s,%s)",
+                    """INSERT INTO index_quotes (quote_date, index_name, price, change_pct, volume)
+                       VALUES (%s,%s,%s,%s,%s)
+                       ON CONFLICT (quote_date, index_name) DO UPDATE SET
+                         price=EXCLUDED.price, change_pct=EXCLUDED.change_pct,
+                         volume=EXCLUDED.volume""",
                     (quote_date, name, q.get("price"), q.get("chg_pct"), str(q.get("volume", ""))),
                 )
         print(f"[DB] 指数行情入库: {len(quotes)} 条")
