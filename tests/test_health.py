@@ -230,6 +230,12 @@ class TestDatabaseConsistency(unittest.TestCase):
             cur.execute(sql)
             return cur.fetchall()
 
+    def test_ai_capex_tables_populated(self):
+        """AI 资本开支三张表须存在且有数据（章节数据必须落库，不能只留 JSON 文件）。"""
+        for t in ("ai_capex_quarters", "ai_capex_guidance_path", "ai_lab_commitments"):
+            rows = self._rows(f"SELECT COUNT(*) FROM {t}")
+            self.assertGreater(rows[0][0], 0, f"{t} 无数据（seeds/ai_capex.json 未落库？）")
+
     def test_index_quotes_has_unique_constraint(self):
         """index_quotes 必须有 (quote_date, index_name) 唯一约束。
 

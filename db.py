@@ -204,6 +204,46 @@ class StockAgentDB:
                         UNIQUE (quote_date, index_name);
                 END IF;
             END $$""",
+            # ---- 海外 AI 巨头资本开支（章节数据落库，金额单位：亿美元）----
+            """CREATE TABLE IF NOT EXISTS ai_capex_quarters (
+                id SERIAL PRIMARY KEY,
+                company VARCHAR(50) NOT NULL,
+                ticker VARCHAR(20),
+                segment VARCHAR(50),
+                fiscal_period VARCHAR(30) NOT NULL,
+                capex NUMERIC(12,2),
+                guidance_2026_mid NUMERIC(12,2),
+                guidance_2026 VARCHAR(60),
+                direction VARCHAR(50),
+                recycle TEXT,
+                note TEXT,
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(company, fiscal_period)
+            )""",
+            """CREATE TABLE IF NOT EXISTS ai_capex_guidance_path (
+                id SERIAL PRIMARY KEY,
+                company VARCHAR(50) NOT NULL,
+                change_month VARCHAR(10) NOT NULL,
+                value_text VARCHAR(60),
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(company, change_month)
+            )""",
+            """CREATE TABLE IF NOT EXISTS ai_lab_commitments (
+                id SERIAL PRIMARY KEY,
+                lab VARCHAR(50) NOT NULL,
+                vendor VARCHAR(50) NOT NULL,
+                amount_text VARCHAR(80),
+                arr NUMERIC(12,2),
+                arr_period VARCHAR(40),
+                commitment_total NUMERIC(12,2),
+                power_secured VARCHAR(80),
+                note TEXT,
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(lab, vendor)
+            )""",
         ]
         with self._cursor() as cur:
             for sql in tables:
@@ -268,6 +308,64 @@ class StockAgentDB:
                     (quote_date, name, q.get("price"), q.get("chg_pct"), str(q.get("volume", ""))),
                 )
         print(f"[DB] 指数行情入库: {len(quotes)} 条")
+
+    def save_ai_capex(self, data):
+        """写入海外 AI 巨头资本开支基线数据（幂等 UPSERT）。
+
+        data: seeds/ai_capex.json 的解析结果（金额单位：亿美元）。
+        写入三张表：ai_capex_quarters（季度 capex 与指引）、
+        ai_capex_guidance_path（指引调整路径）、ai_lab_commitments（模型公司算力承诺）。
+        """
+        if not isinstance(data, dict) or not data:
+            return
+        as_of = data.get("as_of")
+        n_q = n_p = n_l = 0
+        with self._cursor() as cur:
+            for h in data.get("hyperscalers") or []:
+                cur.execute(
+                    """INSERT INTO ai_capex_quarters
+                       (company, ticker, segment, fiscal_period, capex, guidance_2026_mid,
+                        guidance_2026, direction, recycle, note, as_of)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (company, fiscal_period) DO UPDATE SET
+                         ticker=EXCLUDED.ticker, segment=EXCLUDED.segment, capex=EXCLUDED.capex,
+                         guidance_2026_mid=EXCLUDED.guidance_2026_mid,
+                         guidance_2026=EXCLUDED.guidance_2026, direction=EXCLUDED.direction,
+                         recycle=EXCLUDED.recycle, note=EXCLUDED.note, as_of=EXCLUDED.as_of""",
+                    (h.get("name"), h.get("ticker"), h.get("segment"), h.get("fiscal"),
+                     h.get("quarterly_capex"), h.get("guidance_2026_mid"), h.get("guidance_2026"),
+                     h.get("direction"), h.get("recycle"), h.get("note"), as_of))
+                n_q += 1
+                for step in (h.get("guidance_path") or []):
+                    month, val = step[0], (step[1] if len(step) > 1 else "")
+                    cur.execute(
+                        """INSERT INTO ai_capex_guidance_path (company, change_month, value_text, as_of)
+                           VALUES (%s,%s,%s,%s)
+                           ON CONFLICT (company, change_month) DO UPDATE SET
+                             value_text=EXCLUDED.value_text, as_of=EXCLUDED.as_of""",
+                        (h.get("name"), month, val, as_of))
+                    n_p += 1
+            for lb in data.get("ai_labs") or []:
+                commits = lb.get("commitments") or [["—", "—"]]
+                for row in commits:
+                    vendor = row[0] if row else "—"
+                    amount = row[1] if len(row) > 1 else ""
+                    cur.execute(
+                        """INSERT INTO ai_lab_commitments
+                           (lab, vendor, amount_text, arr, arr_period, commitment_total,
+                            power_secured, note, as_of)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (lab, vendor) DO UPDATE SET
+                             amount_text=EXCLUDED.amount_text, arr=EXCLUDED.arr,
+                             arr_period=EXCLUDED.arr_period,
+                             commitment_total=EXCLUDED.commitment_total,
+                             power_secured=EXCLUDED.power_secured, note=EXCLUDED.note,
+                             as_of=EXCLUDED.as_of""",
+                        (lb.get("name"), vendor, amount, lb.get("arr"), lb.get("arr_period"),
+                         lb.get("compute_commitments_total"), lb.get("power_secured"),
+                         lb.get("note"), as_of))
+                    n_l += 1
+        print(f"[DB] AI 资本开支入库: 云厂商 {n_q} 家 / 指引路径 {n_p} 条 / 实验室承诺 {n_l} 条")
 
     def save_sentiment_batch(self, record_date, weibo_data, source_patterns=None):
         """批量写入舆情数据。

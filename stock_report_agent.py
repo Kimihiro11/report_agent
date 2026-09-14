@@ -1317,6 +1317,13 @@ def _persist_to_db(config, snapshot, ta_data):
                                  cyb_up=mw.get("cyb_up"), cyb_down=mw.get("cyb_down"),
                                  cyb_flat=mw.get("cyb_flat"), cyb_zt=mw.get("cyb_zt"),
                                  cyb_dt=mw.get("cyb_dt"))
+        # 海外 AI 巨头资本开支（章节基线数据，来自 seeds/ai_capex.json，随财报季更新）
+        try:
+            _capex_path = OUTPUT_DIR / "seeds" / "ai_capex.json"
+            if _capex_path.exists():
+                db.save_ai_capex(json.loads(_capex_path.read_text(encoding="utf-8")))
+        except Exception as e:
+            print(f"  [DB] AI 资本开支入库跳过: {type(e).__name__}: {e}")
         return True, None
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
