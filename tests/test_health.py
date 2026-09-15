@@ -213,6 +213,31 @@ class TestAiCapexGating(unittest.TestCase):
             self.assertIn("sec-aicapex", self.ac.render_if_updated("always", state_path=self.state))
 
 
+class TestArrTopicData(unittest.TestCase):
+    """中美 ARR 专题：数据契约 + 可独立渲染（不依赖快照/DB）。"""
+
+    def test_seed_contract(self):
+        p = BASE / "seeds" / "arr_cn_us.json"
+        if not p.exists():
+            self.skipTest("缺少 seeds/arr_cn_us.json")
+        d = json.loads(p.read_text(encoding="utf-8"))
+        for k in ("as_of", "us_capex_2026", "cn_capex_2026", "arr_us", "arr_cn"):
+            self.assertIn(k, d, f"数据文件缺少 {k}")
+        self.assertTrue(d["us_capex_2026"].get("total"), "美国 capex 合计不可为空")
+        self.assertTrue(d["arr_us"].get("rows"), "美国 ARR 行不可为空")
+        self.assertTrue(d["arr_cn"].get("rows"), "中国 ARR 行不可为空")
+
+    def test_renders_standalone_html(self):
+        import arr_report
+        d = arr_report.load_data()
+        if not d:
+            self.skipTest("无专题数据")
+        html = arr_report.render(d, "2026-09-15")
+        for anchor in ('id="s1"', 'id="s9"', "中美对比"):
+            self.assertIn(anchor, html, f"专题报告缺少 {anchor}")
+        self.assertNotIn("**", html, "Markdown 标记外泄")
+
+
 class TestReportAnchors(unittest.TestCase):
     """报告章节缺失是最容易静默发生的回归（抓取失败→整章消失）。"""
 
