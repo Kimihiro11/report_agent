@@ -166,6 +166,7 @@ def render(d: dict, date_str: str) -> str:
     cs = d.get("capital_source_compare", {})
     rt = d.get("readthrough", {})
     sr = d.get("scale_reference", {})
+    inst = d.get("institutions", {})
 
     # ---- 结论速览 ----
     us_capex_usd = us_capex.get("total") or 0
@@ -250,6 +251,22 @@ def render(d: dict, date_str: str) -> str:
     chips = "".join(f'<span class="tag">{_esc(x)}</span>' for x in (rt.get("a_share_chain") or []))
     watch = "".join(f"<li>{_esc(x)}</li>" for x in (rt.get("watch") or []))
 
+    # ---- 机构研判 ----
+    def _inst_rows(key):
+        return [[n, st, v, e] for n, st, v, e in (inst.get(key) or [])] if inst else []
+
+    inst_html = ""
+    if inst:
+        _dispute_rows = [[a, b, c] for a, b, c in (inst.get("disputes") or [])]
+        inst_html = (
+            '      <h3>国际机构</h3>'
+            + _rows_table(["机构", "倾向", "核心判断", "关键论据"], _inst_rows("international"))
+            + '      <h3>国内机构</h3>'
+            + _rows_table(["机构", "倾向", "核心判断", "关键论据"], _inst_rows("domestic"))
+            + '      <h3>四个分歧焦点</h3>'
+            + _rows_table(["焦点", "分歧内容", "当前判断"], _dispute_rows)
+            + f'<p class="muted" style="font-size:11.5px">{_esc(inst.get("note", ""))}</p>'
+        )
     # ---- 规模参照 ----
     scale_rows = [[k, v] for k, v in [
         ("全球云厂商资本开支", sr.get("global_nine_cloud_2026", "")),
@@ -295,8 +312,9 @@ def render(d: dict, date_str: str) -> str:
 <li><a href="#s5">商业化路径差异</a></li>
 <li><a href="#s6">资本来源与约束对比</a></li>
 <li><a href="#s7">投资含义与观察指标</a></li>
-<li><a href="#s8">规模参照（全球坐标）</a></li>
-<li><a href="#s9">口径说明</a></li>
+<li><a href="#s8">机构研判：共识与分歧</a></li>
+<li><a href="#s9">规模参照（全球坐标）</a></li>
+<li><a href="#s10">口径说明</a></li>
 </ol>
 </div>
 
@@ -356,12 +374,17 @@ def render(d: dict, date_str: str) -> str:
 </div>
 
 <div class="card" id="s8">
-<h2>七、规模参照（全球坐标）</h2>
-{_rows_table(["指标", "说明"], scale_rows)}
+<h2>七、机构研判：共识与分歧</h2>
+{inst_html}
 </div>
 
 <div class="card" id="s9">
-<h2>八、口径说明</h2>
+<h2>八、规模参照（全球坐标）</h2>
+{_rows_table(["指标", "说明"], scale_rows)}
+</div>
+
+<div class="card" id="s10">
+<h2>九、口径说明</h2>
 <p style="font-size:12.5px">{_esc(d.get("note", ""))}</p>
 </div>
 
