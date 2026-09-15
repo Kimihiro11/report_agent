@@ -621,6 +621,16 @@ def build_analysis(state):
   </div>'''
 
 
+def _md(s) -> str:
+    """转义 + 轻量粗体（**强调** → <b>），与 build_report._esc 口径一致。
+
+    研判文本由 Agent 手工注入时习惯用 Markdown 强调，直接输出会外泄 `**` 字面。
+    """
+    out = html.escape(str(s if s is not None else ""))
+    out = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", out, flags=re.S)
+    return out.replace("**", "")  # 截断可能切断配对标记，清掉孤立残留
+
+
 def render_focus_html(state, standalone=False, embed=False):
     """渲染「限时关注的重点数据解析」章节（或独立页面）。
 
@@ -632,7 +642,7 @@ def render_focus_html(state, standalone=False, embed=False):
     cons = state.get("consensus", {})
     degree_label = cons.get("degree_label", "—")
     degree_color = cons.get("degree_color", "#636e72")
-    cons_text = cons.get("consensus_text", "")
+    cons_text = _md(cons.get("consensus_text", ""))
     hike_range = cons.get("hike_range", "")
     terminal_range = cons.get("terminal_range", "")
 
@@ -669,7 +679,7 @@ def render_focus_html(state, standalone=False, embed=False):
           <span style="font-size:11px;color:#b2bec3;font-weight:400;">{html.escape(r.get('name_en',''))}</span></div>
         {sbadge}
       </div>
-      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">{html.escape(r.get('view_zh',''))}</div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">{_md(r.get('view_zh',''))}</div>
     </div>''')
 
     inst_grid = f'<div style="display:flex;flex-wrap:wrap;">{"" .join(cards)}</div>'

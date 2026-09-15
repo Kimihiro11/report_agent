@@ -16,14 +16,27 @@ import 本模块无副作用（不解析 argv / 不联网 / 不写盘）；执�
 """
 import json
 import argparse
+import re
 from datetime import datetime
-from html import escape as _esc
+from html import escape as _html_escape
 from pathlib import Path
 
 import stock_report_agent as agent
 import news_intel as _ni
 import view as _view
 import ai_capex as _aic
+
+def _esc(s) -> str:
+    """HTML 转义 + 轻量粗体：**强调** → <b>强调</b>。
+
+    报告正文中 Agent 注入的文本习惯使用 Markdown 强调，渲染层统一转换，
+    避免 `**` 字面外泄（2026-09-15 实测单份报告外泄 19 处）。
+    注意 escape 在前、替换在后，故不会引入 HTML 注入。
+    """
+    out = _html_escape(str(s if s is not None else ""))
+    out = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", out, flags=re.S)
+    return out.replace("**", "")  # 截断可能切断配对标记，清掉孤立残留
+
 
 # AI 资本开支章节呈现策略（--ai-capex 覆盖）：
 #   auto   —— 该章节为季度频率的静态内容，仅在数据指纹变化（出现新指引）时呈现

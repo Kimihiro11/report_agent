@@ -130,7 +130,7 @@ def normalize_llm(obj, watchlist=None, date8=""):
 
     points = []
     raw_points = obj.get("key_points") if isinstance(obj.get("key_points"), list) else []
-    for item in raw_points[:5]:
+    for item in raw_points[:6]:
         if not isinstance(item, dict):
             continue
         fact = _clip(item.get("fact") or item.get("text"), 140)
