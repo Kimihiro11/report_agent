@@ -31,7 +31,16 @@ INDEX_SECID = {"000001": "1.000001", "399001": "0.399001", "399006": "0.399006",
 
 FREQ_LABEL = {1: "1分钟", 5: "5分钟", 15: "15分钟", 30: "30分钟", 60: "60分钟", 101: "日线"}
 # 多级别推演配置：（东财 klt, 拉取根数, 操作视界）
-LEVELS_CONF = [(30, 500, "短线"), (101, 250, "波段")]
+# 2026-09-17 调整：加入 5 分钟级别（超短线）做三级别联立——30分钟定结构、5分钟找买卖点、日线定波段。
+# 根数说明：5分钟 1000 根 ≈ 20 个交易日；30分钟 1000 根 ≈ 125 个交易日（东财上限受 klt 影响）。
+LEVELS_CONF = [(30, 1000, "短线"), (5, 1000, "超短线"), (101, 600, "波段")]
+
+
+def truncate_from(kl, from_time):
+    """按时间起点截取 K 线（from_time 形如 '2026-09-01 13:30'）。"""
+    if not from_time:
+        return kl
+    return [k for k in kl if k.get("time", "") >= str(from_time)]
 
 
 def _parse_dt(s):
@@ -472,24 +481,151 @@ def chan_analyze(kl, klt=5, horizon="短线"):
     return _stdlib_engine(kl, level_label, horizon)
 
 
-def run(index_code="000001", bars_m30=500, bars_d=600):
-    """主流程：拉取上证指数 30分钟 + 日线两级 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。
+def multi_level_synthesis(levels):
+    """多级别联立解读：逐级比较中枢嵌套关系 + 未完成笔方向 + 背驰，给出可操作结论。
+
+    缠论多级别联立的读法：
+      - 高级别中枢决定「战场范围」，低级别中枢决定「当前搏斗位置」；
+      - 低级别中枢落在高级别中枢内 → 盘整中的盘整，方向未定，等低级别先出方向；
+      - 低级别先转、高级别未转 → 短线可博弈，但需高级别确认（级别升级才算趋势）。
+    """
+    ok = [l for l in levels if not l.get("error") and l.get("zhongshu")]
+    if len(ok) < 2:
+        return None
+    name_map = {"超短线": "5分钟", "短线": "30分钟", "波段": "日线"}
+    order = {"超短线": 0, "短线": 1, "波段": 2}
+    parsed = []
+    for l in ok:
+        zs = l["zhongshu"]
+        sig = l.get("signal") or {}
+        ubi = l.get("ubi") or {}
+        bc = l.get("beichi") or {}
+        parsed.append({
+            "horizon": l.get("horizon", ""),
+            "label": name_map.get(l.get("horizon", ""), l.get("level", "")),
+            "zd": zs.get("zd"), "zg": zs.get("zg"),
+            "last": l.get("last_price"),
+            "signal": sig.get("signal"),
+            "ubi_dir": ubi.get("dir"),
+            "ubi_from": ubi.get("start_price"),
+            "ubi_extreme": ubi.get("extreme_price"),
+            "beichi": bc.get("level") if bc else None,
+            "beichi_dir": bc.get("dir") if bc else None,
+        })
+    parsed.sort(key=lambda x: order.get(x["horizon"], 9))
+
+    # 逐级嵌套判断（由低到高两两比较）
+    nests = []
+    for a, b in zip(parsed, parsed[1:]):
+        if None in (a["zd"], a["zg"], b["zd"], b["zg"]):
+            continue
+        nests.append({
+            "low": a["label"], "high": b["label"],
+            "nested": a["zd"] >= b["zd"] and a["zg"] <= b["zg"],
+        })
+
+    all_nested = bool(nests) and all(n["nested"] for n in nests)
+    lows = parsed[0]
+    ubi_txt = "、".join(
+        f"{p['label']}{'↓下跌' if p['ubi_dir'] == 'down' else '↑上涨' if p['ubi_dir'] == 'up' else '—'}笔未完成"
+        for p in parsed
+    )
+    # 背驰提示
+    bc_hits = [p for p in parsed if p.get("beichi")]
+    bc_txt = ""
+    if bc_hits:
+        bc_txt = "；" + "、".join(
+            f"{p['label']}出现{'下跌' if p['beichi_dir'] == 'down' else '上涨'}段"
+            f"**{p['beichi']}背驰**（力度显著衰减，是转折的前置信号）"
+            for p in bc_hits
+        )
+    # 支撑压力：取最低级别中枢上下沿 + 最高级别中枢上下沿
+    highs = parsed[-1]
+    levels_txt = (f"低级别中枢下沿 {lows['zd']:.2f} / 上沿 {lows['zg']:.2f}；"
+                  f"高级别中枢下沿 {highs['zd']:.2f} / 上沿 {highs['zg']:.2f}")
+
+    if all_nested:
+        head = (f"三个级别中枢**完全嵌套**（{' ⊂ '.join(p['label'] for p in parsed)}），"
+                f"属**盘整中的盘整**——方向未定，"
+                f"低级别（{lows['label']}）先出方向才有交易价值。")
+    else:
+        head = (f"各级别中枢未构成完整嵌套——结构正在扩张或级别切换，"
+                f"注意走势级别升级/降级的可能。")
+    sig_txt = "、".join(f"{p['label']}{p['signal']}" for p in parsed)
+
+    # 未完成笔的方向一致性 → 多级别共振判断
+    dirs = {p["ubi_dir"] for p in parsed if p.get("ubi_dir")}
+    if len(dirs) == 1 and dirs:
+        d0 = dirs.pop()
+        trend_txt = (f"各级别未完成笔方向一致（均{'向下' if d0 == 'down' else '向上'}）"
+                     f"——**多级别共振**，顺势看待。")
+    else:
+        low_dir = lows["ubi_dir"]
+        others = [p for p in parsed if p is not lows]
+        trend_txt = (f"**级别分歧**：最低级别（{lows['label']}）未完成笔"
+                     f"{'向下' if low_dir == 'down' else '向上' if low_dir == 'up' else '不明'}，"
+                     f"但 {'、'.join(p['label'] for p in others)} 仍"
+                     f"{'向下' if others[0]['ubi_dir'] == 'down' else '向上'}——"
+                     f"低级别先动、高级别未确认：短线可博弈，但需高级别笔转向才算趋势成立。")
+
+    return {
+        "pairs": parsed,
+        "nests": nests,
+        "nested": all_nested,
+        "same_signal": len({p["signal"] for p in parsed}) == 1,
+        "key_levels": levels_txt,
+        "signals": sig_txt,
+        "text": (f"{head} {trend_txt} "
+                 f"各级别信号：{sig_txt}。"
+                 f"当前未完成笔：{ubi_txt}{bc_txt}。关键位：{levels_txt}。"),
+    }
+
+
+def run(index_code="000001", bars_m30=1000, bars_d=600, from_time=None):
+    """主流程：拉取上证指数多级别 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。
 
     参数守卫（2026-09-14 新增）：30分钟/日线根数过小会导致结构无法成立——
     历史上曾以 `chan_analysis.py 000001 5 600` 调用（第二个参数被误当作级别），
     使 30 分钟级别只取 5 根、永远输出「中枢未成」。根数不足时自动回退并告警。
+
+    起点锚定（2026-09-17 新增）：`from_time` 指定分析起点（如 '2026-09-01 13:30'，
+    即本轮日线中枢 GG 3995.18 所在的那根 30 分钟 K 线）。实测：只要起点覆盖了
+    当前中枢的形成区间（本次为 9/11~9/16），中枢与信号与全量口径完全一致，
+    故显式指定锚点时不强制回退根数（仅提示）。
     """
+    secid = INDEX_SECID.get(index_code, "1.000001")
+    # 自动锚点：以日线中枢的 GG（区间最高点）所在的那根 30 分钟 K 线为起点
+    # 逻辑：本轮调整的起点就是日线中枢的最高点（本次为 3995.18），从那里起算最贴合结构
+    if from_time == "auto":
+        try:
+            kd = fetch_min_kline(secid, 101, bars_d)
+            rd = chan_analyze(kd, 101, "波段")
+            gg = (rd.get("zhongshu") or {}).get("gg")
+            if gg:
+                k30 = fetch_min_kline(secid, 30, bars_m30)
+                best = min(k30, key=lambda k: abs(k["high"] - gg))
+                from_time = best["time"]
+                print(f"[缠论] 自动锚点：日线中枢 GG={gg} → {from_time}"
+                      f"（该根 30 分钟 K 线 high={best['high']:.2f}）")
+            else:
+                print("[缠论] ⚠️ 自动锚点：日线中枢无 GG，退回全量口径")
+                from_time = None
+        except Exception as e:
+            print(f"[缠论] ⚠️ 自动锚点失败，退回全量口径: {str(e)[:80]}")
+            from_time = None
     # 参数守卫：经敏感性实测，30分钟 ≥250 根、日线 ≥250 根后中枢与信号才稳定
     MIN_BARS_M30, MIN_BARS_D = 250, 250
-    if bars_m30 < MIN_BARS_M30:
-        print(f"[缠论] ⚠️ 30分钟 K 线根数 {bars_m30} 过小（<{MIN_BARS_M30}），"
-              f"该级别无法构成有效笔/中枢，已回退为 {MIN_BARS_M30} 根")
-        bars_m30 = MIN_BARS_M30
-    if bars_d < MIN_BARS_D:
-        print(f"[缠论] ⚠️ 日线 K 线根数 {bars_d} 过小（<{MIN_BARS_D}），"
-              f"中枢识别不稳定，已回退为 {MIN_BARS_D} 根")
-        bars_d = MIN_BARS_D
-    secid = INDEX_SECID.get(index_code, "1.000001")
+    if from_time:
+        print(f"[缠论] 起点锚定：自 {from_time} 起算（显式指定，不做根数回退）")
+    else:
+        if bars_m30 < MIN_BARS_M30:
+            print(f"[缠论] ⚠️ 30分钟 K 线根数 {bars_m30} 过小（<{MIN_BARS_M30}），"
+                  f"该级别无法构成有效笔/中枢，已回退为 {MIN_BARS_M30} 根")
+            bars_m30 = MIN_BARS_M30
+        if bars_d < MIN_BARS_D:
+            print(f"[缠论] ⚠️ 日线 K 线根数 {bars_d} 过小（<{MIN_BARS_D}），"
+                  f"中枢识别不稳定，已回退为 {MIN_BARS_D} 根")
+            bars_d = MIN_BARS_D
     levels = []
     engine = None
     for klt, lmt, horizon in LEVELS_CONF:
@@ -498,10 +634,24 @@ def run(index_code="000001", bars_m30=500, bars_d=600):
             kl = fetch_min_kline(secid, klt, lmt)
             if not kl:
                 raise RuntimeError("K线为空")
+            # 锚点只作用于分钟级别：日线是波段级别，需保留长历史（锚定后仅剩 12 根，无法成笔）
+            if from_time and klt != 101:
+                n_all = len(kl)
+                kl = truncate_from(kl, from_time)
+                if len(kl) < 30:
+                    raise RuntimeError(f"起点 {from_time} 之后仅 {len(kl)} 根，无法分析")
+                print(f"[缠论]   {FREQ_LABEL.get(klt, klt)} 自 {from_time} 截取：{n_all} → {len(kl)} 根")
             r = chan_analyze(kl, klt, horizon)
+            r["level"] = FREQ_LABEL.get(klt, str(klt))
+            if from_time and klt != 101:
+                r["anchored"] = from_time
+            if klt == 101 and from_time:
+                r["note"] = "日线保持全量口径（锚点仅作用于分钟级别）"
             if r.get("error"):
                 levels.append({"level": FREQ_LABEL.get(klt, str(klt)), "error": r["error"]})
                 continue
+            if len(kl) < 250:
+                r["thin_note"] = f"（该级别自起点起仅 {len(kl)} 根 K 线，未达 250 根稳定阈值，中枢仅供参考）"
             levels.append(r)
             engine = r.get("engine", engine)
         except Exception as e:
@@ -511,6 +661,8 @@ def run(index_code="000001", bars_m30=500, bars_d=600):
         return {"error": "全部级别K线获取失败", "levels": levels}
     result = {
         "levels": levels,
+        "synthesis": multi_level_synthesis(levels),
+        "from_time": from_time,
         "engine": engine or "stdlib",
         "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "index_code": index_code,
@@ -527,8 +679,14 @@ def run(index_code="000001", bars_m30=500, bars_d=600):
 
 if __name__ == "__main__":
     import sys
-    index = sys.argv[1] if len(sys.argv) > 1 else "000001"
-    bars_m30 = int(sys.argv[2]) if len(sys.argv) > 2 else 500
-    bars_d = int(sys.argv[3]) if len(sys.argv) > 3 else 600
-    r = run(index, bars_m30, bars_d)
+    args = [a for a in sys.argv[1:]]
+    from_time = None
+    if "--from" in args:
+        i = args.index("--from")
+        from_time = args[i + 1] if len(args) > i + 1 else None
+        args = args[:i] + args[i + 2:]
+    index = args[0] if len(args) > 0 else "000001"
+    bars_m30 = int(args[1]) if len(args) > 1 else 1000
+    bars_d = int(args[2]) if len(args) > 2 else 600
+    r = run(index, bars_m30, bars_d, from_time=from_time)
     print(json.dumps(r, ensure_ascii=False, indent=2))

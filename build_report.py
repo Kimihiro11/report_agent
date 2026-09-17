@@ -1691,6 +1691,14 @@ def chan_section():
     _d_stale = any(str(lv.get("level", "")).startswith("日线")
                    and str(lv.get("last_time", ""))[:10] != TODAY for lv in ok_levels)
     stale_note = "（日线只取已收盘 K 线：当日未收盘不纳入，避免用未完成的 K 线判分型/笔）" if _d_stale else ""
+    # 起点锚定标注（--from）：说明本轮分析自哪个高点起算 + 各级别实际 K 线根数
+    _from = c.get("from_time")
+    anchor_html = ""
+    if _from:
+        _roots = " ｜ ".join(f"{lv.get('level', '?')} {lv.get('bars', '?')} 根" for lv in ok_levels)
+        anchor_html = (f'<p class="muted" style="font-size:12px">起点锚定：<b>{_esc(_from)}</b>'
+                       f'（本轮日线中枢最高点 GG 所在 K 线；分钟级别自此截取，日线保持全量）'
+                       f'｜ 实际根数：{_esc(_roots)}</p>')
     readme_html = (
         '<div class="muted" style="font-size:11.5px;background:#fafbff;border:1px solid #e8eaf6;'
         'border-radius:8px;padding:8px 12px;margin:8px 0 4px;line-height:1.75">'
@@ -1698,12 +1706,20 @@ def chan_section():
         '上沿 ZG 为压力、下沿 ZD 为支撑；「笔」是一段明确的方向（上/下）；'
         '「位置」是当前价相对中枢的位置（上方偏多、下方偏空、区间内为震荡）；'
         '「二买」指回调不破前低后的右侧买点；「背驰」指同向力度衰减、提示可能反转。'
-        '高级别（日线）定方向，低级别（30分钟）找买卖点，两者共振时可靠性更高。'
+        '<b>三级别联立：</b>日线定波段方向、30分钟定短线结构、5分钟找精确买卖点——'
+        '低级别中枢嵌套在高级别中枢内属「盘整中的盘整」（方向未定）；'
+        '低级别先转、高级别未转时，短线可博弈但需高级别笔转向确认。'
         '</div>')
     blocks = "".join(_chan_level_block(lv) for lv in ok_levels)
-    # 多级别共振/分歧研判（>=2 个有效级别才给结论）
+    # 多级别联立研判：优先用 chan_analysis 产出的 synthesis（含嵌套关系/未完成笔/背驰/关键位）
     synth_html = ""
-    if len(ok_levels) >= 2:
+    _syn = c.get("synthesis") or {}
+    if _syn.get("text"):
+        _badge = ('<span class="badge b-blue">盘整中的盘整</span>' if _syn.get("nested")
+                  else '<span class="badge b-orange">结构切换</span>')
+        synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px;line-height:1.75">'
+                      f'<b>多级别联立研判</b> {_badge}<br>{_esc(_syn["text"])}</div>')
+    elif len(ok_levels) >= 2:
         stances = [(str(lv.get("level", "?")), _chan_stance((lv.get("signal") or {}).get("signal"))) for lv in ok_levels]
         uniq = {s for _, s in stances}
         if len(uniq) == 1 and "震荡" not in uniq:
@@ -1722,6 +1738,7 @@ def chan_section():
       <h2>缠论推演（上证指数 {lv_labels} · 操作指引）</h2>
       <p class="muted" style="font-size:12px">引擎 <b>{_esc(engine)}</b> ｜ 级别：{lv_labels}（高级别定方向，低级别找买卖点）</p>
       <p class="muted" style="font-size:12px">数据截至：<b>{_esc(cut_txt)}</b>{_esc(stale_note)}</p>
+      {anchor_html}
       {readme_html}
       {blocks}
       {synth_html}

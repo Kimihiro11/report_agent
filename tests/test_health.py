@@ -263,6 +263,56 @@ class TestReportAnchors(unittest.TestCase):
             self.assertNotIn(bad, self.html, f"报告残留未渲染标记 {bad}")
 
 
+class TestChanMultiLevel(unittest.TestCase):
+    """缠论三级别联立（2026-09-17 新增）：30分钟 + 5分钟 + 日线，支持起点锚定。
+
+    背景：用户要求「30分钟自 3995 起点起算、结合 5 分钟分析」。实测只要起点覆盖当前
+    中枢形成区间，中枢与信号与全量口径一致，故锚定模式不做根数回退（仅提示）。
+    """
+
+    def test_levels_conf_includes_5min(self):
+        import chan_analysis as ca
+        klts = [k for k, _, _ in ca.LEVELS_CONF]
+        self.assertIn(5, klts, "缠论级别配置缺少 5 分钟（三级别联立）")
+        self.assertIn(30, klts)
+        self.assertIn(101, klts)
+
+    def test_truncate_from_keeps_after_only(self):
+        import chan_analysis as ca
+        kl = [{"time": "2026-08-31 15:00", "close": 1},
+              {"time": "2026-09-01 13:30", "close": 2},
+              {"time": "2026-09-02 10:00", "close": 3}]
+        out = ca.truncate_from(kl, "2026-09-01 13:30")
+        self.assertEqual([k["close"] for k in out], [2, 3])
+        self.assertEqual(len(ca.truncate_from(kl, None)), 3, "from_time 为空时应返回全量")
+
+    def test_multi_level_synthesis_nested(self):
+        import chan_analysis as ca
+        levels = [
+            {"level": "5分钟", "horizon": "超短线", "last_price": 3874, "signal": {"signal": "中枢震荡"},
+             "ubi": {"dir": "up"}, "zhongshu": {"zd": 3867.83, "zg": 3880.14}},
+            {"level": "30分钟", "horizon": "短线", "last_price": 3874, "signal": {"signal": "二买观察"},
+             "ubi": {"dir": "down"}, "zhongshu": {"zd": 3852.03, "zg": 3896.26}},
+            {"level": "日线", "horizon": "波段", "last_price": 3891, "signal": {"signal": "二买观察"},
+             "ubi": {"dir": "down"}, "zhongshu": {"zd": 3850.86, "zg": 3967.59}},
+        ]
+        s = ca.multi_level_synthesis(levels)
+        self.assertTrue(s["nested"], "三级中枢应判定为完全嵌套")
+        self.assertIn("盘整中的盘整", s["text"])
+        self.assertIn("级别分歧", s["text"], "5分钟向上、30分钟/日线向下应判定为级别分歧")
+        self.assertEqual(len(s["pairs"]), 3)
+        # 嵌套顺序表述必须由低到高（5分钟 ⊂ 30分钟 ⊂ 日线）
+        self.assertIn("5分钟 ⊂ 30分钟 ⊂ 日线", s["text"], "嵌套顺序必须由低级别到高级别")
+        for lab in ("5分钟", "30分钟", "日线"):
+            self.assertIn(lab, s["text"])
+
+    def test_chan_section_renders_synthesis(self):
+        """有 synthesis 时，渲染层必须优先展示它（而非回退到旧的 stance 逻辑）。"""
+        src = (BASE / "build_report.py").read_text(encoding="utf-8")
+        self.assertIn('c.get("synthesis")', src, "chan_section 未接入 synthesis 联立结论")
+        self.assertIn("起点锚定", src, "chan_section 未展示起点锚定信息")
+
+
 class TestEnvironmentContract(unittest.TestCase):
     """环境可重现性：requirements 必须覆盖代码真实用到的第三方依赖。"""
 
