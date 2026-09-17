@@ -306,11 +306,69 @@ class TestChanMultiLevel(unittest.TestCase):
         for lab in ("5分钟", "30分钟", "日线"):
             self.assertIn(lab, s["text"])
 
+    def _mk_low(self, beichi=None):
+        return {
+            "level": "5分钟", "horizon": "超短线", "bis": 10,
+            "bis_series": [
+                {"dir": "up", "start_time": "2026-09-16 10:05", "end_time": "2026-09-16 13:50",
+                 "start_price": 3842.72, "end_price": 3894.4},
+                {"dir": "down", "start_time": "2026-09-16 13:50", "end_time": "2026-09-17 10:15",
+                 "start_price": 3894.4, "end_price": 3866.89},
+                {"dir": "up", "start_time": "2026-09-17 10:15", "end_time": "2026-09-17 10:35",
+                 "start_price": 3866.89, "end_price": 3881.32},
+            ],
+            "beichi": beichi,
+            "zhongshu": {"zd": 3867.83, "zg": 3880.14, "bis_in_zs": 12},
+            "ubi": {"dir": "down"},
+        }
+
+    def _mk_high(self):
+        return {
+            "level": "30分钟", "horizon": "短线", "bis": 2,
+            "bis_series": [
+                {"dir": "down", "start_time": "2026-09-11 14:00", "end_time": "2026-09-16 10:30",
+                 "start_price": 3896.26, "end_price": 3842.72},
+                {"dir": "up", "start_time": "2026-09-16 10:30", "end_time": "2026-09-17 10:00",
+                 "start_price": 3842.72, "end_price": 3898.84},
+            ],
+            "beichi": None,
+            "zhongshu": {"zd": 3852.03, "zg": 3896.26, "bis_in_zs": 2},
+            "ubi": {"dir": "down", "extreme_time": "2026-09-17 10:30"},
+        }
+
+    def test_cross_level_link_bi_mapping(self):
+        """笔映射：段内低级别笔计数须包含跨边界的部分覆盖笔。"""
+        import chan_analysis as ca
+        lk = ca.cross_level_link(self._mk_low(), self._mk_high())
+        self.assertIsNotNone(lk)
+        self.assertEqual(lk["bi_ratio"], 5.0, "10 笔 : 2 笔 = 5.0")
+        self.assertEqual(lk["low_bis_in_seg"], 3,
+                         "段起点 9/16 10:30 之后与段有交集的低级别笔应为 3 笔（含跨边界那笔）")
+        self.assertEqual(lk["low_reverse_bis"], 1, "段方向为 up，其中 1 笔 down 为反向")
+        self.assertIn("回调不破", lk["completion_text"])
+        self.assertTrue(lk["zs_nested"], "5分钟中枢应落在 30分钟中枢内")
+        self.assertEqual(lk["zs_ratio"], 6.0, "中枢内笔数比 12:2 = 6.0")
+
+    def test_cross_level_link_qujiantao(self):
+        """区间套：低级别背驰离开段终点落在高级别最近走势段内 → 成立。"""
+        import chan_analysis as ca
+        bc = {"dir": "down", "enter_power": 81.4, "leave_power": 24.1, "level": "强",
+              "leave_start": "2026-09-16 13:50", "leave_end": "2026-09-17 10:15"}
+        lk = ca.cross_level_link(self._mk_low(beichi=bc), self._mk_high())
+        self.assertTrue(lk["qujiantao"], "离开段终点落在段内，区间套应成立")
+        self.assertIn("区间套成立", lk["qujiantao_text"])
+        # 背驰段在段起点之前 → 不成立
+        bc_old = dict(bc, leave_start="2026-09-10 10:00", leave_end="2026-09-10 14:00")
+        lk2 = ca.cross_level_link(self._mk_low(beichi=bc_old), self._mk_high())
+        self.assertFalse(lk2["qujiantao"], "历史背驰不应判定为区间套成立")
+
     def test_chan_section_renders_synthesis(self):
-        """有 synthesis 时，渲染层必须优先展示它（而非回退到旧的 stance 逻辑）。"""
+        """有 synthesis/link 时，渲染层必须优先展示它们（而非回退到旧的 stance 逻辑）。"""
         src = (BASE / "build_report.py").read_text(encoding="utf-8")
         self.assertIn('c.get("synthesis")', src, "chan_section 未接入 synthesis 联立结论")
+        self.assertIn('c.get("link")', src, "chan_section 未接入 link 关联计算")
         self.assertIn("起点锚定", src, "chan_section 未展示起点锚定信息")
+        self.assertIn("关联计算", src, "chan_section 未渲染 30分钟↔5分钟 关联计算")
 
 
 class TestEnvironmentContract(unittest.TestCase):

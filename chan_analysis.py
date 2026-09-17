@@ -174,7 +174,12 @@ def _czsc_engine(kl, klt=5, level_label="5分钟", horizon="短线"):
                 if lp < ep * 0.9:
                     beichi = {"dir": _dir(enter_bi),
                               "enter_power": round(ep, 1), "leave_power": round(lp, 1),
-                              "level": "强" if lp < ep * 0.6 else "中"}
+                              "level": "强" if lp < ep * 0.6 else "中",
+                              # 时间区间：供跨级别「区间套」判断低级别背驰段与高级别笔是否对应
+                              "enter_range": f"{_t(enter_bi.fx_a.dt)} ~ {_t(enter_bi.fx_b.dt)}",
+                              "leave_range": f"{_t(leave_bi.fx_a.dt)} ~ {_t(leave_bi.fx_b.dt)}",
+                              "leave_start": _t(leave_bi.fx_a.dt),
+                              "leave_end": _t(leave_bi.fx_b.dt)}
 
     # ---- 买卖点（价格相对中枢位置 + 背驰 + 末笔方向；与旧口径一致的适配层）----
     last_bi_dir = _dir(bis[-1]) if bis else "up"
@@ -210,6 +215,18 @@ def _czsc_engine(kl, klt=5, level_label="5分钟", horizon="短线"):
     except Exception:
         ubi = None
 
+    # ---- 完整笔序列（最近 40 笔，含完整时间戳）：供跨级别关联计算做笔映射 ----
+    # recent_bis 只留 5 笔且时间是短格式（MM-DD HH:MM），无法跨级别对齐，故另存这一份。
+    bis_series = []
+    for b in bis[-40:]:
+        d = _dir(b)
+        bis_series.append({
+            "dir": d,
+            "start_time": _t(b.fx_a.dt), "end_time": _t(b.fx_b.dt),
+            "start_price": round(float(b.low if d == "up" else b.high), 2),
+            "end_price": round(float(b.high if d == "up" else b.low), 2),
+        })
+
     return {
         "level": level_label,
         "horizon": horizon,
@@ -223,6 +240,7 @@ def _czsc_engine(kl, klt=5, level_label="5分钟", horizon="短线"):
         "beichi": beichi,
         "signal": sig,
         "recent_bis": recent_bis,
+        "bis_series": bis_series,
         "pos": pos,
         "ubi": ubi,
         "engine": f"czsc-{czsc.__version__}",
@@ -442,6 +460,13 @@ def _stdlib_engine(kl, level_label="5分钟", horizon="短线"):
                            "end_time": merged[b[1]]["time"][5:16],
                            "start_price": round(merged[b[0]]["low" if b[2] == "down" else "high"], 2),
                            "end_price": round(merged[b[1]]["low" if b[2] == "down" else "high"], 2)})
+    # 完整笔序列（最近 40 笔，完整时间戳），契约与 czsc 引擎一致，供跨级别关联计算
+    bis_series = []
+    for b in bis[-40:]:
+        bis_series.append({"dir": b[2], "start_time": merged[b[0]]["time"],
+                           "end_time": merged[b[1]]["time"],
+                           "start_price": round(merged[b[0]]["low" if b[2] == "down" else "high"], 2),
+                           "end_price": round(merged[b[1]]["low" if b[2] == "down" else "high"], 2)})
     return {
         "level": level_label,
         "horizon": horizon,
@@ -460,6 +485,7 @@ def _stdlib_engine(kl, level_label="5分钟", horizon="短线"):
         "beichi": beichi,
         "signal": sig,
         "recent_bis": recent_bis,
+        "bis_series": bis_series,
         "pos": "中枢上方" if zs and price > zs["zg"] else
                ("中枢下方" if zs and price < zs["zd"] else
                 ("中枢内" if zs else "结构未成")),
@@ -581,6 +607,141 @@ def multi_level_synthesis(levels):
     }
 
 
+def _tkey(s):
+    """时间字符串归一化为可比较形式（日线补 15:00，分钟级别原样）。"""
+    s = str(s or "")
+    return s + " 15:00" if len(s) == 10 else s
+
+
+def cross_level_link(low, high):
+    """低级别 与 高级别 的**关联计算**（结构联动，非文本对比）。
+
+    与 multi_level_synthesis 的分工：
+      - synthesis 做「全局嵌套 + 方向一致性」的定性比较；
+      - 本函数做「笔↔笔、背驰↔笔」的定量映射，回答三个具体问题：
+        A. 笔递归倍率是否正常（高级别 1 笔 ≈ 低级别 3~6 笔）
+        B. 高级别最近走势段内，低级别笔的构成 → 该笔是否已具备结束条件
+        C. 区间套：低级别背驰段的终点是否落在高级别最近走势段内
+           （成立 = 高级别该段的力度衰竭已在低级别被独立确认，转折定位更精确）
+        D. 中枢递归：低级别中枢是否落在高级别中枢内 + 中枢内笔数比是否够格
+    """
+    if not low or not high or low.get("error") or high.get("error"):
+        return None
+    lo_bis = low.get("bis_series") or []
+    hi_bis = high.get("bis_series") or []
+    if not (lo_bis and hi_bis):
+        return None
+    n_lo, n_hi = low.get("bis") or 0, high.get("bis") or 0
+
+    # ---------- A. 笔递归倍率 ----------
+    ratio = round(n_lo / n_hi, 2) if n_hi else None
+    if ratio is None:
+        ratio_txt = "高级别笔数为 0，无法计算倍率"
+    elif ratio < 2:
+        ratio_txt = (f"{ratio}:1 偏低（理论 3~6:1）——低级别笔相对过少，"
+                     f"级别划分可能不匹配（高级别可能取数过长或低级别被过度合并）")
+    elif ratio > 8:
+        ratio_txt = (f"{ratio}:1 偏高（理论 3~6:1）——低级别笔偏多，"
+                     f"可能存在噪声（可考虑提高低级别起点或收紧分型确认）")
+    else:
+        ratio_txt = f"{ratio}:1，处于理论区间（3~6:1）——级别对应关系成立"
+
+    # ---------- B. 高级别最近走势段 → 低级别笔映射 ----------
+    hi_last = hi_bis[-1]
+    hi_ubi = high.get("ubi") or {}
+    seg_start = _tkey(hi_last.get("start_time"))
+    seg_end = _tkey(hi_ubi.get("extreme_time") or hi_ubi.get("start_time")
+                    or hi_last.get("end_time"))
+    seg_dir = hi_last.get("dir")
+    dir_cn = "上涨" if seg_dir == "up" else "下跌"
+    # 交集判定：只要笔的终点不早于段起点，就与该段有重叠（含跨边界的部分覆盖笔）
+    win = [b for b in lo_bis if _tkey(b.get("end_time")) >= seg_start]
+    rev = [b for b in win if b.get("dir") != seg_dir]
+    partial = [b for b in win if _tkey(b.get("start_time")) < seg_start]
+    partial_note = (f"（其中 {len(partial)} 笔起点早于该段起点、属跨边界部分覆盖）"
+                    if partial else "")
+    if not win:
+        comp_txt = f"该{dir_cn}段起点之后，低级别尚无有效笔——结构刚开始，完成度低"
+    elif not rev:
+        comp_txt = (f"该{dir_cn}段内低级别共 {len(win)} 笔且**全部同向**——"
+                    f"高级别这笔仍在健康延伸，尚无结束迹象")
+    elif len(rev) == 1:
+        comp_txt = (f"该{dir_cn}段内低级别 {len(win)} 笔中已出现 **1 笔反向**（回调启动）——"
+                    f"回调不破该段起点 {hi_last.get('start_price')} 则笔延续；"
+                    f"破位则该笔结束、高级别转向")
+    else:
+        comp_txt = (f"该{dir_cn}段内低级别 {len(win)} 笔中已有 **{len(rev)} 笔反向**——"
+                    f"高级别这笔大概率已结束，或正在形成反向笔")
+    comp_txt += partial_note
+
+    # ---------- C. 区间套背驰 ----------
+    lo_bc = low.get("beichi") or {}
+    hi_bc = high.get("beichi") or {}
+    qjt, qjt_txt = False, "低级别当前无背驰段，区间套不成立"
+    if lo_bc.get("leave_end"):
+        le = _tkey(lo_bc.get("leave_end"))
+        bc_cn = "下跌" if lo_bc.get("dir") == "down" else "上涨"
+        if le >= seg_start:
+            qjt = True
+            qjt_txt = (f"低级别（{low.get('level')}）{bc_cn}段**{lo_bc.get('level')}背驰**"
+                       f"（力度 {lo_bc.get('enter_power')} → {lo_bc.get('leave_power')}）"
+                       f"的离开段终点 {le} 落在高级别（{high.get('level')}）最近{dir_cn}段"
+                       f"[{seg_start} ~ {seg_end}] 内——**区间套成立**："
+                       f"高级别这段的力度衰竭已在低级别被独立确认")
+        else:
+            qjt_txt = (f"低级别有{bc_cn}背驰（离开段终点 {le}），但落在高级别最近走势段之前"
+                       f"（{seg_start}）——属上一段的历史背驰，对本段无指导意义")
+    if lo_bc and hi_bc:
+        qjt_txt += f"；且高级别自身也出现 {hi_bc.get('level')}背驰——**双级别背驰**，转折可信度最高"
+    elif lo_bc and not hi_bc:
+        qjt_txt += "；高级别自身尚未背驰——属「低级别先背驰、高级别未确认」，需等高级别笔转向"
+
+    # ---------- D. 中枢递归 ----------
+    lo_zs = low.get("zhongshu") or {}
+    hi_zs = high.get("zhongshu") or {}
+    zs_nested, zs_ratio, zs_txt = None, None, "中枢数据缺失"
+    if lo_zs and hi_zs:
+        zs_nested = lo_zs["zd"] >= hi_zs["zd"] and lo_zs["zg"] <= hi_zs["zg"]
+        b_lo = lo_zs.get("bis_in_zs") or 0
+        b_hi = hi_zs.get("bis_in_zs") or 0
+        zs_ratio = round(b_lo / b_hi, 1) if b_hi else None
+        pos_txt = "落在高级别中枢内（盘整中的盘整）" if zs_nested else \
+                  "未完整落在高级别中枢内（结构正在扩张）"
+        q = f"，中枢内笔数比 {b_lo}:{b_hi}" if zs_ratio else ""
+        zs_txt = (f"低级别中枢 [{lo_zs['zd']:.2f}, {lo_zs['zg']:.2f}]（{b_lo} 笔）{pos_txt}"
+                  f"[{hi_zs['zd']:.2f}, {hi_zs['zg']:.2f}]（{b_hi} 笔）{q}")
+
+    # ---------- 综合结论 ----------
+    parts = []
+    if qjt:
+        parts.append("区间套成立，转折具备低级别确认")
+    if len(rev) >= 2:
+        parts.append(f"高级别最近{dir_cn}段已被低级别 {len(rev)} 笔反向破坏")
+    elif len(rev) == 1:
+        parts.append(f"高级别最近{dir_cn}段进入回调（低级别 1 笔反向）")
+    else:
+        parts.append(f"高级别最近{dir_cn}段仍在延伸")
+    if ratio is not None and not (2 <= ratio <= 8):
+        parts.append(f"笔递归倍率 {ratio}:1 偏离理论区间，结论需谨慎")
+    low_ubi = low.get("ubi") or {}
+    if low_ubi.get("dir") and low_ubi.get("dir") != seg_dir:
+        parts.append(f"低级别未完成笔已转{'向上' if low_ubi.get('dir') == 'up' else '向下'}"
+                     f"，与高级别本段方向相反")
+    verdict = "；".join(parts) + "。"
+
+    return {
+        "low": low.get("level"), "high": high.get("level"),
+        "bi_ratio": ratio, "bi_ratio_text": ratio_txt,
+        "seg": {"start": seg_start, "end": seg_end, "dir": seg_dir,
+                "start_price": hi_last.get("start_price")},
+        "low_bis_in_seg": len(win), "low_reverse_bis": len(rev),
+        "completion_text": comp_txt,
+        "qujiantao": qjt, "qujiantao_text": qjt_txt,
+        "zs_nested": zs_nested, "zs_ratio": zs_ratio, "zs_text": zs_txt,
+        "verdict": verdict,
+    }
+
+
 def run(index_code="000001", bars_m30=1000, bars_d=600, from_time=None):
     """主流程：拉取上证指数多级别 K 线 → 缠论推演 → 写 data/chan/chan_forecast_YYYYMMDD.json。
 
@@ -659,9 +820,23 @@ def run(index_code="000001", bars_m30=1000, bars_d=600, from_time=None):
     ok = [l for l in levels if not l.get("error")]
     if not ok:
         return {"error": "全部级别K线获取失败", "levels": levels}
+    # 30分钟 ↔ 5分钟 关联计算（笔映射 / 区间套背驰 / 中枢递归）
+    def _by_label(lab):
+        for _l in ok:
+            if str(_l.get("level")) == lab:
+                return _l
+        return None
+    _link = None
+    _lo, _hi = _by_label("5分钟"), _by_label("30分钟")
+    if _lo and _hi:
+        try:
+            _link = cross_level_link(_lo, _hi)
+        except Exception as e:
+            print(f"[缠论] ⚠️ 跨级别关联计算失败: {str(e)[:80]}")
     result = {
         "levels": levels,
         "synthesis": multi_level_synthesis(levels),
+        "link": _link,
         "from_time": from_time,
         "engine": engine or "stdlib",
         "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

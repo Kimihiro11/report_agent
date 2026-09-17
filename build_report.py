@@ -1733,6 +1733,35 @@ def chan_section():
             synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px">'
                           f'<b>多级别研判：</b>{total}——高级别（日线）定方向、低级别（30分钟）找买卖点；'
                           f'以日线中枢上下沿为关键位，低级别信号服从高级别结构。</div>')
+    # ---- 30分钟 ↔ 5分钟 关联计算（结构联动：笔映射/区间套/中枢递归）----
+    link_html = ""
+    _lk = c.get("link") or {}
+    if _lk:
+        _lo_n, _hi_n = _lk.get("low", "5分钟"), _lk.get("high", "30分钟")
+        _seg = _lk.get("seg") or {}
+        _seg_dir_cn = "上涨" if _seg.get("dir") == "up" else "下跌"
+        _qjt = ('<span class="badge b-red">成立</span>' if _lk.get("qujiantao")
+                else '<span class="badge b-gray">未成立</span>')
+        _nest = ('<span class="badge b-blue">已嵌套</span>' if _lk.get("zs_nested")
+                 else '<span class="badge b-orange">未嵌套</span>')
+        _link_rows = [
+            ("笔递归倍率", f'<b>{_lk.get("bi_ratio")}:1</b>', _esc(_lk.get("bi_ratio_text", ""))),
+            (f"高级别最近走势段<br><span class='muted' style='font-size:11px'>({_hi_n})</span>",
+             f'{_seg_dir_cn}<br><span class="muted" style="font-size:11px">{_esc(_seg.get("start",""))}<br>~ {_esc(_seg.get("end",""))}</span>',
+             _esc(_lk.get("completion_text", ""))),
+            ("区间套背驰", _qjt, _esc(_lk.get("qujiantao_text", ""))),
+            ("中枢递归", _nest, _esc(_lk.get("zs_text", ""))),
+        ]
+        _rows = "".join(
+            f'<tr><td>{k}</td><td style="text-align:center">{v}</td><td>{d}</td></tr>'
+            for k, v, d in _link_rows)
+        link_html = (
+            f'<div class="chan-lv-head">▸ {_hi_n} ↔ {_lo_n} 关联计算（结构联动，非文本对比）</div>'
+            f'<table><thead><tr><th>关联维度</th><th style="text-align:center">结果</th>'
+            f'<th>解读</th></tr></thead><tbody>{_rows}</tbody></table>'
+            f'<div class="alert-orange" style="margin:8px 0 0;font-size:12.5px;line-height:1.7">'
+            f'<b>关联结论：</b>{_esc(_lk.get("verdict", ""))}</div>')
+
     return f'''
     <div class="card" id="sec-chan">
       <h2>缠论推演（上证指数 {lv_labels} · 操作指引）</h2>
@@ -1741,6 +1770,7 @@ def chan_section():
       {anchor_html}
       {readme_html}
       {blocks}
+      {link_html}
       {synth_html}
       <p class="muted" style="font-size:11px;margin:6px 0 0">{_esc(engine_note)}。</p>
     </div>'''
