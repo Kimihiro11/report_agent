@@ -1569,76 +1569,6 @@ def concentration_warning():
         return ""
 
 
-def _chan_level_block(lv):
-    """渲染单个级别的缠论推演表（chan_analysis levels[] 元素）。"""
-    sig = lv.get("signal") or {}
-    zs = lv.get("zhongshu")
-    beichi = lv.get("beichi")
-    pos = lv.get("pos", "")
-    pos_cls = {"中枢上方": "b-red", "中枢下方": "b-green", "中枢内": "b-blue"}.get(pos, "b-gray")
-    sig_cls = sig.get("cls", "b-blue")
-    sig_label = sig.get("signal", "—")
-    horizon = lv.get("horizon", "短线")
-    beichi_html = ""
-    if beichi:
-        bdir = "上涨" if beichi["dir"] == "up" else "下跌"
-        bcls = "b-green" if beichi["dir"] == "up" else "b-red"
-        beichi_html = (f'<tr><td><b>背驰</b><br><span class="muted" style="font-size:11px">同向力度衰减</span></td>'
-                       f'<td><span class="badge {bcls}">{bdir}段力度衰减（{beichi["level"]}）</span></td>'
-                       f'<td>进入段力度 {beichi["enter_power"]} → 离开段 {beichi["leave_power"]}'
-                       f'（离开段不足进入段 90% 视为背驰，提示原方向动能减弱、可能转势）</td></tr>')
-    zs_html = ""
-    if zs:
-        zs_html = (f'<tr><td><b>最近中枢</b><br><span class="muted" style="font-size:11px">多空成本密集区</span></td>'
-                   f'<td><span class="badge b-blue">[{zs["zd"]:.2f}, {zs["zg"]:.2f}]</span></td>'
-                   f'<td>下沿 ZD <b>{zs["zd"]:.2f}</b>（支撑）／上沿 ZG <b>{zs["zg"]:.2f}</b>（压力）；'
-                   f'区间宽 {zs["range"]:.2f} 点，{zs["start_time"]} 起确认（GG {zs["gg"]:.2f} / DD {zs["dd"]:.2f}）</td></tr>')
-    bis_html = ""
-    rb = lv.get("recent_bis") or []
-    if rb:
-        rows = "".join(
-            f'<tr><td><span class="badge {"b-red" if b["dir"] == "up" else "b-green"}">'
-            f'{"上" if b["dir"] == "up" else "下"}</span></td>'
-            f'<td>{b["start_time"]} → {b["end_time"]}</td>'
-            f'<td>{b["start_price"]:.2f} → {b["end_price"]:.2f}</td></tr>' for b in rb)
-        bis_html = (f'<tr><td><b>最近5笔</b></td><td colspan="2">'
-                    f'<table style="margin:2px 0"><thead><tr><th>方向</th><th>时间</th><th>价格</th></tr></thead>'
-                    f'<tbody>{rows}</tbody></table></td></tr>')
-    ubi_html = ""
-    ubi = lv.get("ubi")
-    if isinstance(ubi, dict) and ubi.get("start_price") is not None:
-        u_dir = ubi.get("dir")
-        u_cls = "b-red" if u_dir == "up" else "b-green"
-        u_ext = f"{ubi['extreme_price']:.2f}（{ubi.get('extreme_time', '')}）" if ubi.get("extreme_price") is not None else "—"
-        ubi_html = (f'<tr><td><b>未完成笔</b></td><td><span class="badge {u_cls}">{"向上延伸" if u_dir == "up" else "向下延伸"}</span></td>'
-                    f'<td>起点 {ubi["start_price"]:.2f}（{ubi.get("start_time", "")}）→ 极值 {u_ext}；'
-                    f'该笔尚未走完，分型确认前方向仍可能变化。</td></tr>')
-    op = _chan_operation(sig_label, pos, beichi, horizon)
-    fx_n = lv.get("fractals")
-    fx_txt = f" ｜ 分型 {fx_n}" if isinstance(fx_n, int) else ""
-    return f'''
-      <div class="chan-lv-head">▸ {lv.get("level", "?")}级别<span class="muted" style="font-weight:400;font-size:11px">（{horizon}视界 ｜ 数据 {lv.get("data_range", "")}{fx_txt} ｜ 笔 {lv.get("bis", 0)} ｜ 最新价 <b>{lv.get("last_price", 0):.2f}</b>）</span></div>
-      <table><thead><tr><th style="width:18%">维度</th><th style="width:26%">状态</th><th>说明</th></tr></thead><tbody>
-        <tr><td><b>当前位置</b></td><td><span class="badge {pos_cls}">{pos}</span></td><td>当前价相对最近中枢的位置：上方偏多、下方偏空、区间内为震荡整理</td></tr>
-        {zs_html}
-        <tr><td><b>缠论信号</b></td><td><span class="badge {sig_cls}">{sig_label}</span></td><td>{_esc(sig.get("text", ""))}</td></tr>
-        {beichi_html}
-        {bis_html}
-        {ubi_html}
-        <tr><td><b>操作含义</b></td><td colspan="2">{op}</td></tr>
-      </tbody></table>'''
-
-
-def _chan_stance(sig_label):
-    """信号 → 多/空/中性（多级别共振研判用）。"""
-    s = str(sig_label or "")
-    if "买" in s:
-        return "偏多"
-    if "卖" in s:
-        return "偏空"
-    return "震荡"
-
-
 def ai_capex_section():
     """海外 AI 巨头资本开支追踪（总量 / 结构 / 市场映射）—— 按数据更新呈现。
 
@@ -1651,146 +1581,6 @@ def ai_capex_section():
     except Exception as e:
         print(f"[警告] AI 资本开支章节渲染失败: {e}")
         return ""
-
-
-def chan_section():
-    """缠论推演（上证指数 30分钟+日线 多级别 · 操作指引）。
-
-    读 data/chan/chan_forecast_<DATE8>.json（chan_analysis.py 生成，czsc 引擎，真实K线）。
-    levels[] 每级一表；高级别（日线）定方向、低级别（30分钟）找买卖点，底部给共振/分歧研判。
-    缺文件/解析失败返回空，不伪造。
-    """
-    p = BASE_DIR / "data" / "chan" / f"chan_forecast_{DATE8}.json"
-    if not p.exists():
-        return ""
-    try:
-        import json as _json
-        c = _json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return ""
-    if not c or c.get("error"):
-        return ""
-    # 新契约：levels 列表；兼容旧扁平契约（单级别）
-    levels = c.get("levels")
-    if not levels and c.get("signal"):
-        levels = [c]
-    if not levels:
-        return ""
-    ok_levels = [lv for lv in levels if not lv.get("error")]
-    if not ok_levels:
-        return ""
-    engine = str(c.get("engine") or ok_levels[0].get("engine") or "stdlib")
-    engine_note = ("分型/笔/中枢由开源库 czsc（Rust 核心）识别；背驰与买卖点为适配层口径，判定有主观性，不构成精确预测"
-                   if engine.startswith("czsc") else
-                   "缠论风格简化实现（czsc 未安装，标准库兜底）；背驰与买卖点判定有主观性，不构成精确预测")
-    lv_labels = "+".join(str(lv.get("level", "?")) for lv in ok_levels)
-    # 数据截止标注：日线盘中不更新（当日 K 线未收盘），必须显式说明，否则易被误读为「数据过期」
-    cut_txt = " ｜ ".join(
-        f"{lv.get('level', '?')} {str(lv.get('last_time') or '').replace(' 00:00', '')}"
-        for lv in ok_levels)
-    _d_stale = any(str(lv.get("level", "")).startswith("日线")
-                   and str(lv.get("last_time", ""))[:10] != TODAY for lv in ok_levels)
-    stale_note = "（日线只取已收盘 K 线：当日未收盘不纳入，避免用未完成的 K 线判分型/笔）" if _d_stale else ""
-    # 起点锚定标注（--from）：说明本轮分析自哪个高点起算 + 各级别实际 K 线根数
-    _from = c.get("from_time")
-    anchor_html = ""
-    if _from:
-        _roots = " ｜ ".join(f"{lv.get('level', '?')} {lv.get('bars', '?')} 根" for lv in ok_levels)
-        anchor_html = (f'<p class="muted" style="font-size:12px">起点锚定：<b>{_esc(_from)}</b>'
-                       f'（本轮日线中枢最高点 GG 所在 K 线；分钟级别自此截取，日线保持全量）'
-                       f'｜ 实际根数：{_esc(_roots)}</p>')
-    readme_html = (
-        '<div class="muted" style="font-size:11.5px;background:#fafbff;border:1px solid #e8eaf6;'
-        'border-radius:8px;padding:8px 12px;margin:8px 0 4px;line-height:1.75">'
-        '<b>怎么读这一节：</b>「中枢」是多空反复争夺的价格密集区——'
-        '上沿 ZG 为压力、下沿 ZD 为支撑；「笔」是一段明确的方向（上/下）；'
-        '「位置」是当前价相对中枢的位置（上方偏多、下方偏空、区间内为震荡）；'
-        '「二买」指回调不破前低后的右侧买点；「背驰」指同向力度衰减、提示可能反转。'
-        '<b>三级别联立：</b>日线定波段方向、30分钟定短线结构、5分钟找精确买卖点——'
-        '低级别中枢嵌套在高级别中枢内属「盘整中的盘整」（方向未定）；'
-        '低级别先转、高级别未转时，短线可博弈但需高级别笔转向确认。'
-        '</div>')
-    blocks = "".join(_chan_level_block(lv) for lv in ok_levels)
-    # 多级别联立研判：优先用 chan_analysis 产出的 synthesis（含嵌套关系/未完成笔/背驰/关键位）
-    synth_html = ""
-    _syn = c.get("synthesis") or {}
-    if _syn.get("text"):
-        _badge = ('<span class="badge b-blue">盘整中的盘整</span>' if _syn.get("nested")
-                  else '<span class="badge b-orange">结构切换</span>')
-        synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px;line-height:1.75">'
-                      f'<b>多级别联立研判</b> {_badge}<br>{_esc(_syn["text"])}</div>')
-    elif len(ok_levels) >= 2:
-        stances = [(str(lv.get("level", "?")), _chan_stance((lv.get("signal") or {}).get("signal"))) for lv in ok_levels]
-        uniq = {s for _, s in stances}
-        if len(uniq) == 1 and "震荡" not in uniq:
-            total = "、".join(f"{n}{s}" for n, s in stances)
-            cls = "b-red" if "偏多" in uniq else "b-green"
-            synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px">'
-                          f'<b class="{cls if cls == "b-red" else "down"}">多级别共振：</b>{total}——'
-                          f'方向一致性高，{ "可按低级别信号执行、高级别趋势持有" if "偏多" in uniq else "防御优先，反弹减仓" }。</div>')
-        else:
-            total = "、".join(f"{n}{s}" for n, s in stances)
-            synth_html = (f'<div class="alert-orange" style="margin:10px 0 0;font-size:12.5px">'
-                          f'<b>多级别研判：</b>{total}——高级别（日线）定方向、低级别（30分钟）找买卖点；'
-                          f'以日线中枢上下沿为关键位，低级别信号服从高级别结构。</div>')
-    # ---- 30分钟 ↔ 5分钟 关联计算（结构联动：笔映射/区间套/中枢递归）----
-    link_html = ""
-    _lk = c.get("link") or {}
-    if _lk:
-        _lo_n, _hi_n = _lk.get("low", "5分钟"), _lk.get("high", "30分钟")
-        _seg = _lk.get("seg") or {}
-        _seg_dir_cn = "上涨" if _seg.get("dir") == "up" else "下跌"
-        _qjt = ('<span class="badge b-red">成立</span>' if _lk.get("qujiantao")
-                else '<span class="badge b-gray">未成立</span>')
-        _nest = ('<span class="badge b-blue">已嵌套</span>' if _lk.get("zs_nested")
-                 else '<span class="badge b-orange">未嵌套</span>')
-        _link_rows = [
-            ("笔递归倍率", f'<b>{_lk.get("bi_ratio")}:1</b>', _esc(_lk.get("bi_ratio_text", ""))),
-            (f"高级别最近走势段<br><span class='muted' style='font-size:11px'>({_hi_n})</span>",
-             f'{_seg_dir_cn}<br><span class="muted" style="font-size:11px">{_esc(_seg.get("start",""))}<br>~ {_esc(_seg.get("end",""))}</span>',
-             _esc(_lk.get("completion_text", ""))),
-            ("区间套背驰", _qjt, _esc(_lk.get("qujiantao_text", ""))),
-            ("中枢递归", _nest, _esc(_lk.get("zs_text", ""))),
-        ]
-        _rows = "".join(
-            f'<tr><td>{k}</td><td style="text-align:center">{v}</td><td>{d}</td></tr>'
-            for k, v, d in _link_rows)
-        link_html = (
-            f'<div class="chan-lv-head">▸ {_hi_n} ↔ {_lo_n} 关联计算（结构联动，非文本对比）</div>'
-            f'<table><thead><tr><th>关联维度</th><th style="text-align:center">结果</th>'
-            f'<th>解读</th></tr></thead><tbody>{_rows}</tbody></table>'
-            f'<div class="alert-orange" style="margin:8px 0 0;font-size:12.5px;line-height:1.7">'
-            f'<b>关联结论：</b>{_esc(_lk.get("verdict", ""))}</div>')
-
-    return f'''
-    <div class="card" id="sec-chan">
-      <h2>缠论推演（上证指数 {lv_labels} · 操作指引）</h2>
-      <p class="muted" style="font-size:12px">引擎 <b>{_esc(engine)}</b> ｜ 级别：{lv_labels}（高级别定方向，低级别找买卖点）</p>
-      <p class="muted" style="font-size:12px">数据截至：<b>{_esc(cut_txt)}</b>{_esc(stale_note)}</p>
-      {anchor_html}
-      {readme_html}
-      {blocks}
-      {link_html}
-      {synth_html}
-      <p class="muted" style="font-size:11px;margin:6px 0 0">{_esc(engine_note)}。</p>
-    </div>'''
-
-
-def _chan_operation(signal, pos, beichi, horizon="短线"):
-    """缠论信号 → 操作含义（horizon 为该级别的操作视界：短线/波段）。"""
-    if signal == "三买候选":
-        return ('站上中枢上沿后回踩不破则三买，' + horizon + '偏多——可关注回踩企稳的低吸机会；'
-                + ("但上涨段出现力度衰减，追高需谨慎。" if beichi and beichi.get("dir") == "up" else ""))
-    if signal == "一买候选":
-        return (f"下跌背驰+价格在中枢下方，若底分型企稳则一买——{horizon}超跌反弹博弈，"
-                f"严格止损于中枢下沿下方。")
-    if signal == "二买观察":
-        return f"中枢内回抽不破前低则二买——{horizon}中枢内高抛低吸，突破上沿转强、跌破下沿离场。"
-    if signal == "一卖候选":
-        return f"上涨背驰+价格在中枢上方，若顶分型则一卖——注意冲高回落，{horizon}减仓/回避追高。"
-    if signal == "三卖观察":
-        return f"跌破中枢下沿后反抽不收回则三卖——{horizon}偏空，反弹减仓。"
-    return f"中枢震荡，等待方向选择——{horizon}跌破下沿防守、突破上沿看多。"
 
 
 def focus_section():
@@ -2300,7 +2090,7 @@ def _render_html():
     css = _load_css()
     # AI 资本开支章节按数据更新出现 —— 章节数与目录项随之动态调整（无更新时回到 9 章节）
     aic_html = ai_capex_section()
-    n_sec = 10 if aic_html else 9
+    n_sec = 9 if aic_html else 8
     aic_toc = ('<li><a href="#sec-aicapex">海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）</a></li>'
                if aic_html else "")
     return f'''<!DOCTYPE html>
@@ -2340,7 +2130,6 @@ def _render_html():
 <li><a href="#sec-resonance">共振信号（多源交叉·实时）</a></li>
 <li><a href="#sec-watchlist">{len(WATCHLIST)}只自选股操作指引（实时诊断）</a></li>
 <li><a href="#sec-focus">限时关注的重点数据解析（实时）</a></li>
-<li><a href="#sec-chan">缠论推演（上证指数 30分钟+日线 · 操作指引）</a></li>
 </ol>
 </div>
 
@@ -2400,8 +2189,6 @@ def _render_html():
 
 {focus_section()}
 
-{chan_section()}
-
 <div class="disclaimer">
 <strong>免责声明</strong>：以上内容基于公开数据、大V观点及量化规则自动生成，仅供参考，不构成投资建议。市场有风险，投资需谨慎。任何投资决策应结合个人风险承受能力独立判断，必要时咨询持牌专业机构。过往表现不预示未来收益。
 </div>
@@ -2434,7 +2221,7 @@ def main():
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
             td = datetime.strptime(TODAY, "%Y-%m-%d").date()
-            _n_sec = 10 if "sec-aicapex" in html else 9
+            _n_sec = 9 if "sec-aicapex" in html else 8
             db.save_report(td, REPORT_STATE, f"A股操作指引·{_n_sec}章节", html)
             print("[DB] 报告入库完成（舆情数据由数据引擎统一入库，避免重复）")
         else:

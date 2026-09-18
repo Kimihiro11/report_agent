@@ -32,8 +32,9 @@ SNAP_DIR = BASE / "data" / "snapshots"
 REPORT_DIRS = [BASE / "reports" / t for t in ("早报", "晚报", "周报")]
 
 # 报告必须存在的章节锚点（h2 标题关键字）
+# 注：缠论已于 2026-09-18 拆出日报独立成报（chan_report.py），不再计入日报章节。
 SECTION_ANCHORS = ["核心结论", "隔夜美股", "CPI", "传导链", "地缘", "ETF", "舆情解构",
-                   "共振信号", "自选股", "限时关注", "缠论", "免责"]
+                   "共振信号", "自选股", "限时关注", "免责"]
 
 REQUIRED_SNAPSHOT_KEYS = ["date", "quotes", "weibo_data", "market_state"]
 
@@ -362,13 +363,17 @@ class TestChanMultiLevel(unittest.TestCase):
         lk2 = ca.cross_level_link(self._mk_low(beichi=bc_old), self._mk_high())
         self.assertFalse(lk2["qujiantao"], "历史背驰不应判定为区间套成立")
 
-    def test_chan_section_renders_synthesis(self):
-        """有 synthesis/link 时，渲染层必须优先展示它们（而非回退到旧的 stance 逻辑）。"""
-        src = (BASE / "build_report.py").read_text(encoding="utf-8")
-        self.assertIn('c.get("synthesis")', src, "chan_section 未接入 synthesis 联立结论")
-        self.assertIn('c.get("link")', src, "chan_section 未接入 link 关联计算")
-        self.assertIn("起点锚定", src, "chan_section 未展示起点锚定信息")
-        self.assertIn("关联计算", src, "chan_section 未渲染 30分钟↔5分钟 关联计算")
+    def test_chan_independent_report_renders_synthesis(self):
+        """缠论已拆出日报独立成报：chan_report.py 必须渲染 synthesis/link 与锚点信息，
+        且 build_report 不得再包含缠论章节（否则两处维护必然漂移）。"""
+        chan = (BASE / "chan_report.py").read_text(encoding="utf-8")
+        self.assertIn('c.get("synthesis")', chan, "chan_report 未接入 synthesis 联立结论")
+        self.assertIn('c.get("link")', chan, "chan_report 未接入 link 关联计算")
+        self.assertIn("起点锚定", chan, "chan_report 未展示起点锚定信息")
+        self.assertIn("关联计算", chan, "chan_report 未渲染 30分钟↔5分钟 关联计算")
+        br = (BASE / "build_report.py").read_text(encoding="utf-8")
+        self.assertNotIn("chan_section", br, "build_report 未彻底移除缠论（应已拆出为独立报告）")
+        self.assertNotIn("sec-chan", br, "build_report 仍残留缠论章节锚点")
 
 
 class TestEnvironmentContract(unittest.TestCase):
@@ -380,13 +385,14 @@ class TestEnvironmentContract(unittest.TestCase):
             self.assertIn(pkg, req, f"requirements.txt 缺少 {pkg}")
 
     def test_modules_importable(self):
-        for mod in ("view", "db", "backtest", "chan_analysis", "weibo_llm", "news_intel"):
+        for mod in ("view", "db", "backtest", "chan_analysis", "chan_report",
+                    "weibo_llm", "news_intel"):
             with self.subTest(module=mod):
                 __import__(mod)
 
     def test_build_report_symbols(self):
         import build_report as br
-        for fn in ("load_context", "etf_section", "market_width_section", "chan_section",
+        for fn in ("load_context", "etf_section", "market_width_section",
                    "core_conclusion", "_index_snapshot"):
             self.assertTrue(hasattr(br, fn), f"build_report 缺少 {fn}")
 
