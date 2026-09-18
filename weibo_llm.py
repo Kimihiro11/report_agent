@@ -79,7 +79,7 @@ def normalize_llm(obj, watchlist=None, date8=""):
     if isinstance(td, dict) and td:
         direction = _stance(td.get("direction"))
         out["tangshi_deep"] = {
-            "core_logic": _clip(td.get("core_logic"), 160),
+            "core_logic": _clip(td.get("core_logic"), 420),
             "direction": direction,
             "direction_cls": _DIRECTIONS[direction],
             "mainline": _list_text(td.get("mainline"), 3, 50),
