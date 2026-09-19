@@ -144,6 +144,78 @@
     "source_file": "早报-2026-08-28.html"
   },
   {
+    "report_date": "2026-09-11",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "半导体设备零部件；诊断：蓝色预警·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "PVD设备；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "面板+AI封装；诊断：蓝色预警·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "机器人电机；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "靶材；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "离子注入机；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "连接器+液冷；诊断：蓝色预警·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
+    "report_date": "2026-09-11",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "光通信；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-11.html"
+  },
+  {
     "report_date": "2026-08-17",
     "stock_code": "688409",
     "stock_name": "富创精密",
@@ -1215,6 +1287,366 @@
     "source_file": "早报-2026-09-10.html"
   },
   {
+    "report_date": "2026-09-14",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "半导体设备零部件；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "PVD设备；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "面板+AI封装；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "机器人电机；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "靶材；诊断：黄色预警·见顶确认。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "离子注入机；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "连接器+液冷；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-14",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "光通信；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-14.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "半导体设备零部件；诊断：蓝色预警·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "PVD设备；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "面板+AI封装；诊断：蓝色预警·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "机器人电机；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "靶材；诊断：黄色预警·见顶确认。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "离子注入机；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "连接器+液冷；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-15",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "光通信；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-15.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "半导体设备零部件；诊断：黄色预警·下跌趋势。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "PVD设备；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "面板+AI封装；诊断：蓝色预警·下跌趋势。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "机器人电机；诊断：蓝色预警·底部区域。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "靶材；诊断：蓝色预警·上涨趋势。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "离子注入机；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "连接器+液冷；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-16",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "光通信；诊断：黄色预警·见顶确认。",
+    "source_file": "早报-2026-09-16.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "半导体设备零部件；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "PVD设备；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "面板+AI封装；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "机器人电机；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "持有/加仓",
+    "direction": "bullish",
+    "rationale": "靶材；诊断：安全·上涨趋势。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "减仓",
+    "direction": "bearish",
+    "rationale": "离子注入机；诊断：红色预警·高位超买。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "持有/加仓",
+    "direction": "bullish",
+    "rationale": "连接器+液冷；诊断：安全·趋势健康。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-17",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "减仓",
+    "direction": "bearish",
+    "rationale": "光通信；诊断：红色预警·高位超买。",
+    "source_file": "早报-2026-09-17.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "半导体设备零部件；诊断：蓝色预警·高位超买。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "PVD设备；诊断：黄色预警·见顶确认。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "面板+AI封装；诊断：黄色预警·见顶确认。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "机器人电机；诊断：高危·下跌趋势。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "持有/加仓",
+    "direction": "bullish",
+    "rationale": "靶材；诊断：安全·高位超买。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "离子注入机；诊断：黄色预警·高位超买。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "持有/加仓",
+    "direction": "bullish",
+    "rationale": "连接器+液冷；诊断：安全·上涨趋势。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
+    "report_date": "2026-09-18",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "持有/加仓",
+    "direction": "bullish",
+    "rationale": "光通信；诊断：安全·高位超买。",
+    "source_file": "早报-2026-09-18.html"
+  },
+  {
     "report_date": "2026-08-13",
     "stock_code": "688668",
     "stock_name": "鼎通科技",
@@ -1465,5 +1897,77 @@
     "direction": "neutral",
     "rationale": "",
     "source_file": "A股操作指引-9章节-20260815.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "688409",
+    "stock_name": "富创精密",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "半导体设备零部件；诊断：黄色预警·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "301392",
+    "stock_name": "汇成真空",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "PVD设备；诊断：高危·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "000725",
+    "stock_name": "京东方Ａ",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "面板+AI封装；诊断：黄色预警·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "600580",
+    "stock_name": "卧龙电驱",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "机器人电机；诊断：黄色预警·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "688530",
+    "stock_name": "欧莱新材",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "靶材；诊断：高危·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "600641",
+    "stock_name": "先导基电",
+    "action": "谨慎",
+    "direction": "neutral",
+    "rationale": "离子注入机；诊断：黄色预警·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "688668",
+    "stock_name": "鼎通科技",
+    "action": "持有/加仓",
+    "direction": "bullish",
+    "rationale": "连接器+液冷；诊断：安全·趋势健康。",
+    "source_file": "晚报-2026-09-09.html"
+  },
+  {
+    "report_date": "2026-09-09",
+    "stock_code": "600498",
+    "stock_name": "烽火通信",
+    "action": "回避",
+    "direction": "bearish",
+    "rationale": "光通信；诊断：高危·下跌趋势。",
+    "source_file": "晚报-2026-09-09.html"
   }
 ]
