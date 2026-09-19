@@ -939,7 +939,7 @@ def _load_us_symbols():
         "gb_sox": "费城半导体", "gb_nvda": "英伟达", "gb_tsla": "特斯拉",
         "gb_mu": "美光科技", "gb_stx": "希捷科技", "gb_wdc": "西部数据",
         "gb_sndk": "闪迪", "gb_amat": "应用材料", "gb_avgo": "博通",
-        "gb_lite": "Lumentum", "gb_glw": "康宁",
+        "gb_lite": "Lumentum", "gb_glw": "康宁", "gb_mtum": "安硕美国动量ETF",
     }
 
 

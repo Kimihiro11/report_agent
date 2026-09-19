@@ -899,6 +899,86 @@ def us_yield_panel():
     )
 
 
+def momentum_section():
+    """中美动量对照：安硕 MSCI 美国动量因素 ETF（MTUM） vs 中国科技指数。
+
+    数据由 momentum.py 产出（data/momentum/momentum_<DATE8>.json）；缺失时渲染占位，不写死假数。
+    ⚠️ 中国侧用指数口径：ETF 存在份额拆分/大比例分红，新浪返回未复权价，长周期动量会严重失真。
+    """
+    try:
+        import momentum as _mom
+    except Exception as e:
+        return '<p class="muted">动量模块不可用：' + _esc(str(e)) + '</p>'
+    data = _mom.load(TODAY)
+    if not data:
+        return ('<p class="muted">动量数据缺失（data/momentum/momentum_' + DATE8
+                + '.json 未生成，请先运行 python momentum.py --date ' + TODAY + '）。</p>')
+
+    def _pct_cell(v):
+        if v is None:
+            return '<span class="muted">—</span>'
+        cls = "up" if v > 0 else ("down" if v < 0 else "muted")
+        return '<span class="' + cls + '">' + f"{v:+.2f}%" + '</span>'
+
+    def _row(r):
+        sub = _esc(r.get("tag") or r.get("code") or "")
+        return ("<tr><td><b>" + _esc(r.get("name", "")) + "</b>"
+                + "<span class='muted' style='font-size:11px'> " + sub + "</span></td>"
+                + "<td>" + str(r.get("last", "—")) + "</td>"
+                + "<td>" + _pct_cell(r.get("chg")) + "</td>"
+                + "<td>" + _pct_cell(r.get("m5")) + "</td>"
+                + "<td>" + _pct_cell(r.get("m20")) + "</td>"
+                + "<td>" + _pct_cell(r.get("m60")) + "</td>"
+                + "<td>" + _pct_cell(r.get("from_high")) + "</td></tr>")
+
+    head = ("<tr><th>标的</th><th>最新</th><th>当日</th><th>近5日</th>"
+            "<th>近20日</th><th>近60日</th><th>距52周高</th></tr>")
+    us_rows = "".join(_row(r) for r in (data.get("us") or []))
+    cn_rows = "".join(_row(r) for r in (data.get("cn") or []))
+    empty = '<tr><td colspan="7" class="muted">实时数据缺失</td></tr>'
+
+    def _med(key, side):
+        vals = sorted(r.get(key) for r in (data.get(side) or []) if r.get(key) is not None)
+        if not vals:
+            return None
+        n = len(vals)
+        return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+
+    verdict = []
+    us5, cn5 = _med("m5", "us"), _med("m5", "cn")
+    us60, cn60 = _med("m60", "us"), _med("m60", "cn")
+    us_dd, cn_dd = _med("from_high", "us"), _med("from_high", "cn")
+    if us5 is not None and cn5 is not None:
+        verdict.append(("**短期动量（5日）中国科技占优**：" if cn5 > us5 else "**短期动量（5日）美国占优**：")
+                       + f"中位 {cn5:+.2f}%（中国） vs {us5:+.2f}%（美国）")
+    if us60 is not None and cn60 is not None:
+        verdict.append(("中期（60日）中国科技更强：" if cn60 > us60 else "中期（60日）美国动量更强：")
+                       + f"{cn60:+.2f}%（中国） vs {us60:+.2f}%（美国）")
+    if cn_dd is not None and us_dd is not None:
+        deeper = "中国科技" if cn_dd < us_dd else "美国动量"
+        verdict.append(f"距 52 周高点回撤更深的为{deeper}（中国中位 {cn_dd:.1f}% / 美国中位 {us_dd:.1f}%）")
+
+    errs = data.get("errors") or []
+    foot = ('<p class="muted" style="font-size:11px;margin-top:8px;">口径：近 N 个交易日的区间涨跌幅；'
+            '数据截至 ' + _esc(str(data.get("date", ""))) + '。'
+            + ('抓取异常：' + _esc("；".join(errs)) if errs else '') + '</p>')
+
+    return (
+        '<p style="font-size:12.5px;color:#636e72;margin:0 0 10px;">'
+        '美国侧用 <b>安硕 MSCI 美国动量因素 ETF（MTUM）</b>——跟踪 MSCI USA Momentum SR Variant Index，'
+        '持仓科技占比约 57%（半导体约 26%、存储约 24%），可视作「美国科技动量」的代理。'
+        '中国侧取科技类指数（科创50 / 科创芯片 / 国证芯片 / 创业板指），沪深300 作宽基对照。'
+        '动量为区间涨跌幅，「距52周高」反映趋势所处位置。</p>'
+        '<div style="font-size:13px;font-weight:700;color:#3C3489;margin:12px 0 4px;">美国动量因素</div>'
+        '<table><thead>' + head + '</thead><tbody>' + (us_rows or empty) + '</tbody></table>'
+        '<div style="font-size:13px;font-weight:700;color:#3C3489;margin:16px 0 4px;">中国科技动量</div>'
+        '<table><thead>' + head + '</thead><tbody>' + (cn_rows or empty) + '</tbody></table>'
+        '<div class="point" style="margin-top:12px;"><div class="pt-title">动量对照研判</div>'
+        '<div class="pt-body">' + (_esc("；".join(verdict)) if verdict else "数据不足，暂无法研判。") + '</div></div>'
+        + foot
+    )
+
+
 def us_section():
     if not us_market:
         return PLACEHOLDER
@@ -2090,7 +2170,7 @@ def _render_html():
     css = _load_css()
     # AI 资本开支章节按数据更新出现 —— 章节数与目录项随之动态调整（无更新时回到 9 章节）
     aic_html = ai_capex_section()
-    n_sec = 9 if aic_html else 8
+    n_sec = 10 if aic_html else 9
     aic_toc = ('<li><a href="#sec-aicapex">海外 AI 巨头资本开支追踪（总量 · 结构 · 市场映射）</a></li>'
                if aic_html else "")
     return f'''<!DOCTYPE html>
@@ -2119,6 +2199,7 @@ def _render_html():
 <h2>目录</h2>
 <ol>
 <li><a href="#sec-core">核心结论（实时 · 含今日操作策略与主要指数）</a></li>
+<li><a href="#sec-momentum">中美动量对照（美国动量因素 · 中国科技）</a></li>
 {aic_toc}
 <li><a href="#sec-us">隔夜美股（实时 · 外网解析）</a></li>
 <li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
@@ -2138,21 +2219,26 @@ def _render_html():
 {core_conclusion()}
 </div>
 
+<div class="card" id="sec-momentum">
+<h2>一、中美动量对照（美国动量因素 · 中国科技 · 实时）</h2>
+{momentum_section()}
+</div>
+
 {aic_html}
 
 <div class="card" id="sec-us">
-<h2>一、隔夜美股（实时 · 外网解析）</h2>
+<h2>二、隔夜美股（实时 · 外网解析）</h2>
 {us_section()}
 {intel_block("us_market")}
 </div>
 
 <div class="card" id="sec-macro">
-<h2>二、CPI与宏观（实时 · 外网解析）</h2>
+<h2>三、CPI与宏观（实时 · 外网解析）</h2>
 {intel_block("macro")}
 </div>
 
 <div class="card" id="sec-chain">
-<h2>三、宏观传导链监控（独立因子·实时）</h2>
+<h2>四、宏观传导链监控（独立因子·实时）</h2>
 {chain_svg()}
 {fima_highlight()}
 <div style="margin-top:12px;">{us_yield_panel()}</div>
@@ -2160,29 +2246,29 @@ def _render_html():
 </div>
 
 <div class="card" id="sec-geo">
-<h2>四、地缘政治与原油（事件因子 · 外网解析）</h2>
+<h2>五、地缘政治与原油（事件因子 · 外网解析）</h2>
 {intel_block("geopolitics")}
 </div>
 
 <div class="card" id="sec-etf">
-<h2>五、ETF资金流向（实时）</h2>
+<h2>六、ETF资金流向（实时）</h2>
 {etf_section()}
 {fund_section()}
 {market_width_section()}
 </div>
 
 <div class="card" id="sec-weibo">
-<h2>六、微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</h2>
+<h2>七、微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</h2>
 {vs_summary()}
 </div>
 
 <div class="card" id="sec-resonance">
-<h2>七、共振信号（多源交叉·实时）</h2>
+<h2>八、共振信号（多源交叉·实时）</h2>
 {resonance_section()}
 </div>
 
 <div class="card" id="sec-watchlist">
-<h2>八、{len(WATCHLIST)}只自选股操作指引（实时诊断）</h2>
+<h2>九、{len(WATCHLIST)}只自选股操作指引（实时诊断）</h2>
 {concentration_warning()}
 {''.join(stock_card(c) for c in WATCHLIST)}
 </div>
@@ -2221,7 +2307,7 @@ def main():
                               user=dc.get("user", "postgres"), password=dc.get("password", ""),
                               dbname=dc.get("dbname", "stock_report_agent"))
             td = datetime.strptime(TODAY, "%Y-%m-%d").date()
-            _n_sec = 9 if "sec-aicapex" in html else 8
+            _n_sec = 10 if "sec-aicapex" in html else 9
             db.save_report(td, REPORT_STATE, f"A股操作指引·{_n_sec}章节", html)
             print("[DB] 报告入库完成（舆情数据由数据引擎统一入库，避免重复）")
         else:

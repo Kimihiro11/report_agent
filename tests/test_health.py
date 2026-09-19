@@ -33,7 +33,7 @@ REPORT_DIRS = [BASE / "reports" / t for t in ("早报", "晚报", "周报")]
 
 # 报告必须存在的章节锚点（h2 标题关键字）
 # 注：缠论已于 2026-09-18 拆出日报独立成报（chan_report.py），不再计入日报章节。
-SECTION_ANCHORS = ["核心结论", "隔夜美股", "CPI", "传导链", "地缘", "ETF", "舆情解构",
+SECTION_ANCHORS = ["核心结论", "中美动量对照", "隔夜美股", "CPI", "传导链", "地缘", "ETF", "舆情解构",
                    "共振信号", "自选股", "限时关注", "免责"]
 
 REQUIRED_SNAPSHOT_KEYS = ["date", "quotes", "weibo_data", "market_state"]
@@ -255,11 +255,12 @@ class TestReportAnchors(unittest.TestCase):
     def test_section_count_matches_ai_capex_presence(self):
         """章节数须与 AI 资本开支章节是否出现一致（该章节按数据更新动态出现）。
 
-        基线：缠论章节已于 2026-09-18 拆出日报（见 chan_report.py），编号章节 8 个；
-        AI 资本开支章节按指纹门控出现时 +1 → 9。
+        基线：缠论章节已于 2026-09-18 拆出日报（见 chan_report.py）；
+        2026-09-20 新增「中美动量对照」章节 → 编号章节 9 个；
+        AI 资本开支章节按指纹门控出现时 +1 → 10。
         """
         has = "sec-aicapex" in self.html
-        self.assertIn(f"{9 if has else 8}章节", self.html,
+        self.assertIn(f"{10 if has else 9}章节", self.html,
                       f"章节数与 AI 资本开支章节存在性（{has}）不一致")
 
     def test_no_unrendered_placeholder_leak(self):
