@@ -253,9 +253,13 @@ class TestReportAnchors(unittest.TestCase):
         self.assertEqual([], missing, f"{self.path.name} 缺少章节: {missing}")
 
     def test_section_count_matches_ai_capex_presence(self):
-        """章节数须与 AI 资本开支章节是否出现一致（该章节按数据更新动态出现）。"""
+        """章节数须与 AI 资本开支章节是否出现一致（该章节按数据更新动态出现）。
+
+        基线：缠论章节已于 2026-09-18 拆出日报（见 chan_report.py），编号章节 8 个；
+        AI 资本开支章节按指纹门控出现时 +1 → 9。
+        """
         has = "sec-aicapex" in self.html
-        self.assertIn(f"{10 if has else 9}章节", self.html,
+        self.assertIn(f"{9 if has else 8}章节", self.html,
                       f"章节数与 AI 资本开支章节存在性（{has}）不一致")
 
     def test_no_unrendered_placeholder_leak(self):
