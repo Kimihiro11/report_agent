@@ -1439,6 +1439,16 @@ def main():
         us_yield = fetch_us_yield() if _budget_ok("美债收益率") else None
         fund_flows = fetch_fund_flows() if _budget_ok("资金面") else None
         market_width = fetch_market_width() if _budget_ok("市场宽度") else None
+        # 中美动量对照（安硕 MSCI 美国动量因素 ETF × 中国科技指数）
+        # 产物落 data/momentum/momentum_<DATE8>.json，报告章节直接读文件（缺失则渲染占位）
+        if _budget_ok("中美动量"):
+            try:
+                import momentum as _mom
+                _today = datetime.now().strftime("%Y-%m-%d")
+                _mom.save(_mom.collect(_today), _today)
+                print("  [动量] 中美动量数据已更新")
+            except Exception as e:
+                print(f"  [警告] 动量数据采集失败: {e}")
         print(f"[数据引擎] 行情采集完成（耗时 {_time_mod.monotonic() - _t0:.0f}s，剩余 {_budget_left():.0f}s）")
 
     if not no_fetch:
