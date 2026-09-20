@@ -899,6 +899,81 @@ def us_yield_panel():
     )
 
 
+_CHART_COLORS = ["#1967d2", "#d63031", "#e67e22", "#00a865", "#8e44ad", "#16a085"]
+
+
+def _momentum_line_chart(series):
+    """中美动量归一化走势折线图（纯 SVG，无第三方库）。
+
+    series: {dates: [...], lines: [{code,name,side,values}]}，values 为相对起点的累计涨跌幅(%)。
+    X 轴为 A 股交易日（缺失按前向填充），量纲不同的标的（MTUM ~300 / 科创50 ~1600）归一化后同图对比。
+    """
+    if not series:
+        return ""
+    dates = series.get("dates") or []
+    lines = [l for l in (series.get("lines") or []) if l.get("values")]
+    if len(dates) < 2 or not lines:
+        return ""
+    vals = [v for l in lines for v in l["values"] if v is not None]
+    if not vals:
+        return ""
+
+    W, H, pad_l, pad_r, pad_t, pad_b = 660, 312, 44, 14, 16, 64
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1
+    lo -= span * 0.10
+    hi += span * 0.10
+    plot_w, plot_h = W - pad_l - pad_r, H - pad_t - pad_b
+    n = len(dates)
+
+    def _x(i):
+        return pad_l + plot_w * (i / (n - 1))
+
+    def _y(v):
+        return pad_t + plot_h * (hi - v) / (hi - lo)
+
+    grids = ""
+    for gy in (0.0, 0.25, 0.5, 0.75, 1.0):
+        y = pad_t + plot_h * gy
+        grids += (f'<line x1="{pad_l}" y1="{y:.1f}" x2="{W-pad_r}" y2="{y:.1f}" '
+                  f'stroke="#eef0f4" stroke-width="1"/>'
+                  f'<text x="{pad_l-6}" y="{y+3:.1f}" text-anchor="end" font-size="9" '
+                  f'fill="#9aa3b2">{hi - gy * (hi - lo):+.1f}%</text>')
+    zero = (f'<line x1="{pad_l}" y1="{_y(0):.1f}" x2="{W-pad_r}" y2="{_y(0):.1f}" '
+            f'stroke="#c3cad6" stroke-width="1" stroke-dasharray="4,3"/>')
+
+    paths, legend = "", ""
+    for k, l in enumerate(lines):
+        vs = l["values"]
+        if len(vs) != n:
+            continue
+        color = _CHART_COLORS[k % len(_CHART_COLORS)]
+        pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(vs))
+        last_v = vs[-1]
+        paths += (f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.9" '
+                  f'stroke-linejoin="round" stroke-linecap="round"/>'
+                  f'<circle cx="{_x(n-1):.1f}" cy="{_y(last_v):.1f}" r="2.8" fill="{color}">'
+                  f'<title>{_esc(l.get("name", ""))} {last_v:+.2f}%</title></circle>')
+        # 图例横排（底部 3 列），避免右侧挤压导致中文名截断
+        col, row = k % 3, k // 3
+        lx = 8 + col * 213
+        ly = pad_t + plot_h + 30 + row * 17
+        legend += (f'<line x1="{lx}" y1="{ly}" x2="{lx+16}" y2="{ly}" '
+                   f'stroke="{color}" stroke-width="2.4"/>'
+                   f'<text x="{lx+21}" y="{ly+3.5}" font-size="10" fill="#4a5568">'
+                   f'{_esc(l.get("name", ""))} {last_v:+.1f}%</text>')
+
+    labels, step = "", max(1, n // 6)
+    for i in range(0, n, step):
+        labels += (f'<text x="{_x(i):.1f}" y="{pad_t + plot_h + 15}" text-anchor="middle" font-size="9" '
+                   f'fill="#9aa3b2">{dates[i][5:]}</text>')
+
+    return ('<div style="margin:14px 0 4px;font-size:13px;font-weight:700;color:#3C3489;">'
+            '近 ' + str(n) + ' 个交易日累计涨跌幅（起点=0%）</div>'
+            f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto;display:block">'
+            f'{grids}{zero}{paths}{legend}{labels}</svg>')
+
+
 def momentum_section():
     """中美动量对照：安硕 MSCI 美国动量因素 ETF（MTUM） vs 中国科技指数。
 
@@ -973,6 +1048,7 @@ def momentum_section():
         '<table><thead>' + head + '</thead><tbody>' + (us_rows or empty) + '</tbody></table>'
         '<div style="font-size:13px;font-weight:700;color:#3C3489;margin:16px 0 4px;">中国科技动量</div>'
         '<table><thead>' + head + '</thead><tbody>' + (cn_rows or empty) + '</tbody></table>'
+        + _momentum_line_chart(data.get("series")) +
         '<div class="point" style="margin-top:12px;"><div class="pt-title">动量对照研判</div>'
         '<div class="pt-body">' + (_esc("；".join(verdict)) if verdict else "数据不足，暂无法研判。") + '</div></div>'
         + foot

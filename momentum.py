@@ -142,19 +142,62 @@ def fetch_us_spot(sina_code: str):
     return {"name": p[0], "price": f(1), "pct": f(2), "high52": f(8), "low52": f(9)}
 
 
+CHART_DAYS = 60  # 折线图窗口（A 股交易日）
+
+
+def _build_series(items, days: int = CHART_DAYS):
+    """构建归一化走势序列（供报告折线图使用）。
+
+    items: [(code, name, side, rows)]，rows=[(date, close, high)] 升序。
+    以**中国侧首个有数据的标的**的最近 days 个交易日为 X 轴（报告以 A 股日历为准），
+    其余标的按日期前向填充（中美交易日不同，美股节假日缺值沿用前值）；
+    数值为相对起点的累计涨跌幅（%），便于量纲不同的标的（MTUM ~300 / 科创50 ~1600）同图对比。
+    """
+    base = next((r for r in items if r[2] == "cn" and r[3]), None) or next((r for r in items if r[3]), None)
+    if not base or len(base[3]) < 2:
+        return None
+    axis = [d for d, _, _ in base[3][-days:]]
+    if len(axis) < 2:
+        return None
+
+    lines = []
+    for code, name, side, rows in items:
+        if not rows:
+            continue
+        close_by_date = {d: c for d, c, _ in rows}
+        filled, last = [], None
+        for d in axis:
+            if d in close_by_date:
+                last = close_by_date[d]
+            filled.append(last)
+        first_known = next((v for v in filled if v), None)
+        if not first_known:
+            continue
+        filled = [v if v else first_known for v in filled]  # 头部回填
+        vals = [round((v / first_known - 1) * 100, 2) for v in filled]
+        lines.append({"code": code, "name": name, "side": side, "values": vals})
+
+    if not lines:
+        return None
+    return {"dates": axis, "lines": lines}
+
+
 def collect(date_str: str | None = None):
     """抓取中美两侧动量数据。返回 dict。"""
     out = {"date": date_str or datetime.now().strftime("%Y-%m-%d"),
            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
            "us": [], "cn": [], "errors": []}
+    series_input = []
 
     for t in US_TARGETS:
         rec = {"code": t["code"], "name": t["name"], "note": t.get("note", "")}
         ind = None
+        rows = []
         # 东财 push2his 对美股 ETF 偶发限流，重试 3 次
         for attempt in range(3):
             try:
-                ind = _indicators(fetch_us_kline(t["code"], t.get("em", "")))
+                rows = fetch_us_kline(t["code"], t.get("em", ""))
+                ind = _indicators(rows)
                 if ind:
                     break
             except Exception as e:
@@ -184,20 +227,26 @@ def collect(date_str: str | None = None):
             out["us"].append(rec)
         else:
             out["errors"].append(f"US {t['code']}: 无数据")
+        if rows:
+            series_input.append((t["code"], t["name"], "us", rows))
 
     for t in CN_TARGETS:
         rec = {"code": t["code"], "name": t["name"]}
         try:
-            ind = _indicators(fetch_cn_kline(t["kline"]))
+            rows = fetch_cn_kline(t["kline"])
+            ind = _indicators(rows)
             if ind:
                 rec.update(ind)
                 out["cn"].append(rec)
             else:
                 out["errors"].append(f"CN {t['name']}: 无数据")
+            if rows:
+                series_input.append((t["code"], t["name"], "cn", rows))
         except Exception as e:
             out["errors"].append(f"CN {t['name']}: {e}")
             print(f"  [警告] CN {t['name']} 抓取失败: {e}")
 
+    out["series"] = _build_series(series_input)
     return out
 
 
