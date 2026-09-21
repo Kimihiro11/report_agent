@@ -1456,8 +1456,11 @@ def main():
             if not _budget_ok(f"微博源 {src['name']}"):
                 weibo_data[src["name"]] = []
                 continue
-            # T1 源（唐史主任）回溯近 2 天：周一早盘结合周末/昨日观点输出
-            lb = 2 if src.get("tier") == 1 else 1
+            # 回溯 2 天：T2 源（源深路）最新帖常在**前一交易日晚间**发出——
+            # 实测 2026-09-20 22:06 的帖，在 9/21 早盘因 (today-post).days == 1 >= lookback_days(1)
+            # 被整段过滤，微博章节只剩 T1 单人观点。周一还需覆盖周末观点，故统一回溯 2 天，
+            # 由 fetch_weibo 内部的时间窗口自行收敛。
+            lb = 2
             posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie, lookback_days=lb)
             weibo_data[src["name"]] = posts
         for src in config.get("global_sources", []):
