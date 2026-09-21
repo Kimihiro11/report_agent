@@ -101,7 +101,7 @@ _TYPE_STATE = {"早报": "盘前", "盘中": "盘中", "晚报": "盘后", "周�
 SECTOR = {
     "688668": "连接器+液冷", "688409": "半导体设备零部件", "600641": "离子注入机",
     "000725": "面板+AI封装", "301392": "PVD设备", "688530": "靶材", "600580": "机器人电机",
-    "600498": "光通信", "688825": "DRAM存储芯片",
+    "600498": "光通信", "688825": "DRAM存储芯片", "002897": "高速连接器+光伏支架",
 }
 
 
@@ -313,7 +313,18 @@ def load_context():
             return False
 
     report_is_today = TODAY == datetime.now().strftime("%Y-%m-%d")
-    target_date = None if report_is_today else TODAY
+    # ⚠️ 盘前报告必须锚定上一交易日收盘（VIEW.data_date）：
+    # target_date=None 会经 get_realtime_quote 注入**实时行情**（data_source=realtime）。
+    # 盘前出报时该实时价恰好等于昨收（无害），但**开盘后重跑就会混入盘中价**，
+    # 与 basis=pre_market / data_date=上一交易日 自相矛盾，且同一份盘前报告不可复现。
+    if VIEW.is_pre_market and VIEW.data_date:
+        target_date = str(VIEW.data_date)
+    else:
+        target_date = None if report_is_today else TODAY
+
+    # 诊断入参带名称：历史口径（target_date 有值）下 analyze_stock 拿不到实时 quote，
+    # 其 name 只在 realtime 分支由 quote 回填，会变成空串 —— 显式传名使缓存自描述。
+    _diag_input = [{"code": c, "name": watch_name(c)} for c in WATCHLIST]
 
     def _run_diagnosis_via_venv(watchlist, diag_path, cached_results, target):
         """本进程缺 numpy 时，用项目 .venv 子进程跑诊断；历史报告传 target_date。"""
@@ -342,7 +353,10 @@ def load_context():
     cached_codes = {r.get("code") for r in cached_results}
     missing_codes = set(WATCHLIST) - cached_codes
     cache_target = cached_meta.get("target_date") or (cached_results[0].get("target_date") if cached_results else "")
-    target_mismatch = bool(cached_results) and cache_target != TODAY
+    # 期望口径 = 本次实际会用的 target（盘前报告锚定上一交易日，不等于 TODAY）——
+    # 若拿 TODAY 去比，盘前报告的缓存将永远判定失配、每次重跑都重算 10 只诊断。
+    expected_target = target_date or TODAY
+    target_mismatch = bool(cached_results) and cache_target != expected_target
     cache_stale = False
     if report_is_today and cached_results:
         stamp = cached_meta.get("batch_diagnosed_at") or cached_results[0].get("diagnosed_at", "")
@@ -369,13 +383,13 @@ def load_context():
         try:
             import stock_diagnosis as sd
             import numpy  # 触发 ImportError 以便降级到 .venv
-            diag_result = sd.run_all(WATCHLIST, target_date=target_date)
+            diag_result = sd.run_all(_diag_input, target_date=target_date)
             _write_cache(diag_path, diag_result)
             diag_raw = diag_result.get("results", [])
             print(f"[诊断] 完成并缓存: {diag_result['meta']['succeeded']}/{diag_result['meta']['total']}")
         except Exception as e:
             print(f"[诊断] 本进程不可用（{type(e).__name__}），尝试 .venv 子进程...")
-            diag_raw = _run_diagnosis_via_venv(WATCHLIST, diag_path, cached_results, target_date)
+            diag_raw = _run_diagnosis_via_venv(_diag_input, diag_path, cached_results, target_date)
             if not diag_raw and cached_results:
                 print("[诊断] 刷新失败，降级使用旧缓存")
                 diag_raw = cached_results

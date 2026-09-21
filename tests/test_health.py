@@ -359,6 +359,52 @@ class TestOilTracking(unittest.TestCase):
             self.assertIn(h.get("tone"), ("bullish", "bearish", "neutral"))
 
 
+class TestDiagnosisAnchoring(unittest.TestCase):
+    """自选股诊断的口径自洽（2026-09-21 实测踩坑）。
+
+    背景：`stock_diagnosis.analyze_stock(target_date=None)` 会拉**实时行情**并把当日 bar
+    注入 K 线。早报一般在开盘前跑，此时实时价恰好=昨收，看不出问题；但**开盘后重跑**
+    就会把盘中价写进 `basis=pre_market / data_date=上一交易日` 的报告里，同一份早报不可复现
+    （实测 10 只全部变成盘中价）。build_report 已改为盘前强制锚定 `VIEW.data_date`。
+    """
+
+    def _latest(self):
+        import json
+        import pathlib
+        base = pathlib.Path(__file__).resolve().parent.parent
+        files = [f for f in sorted((base / "data" / "diagnosis").glob("diagnosis_*.json"))
+                 if ".bak" not in f.name]
+        if not files:
+            self.skipTest("尚无诊断缓存")
+        return json.loads(files[-1].read_text(encoding="utf-8")), files[-1]
+
+    def test_historical_anchor_uses_history_source(self):
+        """target_date 早于诊断日 ⇒ 必须走 history 口径，且 latest_date 与之一致。"""
+        d, path = self._latest()
+        results = d.get("results") or []
+        if not results:
+            self.skipTest("诊断结果为空")
+        target = (d.get("meta") or {}).get("target_date") or ""
+        diag_day = (d.get("meta") or {}).get("batch_diagnosed_at", "")[:10]
+        if not target or target == diag_day:
+            self.skipTest(f"非历史锚定缓存（target={target} diag={diag_day}）")
+        for s in results:
+            name = s.get("name") or s.get("code")
+            self.assertEqual("history", s.get("data_source"),
+                             f"{name}: target_date={target} 却用了 {s.get('data_source')} 口径")
+            self.assertEqual(target, s.get("latest_date"),
+                             f"{name}: latest_date={s.get('latest_date')} 与 target_date={target} 不一致")
+
+    def test_names_populated(self):
+        """诊断入参须带名称：history 分支拿不到实时 quote，name 只能由调用方显式传入。"""
+        d, path = self._latest()
+        results = d.get("results") or []
+        if not results:
+            self.skipTest("诊断结果为空")
+        missing = [s.get("code") for s in results if not s.get("name")]
+        self.assertEqual([], missing, f"{path.name} 诊断缓存名称缺失: {missing}")
+
+
 class TestChanMultiLevel(unittest.TestCase):
     """缠论三级别联立（2026-09-17 新增）：30分钟 + 5分钟 + 日线，支持起点锚定。
 
