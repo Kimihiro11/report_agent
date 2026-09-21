@@ -214,7 +214,7 @@ def _db_available(cfg):
 
 def seed_judgments(report_dir: Path = None):
     """解析 reports/ 下所有报告 HTML（含子目录），写入 stock_judgments（去重）"""
-    # 仅扫描 reports/（早报|晚报|周报|回测），排除 archive/ 历史副本避免重复
+    # 仅扫描 reports/ 递归（早报|晚报|周报|回测|早期版本），靠下方 pats 白名单 + 去重防重复入库
     if report_dir is None:
         report_dir = BASE_DIR / "reports"
     pats = [
