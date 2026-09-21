@@ -294,8 +294,37 @@ def load_judgments(as_of=None):
 _EM_CACHE = {}
 
 
+def _kline_fill_tail(code, out, end):
+    """尾端缺 end 时用妙想补齐（妙想 = 第一数据源，但**仅限短区间**）。
+
+    实测：妙想区间 >7 个交易日会降级为「只有开盘价/收盘价」（丢最高/最低），
+    因此只用来补最近几日的缺口（如 15:30 前新浪尚未更新的当日），
+    历史序列仍由新浪提供（字段完整、毫秒级）。失败时原样返回，绝不抛异常。
+    """
+    if not (out and end and out[-1]["date"] < end):
+        return out
+    try:
+        from datetime import timedelta
+        from ra import stock_report_agent as _sra
+        start = (datetime.strptime(end, "%Y-%m-%d")
+                 - timedelta(days=10)).strftime("%Y-%m-%d")
+        mx = _sra._kline_mx(code, beg=start, end=end)
+        have = {k["date"] for k in out}
+        add = [k for k in mx if k["date"] not in have]
+        if add:
+            out = sorted(out + add, key=lambda x: x["date"])
+            print(f"  [K线] {code} 尾端缺口 {len(add)} 根由妙想补齐（至 {out[-1]['date']}）")
+    except Exception as e:
+        print(f"  [K线] {code} 妙想补缺口失败（{e}），沿用现有序列")
+    return out
+
+
 def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
-    """实时抓取日K线（新浪主源，东方财富兜底），返回 [{date, open, close, high, low}] 升序。"""
+    """实时抓取日K线（新浪主源，东方财富兜底；尾端缺口用妙想补齐）。
+
+    返回 [{date, open, close, high, low}] 升序。妙想作为第一数据源只用于补短区间
+    缺口（其长区间返回会丢最高/最低价），历史序列由新浪提供。
+    """
     end = end or datetime.now().strftime("%Y-%m-%d")
     if code in _EM_CACHE:
         return _EM_CACHE[code]
@@ -314,6 +343,7 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
                 raw = json.loads(r.read().decode("utf-8"))
             out = [{"date": k["day"], "open": float(k["open"]), "close": float(k["close"]),
                     "high": float(k["high"]), "low": float(k["low"])} for k in raw]
+            out = _kline_fill_tail(code, out, end)
             _EM_CACHE[code] = out
             return out
         except Exception as e:
@@ -337,6 +367,7 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
                 p = line.split(",")
                 out.append({"date": p[0], "open": float(p[1]), "close": float(p[2]),
                             "high": float(p[3]), "low": float(p[4])})
+            out = _kline_fill_tail(code, out, end)
             _EM_CACHE[code] = out
             return out
         except Exception as e:

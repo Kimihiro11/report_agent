@@ -166,7 +166,7 @@ class TestEtfGuard(unittest.TestCase):
 
     def test_zero_rows_rejected(self):
         from ra import stock_report_agent as sra
-        rows = [["沪深300ETF", "510300", "净申购", "b-red", "近一日净流入 0.00亿元"]]
+        rows = [["沪深300ETF", "510300", "净流入", "b-red", "近一日净流入 0.00亿元"]]
         self.assertFalse(sra._etf_amount_valid(rows))
 
     def test_real_rows_accepted(self):

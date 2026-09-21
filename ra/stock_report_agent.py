@@ -165,6 +165,188 @@ def _parse_mx_quote(md, name):
 
 
 # ----------------------------------------------------------------------------
+# 妙想数据源统一封装（**第一数据源**）
+#   策略（2026-09-21 用户明确）：妙想能取到时优先用妙想，取不到再回退原有源。
+#   实测各类查询 4~6s；同问句走进程内缓存只调一次，采集 180s 预算内可承受。
+#   ⚠️ 妙想日期/单位随查询措辞变化，解析失败一律返回空 → 由上层回退，绝不抛异常。
+# ----------------------------------------------------------------------------
+
+_MX_CACHE = {}
+
+
+def _mx_query(query, indicators, timeout=25):
+    """妙想查询（进程内缓存 + 超时保护）。返回 markdown 文本或 None。"""
+    key = (query, indicators)
+    if key not in _MX_CACHE:
+        _MX_CACHE[key] = _run_mx_skill(query, indicators, timeout=timeout)
+    return _MX_CACHE[key]
+
+
+def _mx_amount_yi(text):
+    """妙想金额文本 → 亿元(float)：支持 '-6254万元' / '-4.168亿元' / '9468亿' / '1.085万亿'。"""
+    if text is None:
+        return None
+    t = str(text).replace(",", "").replace(" ", "")
+    m = re.search(r"(-?\d+(?:\.\d+)?)\s*(万亿|亿|万)?", t)
+    if not m:
+        return None
+    v = float(m.group(1))
+    unit = m.group(2) or ""
+    if unit == "万亿":
+        return v * 10000
+    if unit == "万":
+        return v / 10000
+    return v
+
+
+def _mx_date_cn(d):
+    """ISO 日期 → 妙想偏好的中文写法（2026-06-01 → 2026年6月1日）。
+
+    ⚠️ 实测：传 ISO 格式时妙想返回的区间表**只有开盘价/收盘价两行**（缺最高/最低），
+    换中文日期才给全 OHLC —— 日期措辞会改变返回的表结构。
+    """
+    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", str(d or ""))
+    if not m:
+        return str(d or "")
+    return f"{m.group(1)}年{int(m.group(2))}月{int(m.group(3))}日"
+
+
+def _mx_md_tables(md):
+    """妙想 md → [{'head': [...], 'rows': {指标: [值, ...]}}]（一个 md 常含多张表）。"""
+    tables, head, rows = [], None, {}
+    for line in (md or "").splitlines():
+        s = line.strip()
+        if not s.startswith("|"):
+            if head is not None and rows:
+                tables.append({"head": head, "rows": rows})
+            head, rows = None, {}
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if set("".join(cells)) <= set("-: "):
+            continue
+        if head is None:
+            head = cells
+            continue
+        rows[cells[0]] = cells[1:]
+    if head is not None and rows:
+        tables.append({"head": head, "rows": rows})
+    return tables
+
+
+def _etf_mx():
+    """ETF 主力净流入（妙想 = 第一数据源）。返回 [(name,code,direction,cls,signal),...]。
+
+    取不到的标的跳过，全失败返回 []（由上层继续兜底）。方向用「净流入/净流出」，
+    与 signal 文案及 db.py 的金额解析口径一致。
+    """
+    etfs = _load_etf_flows()
+    md = _mx_query("查询" + "、".join(f"{n}({c})" for n, c, _m in etfs) + "的主力资金净流入",
+                   "主力资金净流入")
+    if not md:
+        return []
+    out = []
+    for name, code, _mkt in etfs:
+        amt = None
+        for line in md.splitlines():
+            if f"({code}." not in line and f"({code})" not in line:
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) >= 2:
+                amt = _mx_amount_yi(cells[-1])
+                if amt is not None:
+                    break
+        if amt is None:
+            continue
+        pos = amt >= 0
+        out.append((name, code,
+                    "净流入" if pos else "净流出",
+                    "b-red" if pos else "b-green",
+                    f"近一日{'净流入' if pos else '净流出'} {abs(amt):.2f}亿元"))
+    return out
+
+
+def _idx_mx():
+    """指数行情（妙想 = 第一数据源）。返回 {name: {price,chg,chg_pct,volume}} 或 {}。"""
+    _, name_map = _load_index_quotes()
+    names = list(name_map.values())
+    md = _mx_query("查询" + "、".join(names) + "的实时行情、涨跌幅、成交量",
+                   "实时行情、涨跌幅、成交量")
+    if not md:
+        return {}
+    for tb in _mx_md_tables(md):
+        head = tb["head"]
+        if not all(any(nm in h for h in head) for nm in names):
+            continue                      # 表头须覆盖全部指数（排除历史序列表）
+        cols = {}
+        for i, h in enumerate(head[1:], start=1):
+            for nm in names:
+                if nm in h and nm not in cols:
+                    cols[nm] = i
+        pct_row = tb["rows"].get("涨跌幅")
+        price_row = tb["rows"].get("最新价") or tb["rows"].get("收盘价")
+        vol_row = tb["rows"].get("成交量") or []
+        if not (pct_row and price_row) or len(cols) < len(names):
+            continue
+        out = {}
+        for nm, i in cols.items():
+            try:
+                pct = float(str(pct_row[i - 1]).replace("%", "").replace("点", ""))
+                price = float(re.sub(r"[^\d.\-]", "", str(price_row[i - 1])) or 0)
+            except (ValueError, IndexError, TypeError):
+                continue
+            if not price:
+                continue
+            prev = price / (1 + pct / 100) if pct != -100 else price
+            out[nm] = {"price": round(price, 2), "chg": round(price - prev, 2),
+                       "chg_pct": round(pct, 2),
+                       "volume": str(vol_row[i - 1]) if i - 1 < len(vol_row) else "—"}
+        if len(out) == len(names):
+            return out
+    return {}
+
+
+def _kline_mx(code, name="", beg="", end=""):
+    """个股日K（妙想 = 第一数据源）。返回 [{date,open,high,low,close}] 升序，失败 []。
+
+    实测可一次取回 90+ 个交易日（≈5s / 5KB），满足诊断与回测的历史长度。
+    """
+    if not name:
+        try:
+            name = (load_config().get("watchlist_names") or {}).get(code, "")
+        except Exception:
+            name = ""
+    if not name or not beg or not end:
+        return []
+    md = _mx_query(f"查询{name}({code})在{_mx_date_cn(beg)}至{_mx_date_cn(end)}的"
+                   "开盘价、最高价、最低价、收盘价", "开盘价、最高价、最低价、收盘价")
+    if not md:
+        return []
+    for tb in _mx_md_tables(md):
+        dates = []
+        for h in tb["head"][1:]:
+            m = re.match(r"(20\d\d-\d\d-\d\d)", h)
+            if m:
+                dates.append(m.group(1))
+        if len(dates) < 5 or len(dates) != len(tb["head"]) - 1:
+            continue                      # 认「日期做表头」的那张表
+        need = ("开盘价", "最高价", "最低价", "收盘价")
+        if not all(k in tb["rows"] for k in need):
+            continue
+        out = []
+        for i, d in enumerate(dates):
+            try:
+                o, h, l, c = (float(re.sub(r"[^\d.\-]", "", str(tb["rows"][k][i])))
+                              for k in need)
+            except (ValueError, IndexError, TypeError):
+                continue
+            out.append({"date": d, "open": o, "high": h, "low": l, "close": c})
+        if out:
+            out.sort(key=lambda x: x["date"])
+            return out
+    return []
+
+
+# ----------------------------------------------------------------------------
 # 腾讯自选股（westock）连接器：ETF 资金净流兜底源（streamableHttp MCP）
 #   鉴权由 WorkBuddy 运行时管理；脚本内调用需在 config.json 的 westock.auth_token
 #   填入有效 token，或预置环境变量 WESTOCK_AUTH_TOKEN；未配置/不可达时返回 None，
@@ -885,9 +1067,8 @@ def _load_index_quotes():
     return codes, name_map
 
 
-def fetch_index_quotes():
-    """抓取主要指数行情（新浪API）"""
-    print("[行情] 抓取指数数据...")
+def _idx_sina():
+    """指数行情（新浪，兜底源）。返回 {name: {price,chg,chg_pct,volume}}，失败返回 {}。"""
     codes, name_map = _load_index_quotes()
     url = f"https://hq.sinajs.cn/list={codes}"
     headers = {"Referer": "https://finance.sina.com.cn"}
@@ -920,8 +1101,17 @@ def fetch_index_quotes():
             }
         except (ValueError, IndexError):
             continue
-    print(f"  获取 {len(result)} 个指数")
     return result
+
+
+def fetch_index_quotes():
+    """抓取主要指数行情（**妙想优先**，新浪兜底）。"""
+    print("[行情] 抓取指数数据...")
+    res = _fetch_with_fallback([("东方财富妙想", _idx_mx), ("新浪行情", _idx_sina)],
+                               label="指数行情")
+    res = res or {}
+    print(f"  获取 {len(res)} 个指数")
+    return res
 
 
 def _load_us_symbols():
@@ -987,11 +1177,14 @@ def _us_mx():
 
 
 def fetch_us_market():
-    """隔夜美股主要指数与科技/存储龙头。新浪优先，东方财富妙想兜底。
+    """隔夜美股主要指数与科技/存储龙头。新浪优先（妙想美股实体识别有歧义，见下），妙想兜底。
 
     返回 [(name, pct, price, signal), ...]，pct 为涨跌幅(float)。
     所有源失败返回空列表（由报告层渲染为「实时数据缺失」占位，绝不写死假数）。
     """
+    # 美股**保持新浪优先**：妙想对美股只返回「历史序列」表格（涨跌幅无 % 号，且
+    # 实体识别有歧义——「纳斯达克」会被解析成 NDAQ.O 公司股票而非 .IXIC 指数），
+    # 不符合「能用」标准；新浪美股源稳定，妙想仅作兜底。
     print("[美股] 抓取隔夜美股行情（新浪优先，妙想兜底）...")
     res = _fetch_with_fallback([("新浪美股", _us_sina), ("东方财富妙想", _us_mx)], label="美股")
     res = res or []
@@ -1103,7 +1296,7 @@ def _etf_push2():
             if net is None:
                 continue
             net_yi = net / 1e8
-            direction = "净申购" if net_yi >= 0 else "净赎回"
+            direction = "净流入" if net_yi >= 0 else "净流出"
             cls = "b-red" if net_yi >= 0 else "b-green"
             signal = f"近一日{'净流入' if net_yi >= 0 else '净流出'} {abs(net_yi):.2f}亿元"
             results.append((name, code, direction, cls, signal))
@@ -1141,7 +1334,7 @@ def _etf_westock():
         if net is None:
             continue
         net_yi = net / 1e8  # 元 → 亿元
-        direction = "净申购" if net_yi >= 0 else "净赎回"
+        direction = "净流入" if net_yi >= 0 else "净流出"
         cls = "b-red" if net_yi >= 0 else "b-green"
         signal = f"近一日{'净流入' if net_yi >= 0 else '净流出'} {abs(net_yi):.2f}亿元"
         out.append((name, code, direction, cls, signal))
@@ -1151,7 +1344,7 @@ def _etf_westock():
 def fetch_etf_flows():
     """ETF 实时资金净流。腾讯自选股连接器（已接上）优先，东方财富 push2 兜底。
 
-    返回 [(name, code, direction, cls, signal), ...]。direction=净申购/净赎回，
+    返回 [(name, code, direction, cls, signal), ...]。direction=净流入/净流出，
     cls 为徽章色（b-red 净流入 / b-green 净赎回）。所有源失败返回空列表。
 
     说明：westock 鉴权由平台托管，脚本无法获取静态 token（实测 401）；故已连接
@@ -1162,8 +1355,9 @@ def fetch_etf_flows():
     if ov:
         print(f"[ETF] 使用 腾讯自选股连接器（已接上）数据：{len(ov)} 只")
         return ov
-    print("[ETF] 抓取 ETF 资金净流（东方财富 push2 优先，腾讯自选股连接器兜底）...")
-    res = _fetch_with_fallback([("东方财富push2", _etf_push2), ("腾讯自选股", _etf_westock)], label="ETF资金流")
+    print("[ETF] 抓取 ETF 资金净流（**妙想优先** → 东财 push2 → 腾讯自选股）...")
+    res = _fetch_with_fallback([("东方财富妙想", _etf_mx), ("东方财富push2", _etf_push2),
+                                ("腾讯自选股", _etf_westock)], label="ETF资金流")
     res = res or []
     # 假 0 检测：东财 push2 在盘前/收盘结算前常返回「净流入 0.00亿元」占位值（非真实数据）。
     # 明确告警而不是静默降级——入库侧另有 _etf_amount_valid() 拦截，此处提示改用妙想补录。

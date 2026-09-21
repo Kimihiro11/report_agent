@@ -1744,7 +1744,7 @@ def resonance_section():
     up_us = [x[0] for x in us_market if (x[1] if isinstance(x[1], (int, float)) else 0) > 0]
     if up_us:
         rows += f'<tr><td><b>美股映射</b></td><td><span class="badge b-red">实时</span></td><td>{"、".join(up_us[:6])}</td></tr>'
-    net_etf = [e[0] for e in etf if "净申购" in e[2]]
+    net_etf = [e[0] for e in etf if "净流入" in e[2]]
     if net_etf:
         rows += f'<tr><td><b>资金确认</b></td><td><span class="badge b-red">实时</span></td><td>{"、".join(net_etf)}</td></tr>'
     if japan_items:
