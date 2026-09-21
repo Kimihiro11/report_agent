@@ -55,15 +55,30 @@ def latest_snapshot():
     return files[-1] if files else None
 
 
+# 报告文件的标准命名：早报|晚报|周报-YYYY-MM-DD.html
+# ⚠️ 判据必须是**文件名里的日期**，不能用 st_mtime：
+#    任何对历史报告的写操作（剥离 data-page-node-id、批量文本处理、编辑器保存）
+#    都会刷新 mtime，导致这里挑中「旧的、老格式的」报告 → 章节锚点测试假失败。
+#    2026-09-21 剥离 4 份历史报告属性后即踩到（挑中了周报-2026-09-04）。
+_REPORT_NAME = re.compile(r"^(早报|晚报|周报)-(\d{4}-\d{2}-\d{2})\.html$")
+
+
 def latest_report():
-    best = None
+    """取标准命名中日期最新的报告。
+
+    忽略 `A股操作指引-*` 等历史命名（它们不含现行章节结构，会让锚点测试误报）。
+    """
+    best = None  # (日期字符串, 路径)
     for d in REPORT_DIRS:
         if not d.exists():
             continue
         for f in d.glob("*.html"):
-            if best is None or f.stat().st_mtime > best.stat().st_mtime:
-                best = f
-    return best
+            m = _REPORT_NAME.match(f.name)
+            if not m:
+                continue
+            if best is None or m.group(2) > best[0]:
+                best = (m.group(2), f)
+    return best[1] if best else None
 
 
 class TestSnapshotContract(unittest.TestCase):
@@ -281,6 +296,29 @@ class TestReportAnchors(unittest.TestCase):
         """原油价格 + 舆情跟踪（2026-09-21 新增）必须出现在第五节。"""
         for anchor in ("原油价格跟踪", "原油舆情跟踪"):
             self.assertIn(anchor, self.html, f"报告缺少 {anchor}")
+
+    def test_latest_report_picks_by_filename_date(self):
+        """「最新报告」必须按文件名日期取，不能用 mtime。
+
+        用 mtime 的话，任何对历史报告的写操作（剥离 data-page-node-id、批量处理、
+        编辑器保存）都会把旧报告顶成「最新」→ 章节锚点测试**假失败**。
+        2026-09-21 剥离 4 份历史报告属性后即踩到（挑中了周报-2026-09-04）。
+        """
+        dates = []
+        for d in REPORT_DIRS:
+            if not d.exists():
+                continue
+            for f in d.glob("*.html"):
+                m = _REPORT_NAME.match(f.name)
+                if m:
+                    dates.append(m.group(2))
+        if not dates:
+            self.skipTest("尚无标准命名报告")
+        m = _REPORT_NAME.match(self.path.name)
+        self.assertIsNotNone(
+            m, f"latest_report 选中了非标准命名文件: {self.path.name}")
+        self.assertEqual(max(dates), m.group(2),
+                         "latest_report 必须按文件名日期取最新（不是 mtime）")
 
 
 class TestGenericCharts(unittest.TestCase):
