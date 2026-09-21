@@ -38,8 +38,8 @@ BASE = pathlib.Path(__file__).resolve().parent.parent
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
-import stock_report_agent as agent          # noqa: E402
-import weibo_llm                            # noqa: E402
+from ra import stock_report_agent as agent          # noqa: E402
+from ra.analysis import weibo_llm                            # noqa: E402
 
 SNAP_DIR = BASE / "data" / "snapshots"
 

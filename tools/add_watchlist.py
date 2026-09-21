@@ -102,9 +102,9 @@ def verify_python(*files: pathlib.Path) -> bool:
 def backfill_klines(code: str) -> str:
     """拉全历史日K入库；返回描述串。"""
     try:
-        import backtest as bt
-        from db import StockAgentDB
-        import stock_report_agent as agent
+        from ra.analysis import backtest as bt
+        from ra.infra.db import StockAgentDB
+        from ra import stock_report_agent as agent
     except Exception as e:
         return f"跳过（依赖不可用：{e}）"
     try:
@@ -150,8 +150,8 @@ def check() -> int:
     print(f"  backtest._DEFAULT_WATCHLIST_NAME 缺失: {miss_bt or '无 ✅'}")
 
     try:
-        from db import StockAgentDB
-        import stock_report_agent as agent
+        from ra.infra.db import StockAgentDB
+        from ra import stock_report_agent as agent
         cfg_db = agent.load_config()["database"]
         db = StockAgentDB(host=cfg_db.get("host", "localhost"), port=cfg_db.get("port", 5432),
                           user=cfg_db.get("user", "postgres"), password=cfg_db.get("password", ""),

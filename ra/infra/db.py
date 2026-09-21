@@ -1,0 +1,722 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+数据库模块 - A股舆情Agent数据入库
+用法:
+    python db.py          # 初始化数据库和表
+    在 stock_report_agent.py 中导入使用
+"""
+import psycopg2
+from contextlib import contextmanager
+from psycopg2 import sql as _sql
+
+
+class StockAgentDB:
+    def __init__(self, host="localhost", port=5432, user="postgres", password="", dbname="stock_report_agent"):
+        self.conn_params = dict(host=host, port=port, user=user, password=password)
+        self.dbname = dbname
+
+    def _ensure_db_exists(self):
+        """连 postgres 数据库，确认目标库存在；不存在则创建。"""
+        conn = psycopg2.connect(**self.conn_params, dbname="postgres")
+        try:
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (self.dbname,))
+            if not cur.fetchone():
+                cur.execute(_sql.SQL('CREATE DATABASE {}').format(_sql.Identifier(self.dbname)))
+                print(f"[DB] 数据库 {self.dbname} 创建成功")
+            else:
+                print(f"[DB] 数据库 {self.dbname} 已存在")
+            cur.close()
+        finally:
+            conn.close()
+
+    def _ensure_tables(self):
+        """在目标库中创建所有必要的表。"""
+        tables = [
+            """CREATE TABLE IF NOT EXISTS daily_reports (
+                id SERIAL PRIMARY KEY,
+                report_date DATE NOT NULL,
+                market_state VARCHAR(50),
+                summary TEXT,
+                html_content TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS index_quotes (
+                id SERIAL PRIMARY KEY,
+                quote_date DATE NOT NULL,
+                index_name VARCHAR(50),
+                index_code VARCHAR(20),
+                price NUMERIC(12,2),
+                change_pct NUMERIC(8,2),
+                volume VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(quote_date, index_name)
+            )""",
+            """CREATE TABLE IF NOT EXISTS sentiment_data (
+                id SERIAL PRIMARY KEY,
+                record_date DATE NOT NULL,
+                source_name VARCHAR(100),
+                source_type VARCHAR(50),
+                tier INT,
+                content TEXT,
+                post_time VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS stock_analysis (
+                id SERIAL PRIMARY KEY,
+                analysis_date DATE NOT NULL,
+                stock_code VARCHAR(20),
+                stock_name VARCHAR(50),
+                price NUMERIC(12,2),
+                change_pct NUMERIC(8,2),
+                action VARCHAR(20),
+                reasoning TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS technical_indicators (
+                id SERIAL PRIMARY KEY,
+                analysis_date DATE NOT NULL,
+                symbol VARCHAR(20),
+                close_price NUMERIC(12,2),
+                ma5 NUMERIC(12,2),
+                ma10 NUMERIC(12,2),
+                ma20 NUMERIC(12,2),
+                ma60 NUMERIC(12,2),
+                trend VARCHAR(50),
+                high5 NUMERIC(12,2),
+                low5 NUMERIC(12,2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS resonance_signals (
+                id SERIAL PRIMARY KEY,
+                signal_date DATE NOT NULL,
+                signal_name VARCHAR(200),
+                resonance_level INT,
+                sources TEXT,
+                confidence VARCHAR(20),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS stock_judgments (
+                id SERIAL PRIMARY KEY,
+                report_date DATE NOT NULL,
+                stock_code VARCHAR(20),
+                stock_name VARCHAR(50),
+                action VARCHAR(30),
+                direction VARCHAR(10),
+                rationale TEXT,
+                source_file VARCHAR(200),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(report_date, stock_code)
+            )""",
+            """CREATE TABLE IF NOT EXISTS backtest_results (
+                id SERIAL PRIMARY KEY,
+                judgment_date DATE NOT NULL,
+                stock_code VARCHAR(20),
+                stock_name VARCHAR(50),
+                action VARCHAR(30),
+                direction VARCHAR(10),
+                window_days INT,
+                entry_close NUMERIC(12,2),
+                exit_close NUMERIC(12,2),
+                ret_pct NUMERIC(8,2),
+                direction_hit BOOLEAN,
+                tech_signal VARCHAR(10),
+                tech_agree BOOLEAN,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(judgment_date, stock_code, window_days)
+            )""",
+            """CREATE TABLE IF NOT EXISTS raw_snapshots (
+                id SERIAL PRIMARY KEY,
+                snapshot_date DATE NOT NULL,
+                payload TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS us_market_quotes (
+                id SERIAL PRIMARY KEY,
+                quote_date DATE NOT NULL,
+                name VARCHAR(50),
+                change_pct NUMERIC(8,2),
+                price VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS etf_flows (
+                id SERIAL PRIMARY KEY,
+                flow_date DATE NOT NULL,
+                name VARCHAR(50),
+                code VARCHAR(20),
+                direction VARCHAR(20),
+                amount NUMERIC(12,2),
+                signal TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS daily_klines (
+                id SERIAL PRIMARY KEY,
+                stock_code VARCHAR(20) NOT NULL,
+                trade_date DATE NOT NULL,
+                open NUMERIC(12,2),
+                high NUMERIC(12,2),
+                low NUMERIC(12,2),
+                close NUMERIC(12,2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(stock_code, trade_date)
+            )""",
+            """CREATE TABLE IF NOT EXISTS market_width (
+                id SERIAL PRIMARY KEY,
+                width_date DATE NOT NULL UNIQUE,
+                up INT, down INT, flat INT, zt INT, dt INT,
+                main_up INT, main_down INT, main_flat INT, main_zt INT, main_dt INT,
+                cyb_up INT, cyb_down INT, cyb_flat INT, cyb_zt INT, cyb_dt INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            # market_width 主板/创业板腾落列（幂等，兼容旧表）
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_up INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_down INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_flat INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_zt INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS main_dt INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_up INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_down INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_flat INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_zt INT",
+            "ALTER TABLE market_width ADD COLUMN IF NOT EXISTS cyb_dt INT",
+            # 回测结果扩展列（幂等，兼容旧表）
+            "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS status VARCHAR(10)",
+            "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS price_source VARCHAR(10)",
+            "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS note TEXT",
+            # ETF 真实数据日列 + 清理重复（保留每 flow_date+code 最新一条）+ 唯一约束（幂等）
+            "ALTER TABLE etf_flows ADD COLUMN IF NOT EXISTS data_date DATE",
+            "DELETE FROM etf_flows WHERE id NOT IN (SELECT MAX(id) FROM etf_flows GROUP BY flow_date, code)",
+            """DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_etf_flows_date_code') THEN
+                    ALTER TABLE etf_flows ADD CONSTRAINT uq_etf_flows_date_code UNIQUE (flow_date, code);
+                END IF;
+            END $$""",
+            # index_quotes 清理重复 + 唯一约束（幂等）
+            # 该表此前是裸表（无约束 + 纯 INSERT），每次采集都会追加一份，
+            # 长期累积大量重复行（2026-09-14 一次清理出 131 行）。
+            "DELETE FROM index_quotes WHERE id NOT IN "
+            "(SELECT MAX(id) FROM index_quotes GROUP BY quote_date, index_name)",
+            """DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_index_quotes_date_name') THEN
+                    ALTER TABLE index_quotes ADD CONSTRAINT uq_index_quotes_date_name
+                        UNIQUE (quote_date, index_name);
+                END IF;
+            END $$""",
+            # ---- 海外 AI 巨头资本开支（章节数据落库，金额单位：亿美元）----
+            """CREATE TABLE IF NOT EXISTS ai_capex_quarters (
+                id SERIAL PRIMARY KEY,
+                company VARCHAR(50) NOT NULL,
+                ticker VARCHAR(20),
+                segment VARCHAR(50),
+                fiscal_period VARCHAR(30) NOT NULL,
+                capex NUMERIC(12,2),
+                guidance_2026_mid NUMERIC(12,2),
+                guidance_2026 VARCHAR(60),
+                direction VARCHAR(50),
+                recycle TEXT,
+                note TEXT,
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(company, fiscal_period)
+            )""",
+            """CREATE TABLE IF NOT EXISTS ai_capex_guidance_path (
+                id SERIAL PRIMARY KEY,
+                company VARCHAR(50) NOT NULL,
+                change_month VARCHAR(10) NOT NULL,
+                value_text VARCHAR(60),
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(company, change_month)
+            )""",
+            """CREATE TABLE IF NOT EXISTS ai_lab_commitments (
+                id SERIAL PRIMARY KEY,
+                lab VARCHAR(50) NOT NULL,
+                vendor VARCHAR(50) NOT NULL,
+                amount_text VARCHAR(80),
+                arr NUMERIC(12,2),
+                arr_period VARCHAR(40),
+                commitment_total NUMERIC(12,2),
+                power_secured VARCHAR(80),
+                note TEXT,
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(lab, vendor)
+            )""",
+            """CREATE TABLE IF NOT EXISTS ai_capex_quarterly (
+                id SERIAL PRIMARY KEY,
+                quarter VARCHAR(12) NOT NULL,
+                company VARCHAR(30) NOT NULL,
+                capex NUMERIC(12,2),
+                is_total BOOLEAN DEFAULT FALSE,
+                unit VARCHAR(20) DEFAULT '百万美元',
+                as_of DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(quarter, company)
+            )""",
+        ]
+        with self._cursor() as cur:
+            for sql in tables:
+                cur.execute(sql)
+        print(f"[DB] 创建/检查 {len(tables)} 张表完成")
+
+    def init_database(self):
+        """创建数据库和所有表"""
+        self._ensure_db_exists()
+        self._ensure_tables()
+
+    def _conn(self):
+        return psycopg2.connect(**self.conn_params, dbname=self.dbname, connect_timeout=8)
+
+    @contextmanager
+    def _cursor(self):
+        """统一连接/游标管理：正常结束 commit，异常 rollback 并上抛，最终保证关闭。"""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            try:
+                yield cur
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                cur.close()
+        finally:
+            conn.close()
+
+    def test_connection(self, timeout=5):
+        """快速探活：成功返回 True，失败抛异常（由调用方捕获并提醒）。"""
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            return True
+        finally:
+            conn.close()
+
+    def save_report(self, report_date, market_state, summary, html_content):
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO daily_reports (report_date, market_state, summary, html_content) VALUES (%s,%s,%s,%s)",
+                (report_date, market_state, summary, html_content),
+            )
+        print(f"[DB] 报告入库: {report_date}")
+
+    def save_index_quotes(self, quote_date, quotes):
+        """指数行情入库（UPSERT：同 quote_date+index_name 覆盖，避免重复累积）。"""
+        with self._cursor() as cur:
+            for name, q in quotes.items():
+                cur.execute(
+                    """INSERT INTO index_quotes (quote_date, index_name, price, change_pct, volume)
+                       VALUES (%s,%s,%s,%s,%s)
+                       ON CONFLICT (quote_date, index_name) DO UPDATE SET
+                         price=EXCLUDED.price, change_pct=EXCLUDED.change_pct,
+                         volume=EXCLUDED.volume""",
+                    (quote_date, name, q.get("price"), q.get("chg_pct"), str(q.get("volume", ""))),
+                )
+        print(f"[DB] 指数行情入库: {len(quotes)} 条")
+
+    def save_ai_capex(self, data):
+        """写入海外 AI 巨头资本开支基线数据（幂等 UPSERT）。
+
+        data: seeds/ai_capex.json 的解析结果（金额单位：亿美元）。
+        写入三张表：ai_capex_quarters（季度 capex 与指引）、
+        ai_capex_guidance_path（指引调整路径）、ai_lab_commitments（模型公司算力承诺）。
+        """
+        if not isinstance(data, dict) or not data:
+            return
+        as_of = data.get("as_of")
+        n_q = n_p = n_l = 0
+        with self._cursor() as cur:
+            for h in data.get("hyperscalers") or []:
+                cur.execute(
+                    """INSERT INTO ai_capex_quarters
+                       (company, ticker, segment, fiscal_period, capex, guidance_2026_mid,
+                        guidance_2026, direction, recycle, note, as_of)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (company, fiscal_period) DO UPDATE SET
+                         ticker=EXCLUDED.ticker, segment=EXCLUDED.segment, capex=EXCLUDED.capex,
+                         guidance_2026_mid=EXCLUDED.guidance_2026_mid,
+                         guidance_2026=EXCLUDED.guidance_2026, direction=EXCLUDED.direction,
+                         recycle=EXCLUDED.recycle, note=EXCLUDED.note, as_of=EXCLUDED.as_of""",
+                    (h.get("name"), h.get("ticker"), h.get("segment"), h.get("fiscal"),
+                     h.get("quarterly_capex"), h.get("guidance_2026_mid"), h.get("guidance_2026"),
+                     h.get("direction"), h.get("recycle"), h.get("note"), as_of))
+                n_q += 1
+                for step in (h.get("guidance_path") or []):
+                    month, val = step[0], (step[1] if len(step) > 1 else "")
+                    cur.execute(
+                        """INSERT INTO ai_capex_guidance_path (company, change_month, value_text, as_of)
+                           VALUES (%s,%s,%s,%s)
+                           ON CONFLICT (company, change_month) DO UPDATE SET
+                             value_text=EXCLUDED.value_text, as_of=EXCLUDED.as_of""",
+                        (h.get("name"), month, val, as_of))
+                    n_p += 1
+            for lb in data.get("ai_labs") or []:
+                commits = lb.get("commitments") or [["—", "—"]]
+                for row in commits:
+                    vendor = row[0] if row else "—"
+                    amount = row[1] if len(row) > 1 else ""
+                    cur.execute(
+                        """INSERT INTO ai_lab_commitments
+                           (lab, vendor, amount_text, arr, arr_period, commitment_total,
+                            power_secured, note, as_of)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (lab, vendor) DO UPDATE SET
+                             amount_text=EXCLUDED.amount_text, arr=EXCLUDED.arr,
+                             arr_period=EXCLUDED.arr_period,
+                             commitment_total=EXCLUDED.commitment_total,
+                             power_secured=EXCLUDED.power_secured, note=EXCLUDED.note,
+                             as_of=EXCLUDED.as_of""",
+                        (lb.get("name"), vendor, amount, lb.get("arr"), lb.get("arr_period"),
+                         lb.get("compute_commitments_total"), lb.get("power_secured"),
+                         lb.get("note"), as_of))
+                    n_l += 1
+        print(f"[DB] AI 资本开支入库: 云厂商 {n_q} 家 / 指引路径 {n_p} 条 / 实验室承诺 {n_l} 条")
+
+        # 季度序列（折线图数据源）
+        qh = data.get("quarterly_history") or {}
+        quarters = qh.get("quarters") or []
+        series = qh.get("series") or {}
+        if quarters and series:
+            n_qtz = 0
+            with self._cursor() as cur:
+                for comp, vals in series.items():
+                    for i, q in enumerate(quarters):
+                        if i >= len(vals):
+                            continue
+                        cur.execute(
+                            """INSERT INTO ai_capex_quarterly
+                               (quarter, company, capex, is_total, unit, as_of)
+                               VALUES (%s,%s,%s,%s,%s,%s)
+                               ON CONFLICT (quarter, company) DO UPDATE SET
+                                 capex=EXCLUDED.capex, is_total=EXCLUDED.is_total,
+                                 unit=EXCLUDED.unit, as_of=EXCLUDED.as_of""",
+                            (q, comp, vals[i], False, qh.get("unit", "百万美元"), as_of))
+                        n_qtz += 1
+                for i, q in enumerate(quarters):
+                    tot = (qh.get("total") or [])[i] if i < len(qh.get("total") or []) else None
+                    if tot is None:
+                        continue
+                    cur.execute(
+                        """INSERT INTO ai_capex_quarterly
+                           (quarter, company, capex, is_total, unit, as_of)
+                           VALUES (%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (quarter, company) DO UPDATE SET
+                             capex=EXCLUDED.capex, is_total=EXCLUDED.is_total,
+                             unit=EXCLUDED.unit, as_of=EXCLUDED.as_of""",
+                        (q, "四家合计", tot, True, qh.get("unit", "百万美元"), as_of))
+                    n_qtz += 1
+            print(f"[DB] AI 资本开支季度序列入库: {n_qtz} 条（{len(quarters)} 个季度 × {len(series)+1} 条线）")
+
+    def save_sentiment_batch(self, record_date, weibo_data, source_patterns=None):
+        """批量写入舆情数据。
+
+        source_patterns: 可选配置列表，每项 {"prefix": "[全球]", "type": "global", "tier": 2}。
+        未提供时使用内置默认规则解析 source_type/tier。
+        """
+        count = 0
+        default_patterns = [
+            {"prefix": "[全球]", "type": "global", "tier": 2},
+            {"prefix": "[宏观]", "type": "macro", "tier": 0},
+            {"prefix": "[事件]", "type": "event", "tier": 0},
+            {"prefix": "[技术]", "type": "technical", "tier": 0},
+        ]
+        patterns = source_patterns or default_patterns
+
+        def classify(name):
+            for p in patterns:
+                prefix = p.get("prefix", "")
+                if name.startswith(prefix):
+                    clean = name.replace(prefix, "").strip()
+                    return p.get("type", "weibo"), p.get("tier", 0), clean
+            return "weibo", 0, name
+
+        with self._cursor() as cur:
+            for source_name, posts in weibo_data.items():
+                stype, tier, name = classify(source_name)
+                for post in posts:
+                    cur.execute(
+                        "INSERT INTO sentiment_data (record_date, source_name, source_type, tier, content, post_time) VALUES (%s,%s,%s,%s,%s,%s)",
+                        (record_date, name, stype, tier, post.get("text", ""), post.get("time", "")),
+                    )
+                    count += 1
+        print(f"[DB] 舆情数据入库: {count} 条")
+
+    def save_technical(self, analysis_date, ta_data):
+        with self._cursor() as cur:
+            for symbol, kline in ta_data.items():
+                cur.execute(
+                    """INSERT INTO technical_indicators
+                    (analysis_date, symbol, close_price, ma5, ma10, ma20, ma60, trend, high5, low5)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (analysis_date, symbol, kline.get("close"), kline.get("ma5"), kline.get("ma10"),
+                     kline.get("ma20"), kline.get("ma60"), kline.get("trend"), kline.get("high5"), kline.get("low5")),
+                )
+        print(f"[DB] 技术指标入库: {len(ta_data)} 条")
+
+    def save_judgments(self, judgments):
+        """批量写入每日个股判断（按 report_date+stock_code upsert）"""
+        n = 0
+        with self._cursor() as cur:
+            for j in judgments:
+                cur.execute(
+                    """INSERT INTO stock_judgments
+                    (report_date, stock_code, stock_name, action, direction, rationale, source_file)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (report_date, stock_code) DO UPDATE SET
+                        stock_name=EXCLUDED.stock_name, action=EXCLUDED.action,
+                        direction=EXCLUDED.direction, rationale=EXCLUDED.rationale,
+                        source_file=EXCLUDED.source_file""",
+                    (j["report_date"], j["stock_code"], j["stock_name"], j["action"],
+                     j["direction"], j.get("rationale", ""), j.get("source_file", "")),
+                )
+                n += 1
+        print(f"[DB] 个股判断入库: {n} 条")
+
+    def get_judgments(self, as_of=None):
+        """读取个股判断；as_of 为日期字符串(YYYY-MM-DD)时只取当日"""
+        with self._cursor() as cur:
+            if as_of:
+                cur.execute(
+                    "SELECT report_date,stock_code,stock_name,action,direction,rationale,source_file "
+                    "FROM stock_judgments WHERE report_date=%s ORDER BY stock_code", (as_of,))
+            else:
+                cur.execute(
+                    "SELECT report_date,stock_code,stock_name,action,direction,rationale,source_file "
+                    "FROM stock_judgments ORDER BY report_date, stock_code")
+            rows = cur.fetchall()
+        return [
+            dict(report_date=r[0], stock_code=r[1], stock_name=r[2], action=r[3],
+                 direction=r[4], rationale=r[5], source_file=r[6])
+            for r in rows
+        ]
+
+    def ensure_extras(self):
+        """运行时自愈：确保 daily_klines 表与 backtest_results 扩展列存在（幂等）。"""
+        with self._cursor() as cur:
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS daily_klines (
+                    id SERIAL PRIMARY KEY,
+                    stock_code VARCHAR(20) NOT NULL,
+                    trade_date DATE NOT NULL,
+                    open NUMERIC(12,2),
+                    high NUMERIC(12,2),
+                    low NUMERIC(12,2),
+                    close NUMERIC(12,2),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(stock_code, trade_date)
+                )""")
+            for col in ["status VARCHAR(10)", "price_source VARCHAR(10)", "note TEXT"]:
+                cur.execute(f"ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS {col}")
+
+    def save_backtest_results(self, results):
+        """批量写入回测结果（按 judgment_date+stock_code+window_days upsert）"""
+        self.ensure_extras()
+        n = 0
+        with self._cursor() as cur:
+            for r in results:
+                cur.execute(
+                    """INSERT INTO backtest_results
+                    (judgment_date, stock_code, stock_name, action, direction, window_days,
+                     entry_close, exit_close, ret_pct, direction_hit, tech_signal, tech_agree,
+                     status, price_source, note)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (judgment_date, stock_code, window_days) DO UPDATE SET
+                        stock_name=EXCLUDED.stock_name, action=EXCLUDED.action, direction=EXCLUDED.direction,
+                        entry_close=EXCLUDED.entry_close, exit_close=EXCLUDED.exit_close,
+                        ret_pct=EXCLUDED.ret_pct, direction_hit=EXCLUDED.direction_hit,
+                        tech_signal=EXCLUDED.tech_signal, tech_agree=EXCLUDED.tech_agree,
+                        status=EXCLUDED.status, price_source=EXCLUDED.price_source, note=EXCLUDED.note""",
+                    (r["judgment_date"], r["stock_code"], r["stock_name"], r["action"], r["direction"],
+                     r["window_days"], r["entry_close"], r["exit_close"], r["ret_pct"],
+                     r["direction_hit"], r["tech_signal"], r["tech_agree"],
+                     r.get("status"), r.get("price_source"), r.get("note")),
+                )
+                n += 1
+        print(f"[DB] 回测结果入库: {n} 条")
+
+    def save_klines(self, stock_code, klines):
+        """批量写入/更新个股日K线（按 stock_code+trade_date upsert）"""
+        self.ensure_extras()
+        n = 0
+        with self._cursor() as cur:
+            for k in klines:
+                cur.execute(
+                    """INSERT INTO daily_klines (stock_code, trade_date, open, high, low, close)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (stock_code, trade_date) DO UPDATE SET
+                        open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low, close=EXCLUDED.close""",
+                    (stock_code, k["date"], k.get("open"), k.get("high"), k.get("low"), k.get("close")),
+                )
+                n += 1
+        print(f"[DB] 日K线入库: {stock_code} {n} 根")
+
+    def get_klines(self, stock_code):
+        """读取个股全部日K线，按日期升序返回 [{date,open,close,high,low}]"""
+        self.ensure_extras()
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT trade_date, open, close, high, low FROM daily_klines "
+                "WHERE stock_code=%s ORDER BY trade_date", (stock_code,))
+            rows = cur.fetchall()
+        return [
+            {"date": r[0].isoformat(), "open": float(r[1]), "close": float(r[2]),
+             "high": float(r[3]), "low": float(r[4])}
+            for r in rows
+        ]
+
+    def save_snapshot(self, snapshot_date, payload):
+        """保存完整原始快照（所有采集数据）为 JSON，确保『全部数据入库』。"""
+        import json as _json
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO raw_snapshots (snapshot_date, payload) VALUES (%s,%s)",
+                (snapshot_date, _json.dumps(payload, ensure_ascii=False)),
+            )
+        print(f"[DB] 原始快照入库: {snapshot_date}")
+
+    def save_us_market(self, quote_date, us_market):
+        """隔夜美股行情入库。us_market: [(name, pct, price, signal), ...]"""
+        n = 0
+        with self._cursor() as cur:
+            for name, pct, price, signal in us_market:
+                cur.execute(
+                    "INSERT INTO us_market_quotes (quote_date, name, change_pct, price) VALUES (%s,%s,%s,%s)",
+                    (quote_date, name, pct, str(price)),
+                )
+                n += 1
+        print(f"[DB] 美股行情入库: {n} 条")
+
+    def save_etf_flows(self, flow_date, etf, data_date=None):
+        """ETF 资金流入库（UPSERT：同 flow_date+code 覆盖，保留最新）。
+
+        etf: [(name, code, direction, cls, signal), ...]；
+        data_date: 真实行情数据日（westock EndDate），缺省回退 flow_date。
+        """
+        import re as _re
+        n = 0
+        with self._cursor() as cur:
+            for name, code, direction, cls, signal in etf:
+                m = _re.search(r"(净流入|净流出)\s*([\d.]+)\s*亿元", signal or "")
+                amount = float(m.group(2)) * (1 if m.group(1) == "净流入" else -1) if m else None
+                cur.execute(
+                    """INSERT INTO etf_flows (flow_date, name, code, direction, amount, signal, data_date)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (flow_date, code) DO UPDATE SET
+                         name=EXCLUDED.name, direction=EXCLUDED.direction,
+                         amount=EXCLUDED.amount, signal=EXCLUDED.signal, data_date=EXCLUDED.data_date""",
+                    (flow_date, name, code, direction, amount, signal, data_date or flow_date),
+                )
+                n += 1
+        print(f"[DB] ETF资金流入库: {n} 条")
+
+    def save_market_width(self, width_date, up, down, flat=0, zt=0, dt=0,
+                          main_up=None, main_down=None, main_flat=None,
+                          main_zt=None, main_dt=None,
+                          cyb_up=None, cyb_down=None, cyb_flat=None, cyb_zt=None, cyb_dt=None):
+        """市场宽度（涨跌家数）入库，同日期 UPSERT 覆盖。
+
+        up/down...: 全市场口径（沪深京全部 A 股，参考用）；
+        main_*: 沪深主板口径（独立，不含创业板）；cyb_*: 创业板口径。
+        main_*/cyb_* 为 None 表示当日未采集（不覆盖已存值由 UPSERT 语义保证）。
+        """
+        with self._cursor() as cur:
+            cur.execute(
+                """INSERT INTO market_width (width_date, up, down, flat, zt, dt,
+                                             main_up, main_down, main_flat, main_zt, main_dt,
+                                             cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (width_date) DO UPDATE SET
+                     up=EXCLUDED.up, down=EXCLUDED.down, flat=EXCLUDED.flat,
+                     zt=EXCLUDED.zt, dt=EXCLUDED.dt,
+                     main_up=COALESCE(EXCLUDED.main_up, market_width.main_up),
+                     main_down=COALESCE(EXCLUDED.main_down, market_width.main_down),
+                     main_flat=COALESCE(EXCLUDED.main_flat, market_width.main_flat),
+                     main_zt=COALESCE(EXCLUDED.main_zt, market_width.main_zt),
+                     main_dt=COALESCE(EXCLUDED.main_dt, market_width.main_dt),
+                     cyb_up=COALESCE(EXCLUDED.cyb_up, market_width.cyb_up),
+                     cyb_down=COALESCE(EXCLUDED.cyb_down, market_width.cyb_down),
+                     cyb_flat=COALESCE(EXCLUDED.cyb_flat, market_width.cyb_flat),
+                     cyb_zt=COALESCE(EXCLUDED.cyb_zt, market_width.cyb_zt),
+                     cyb_dt=COALESCE(EXCLUDED.cyb_dt, market_width.cyb_dt)""",
+                (width_date, up, down, flat, zt, dt,
+                 main_up, main_down, main_flat, main_zt, main_dt,
+                 cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt),
+            )
+        print(f"[DB] 市场宽度入库: {width_date} up={up} down={down}"
+              + (f" main_up={main_up} main_down={main_down}" if main_up is not None else "")
+              + (f" cyb_up={cyb_up} cyb_down={cyb_down}" if cyb_up is not None else ""))
+
+    def get_market_width(self, days=15):
+        """取最近 days 个交易日市场宽度（升序），返回
+        [{width_date, up, down, flat, zt, dt, main_*, cyb_*}]（板块列无值日期为 None）。"""
+        with self._cursor() as cur:
+            cur.execute(
+                """SELECT width_date, up, down, flat, zt, dt,
+                          main_up, main_down, main_flat, main_zt, main_dt,
+                          cyb_up, cyb_down, cyb_flat, cyb_zt, cyb_dt
+                   FROM market_width ORDER BY width_date DESC LIMIT %s""",
+                (days,),
+            )
+            rows = cur.fetchall()
+        out = []
+        for r in reversed(rows):
+            (d, up, down, flat, zt, dt,
+             m_up, m_down, m_flat, m_zt, m_dt,
+             c_up, c_down, c_flat, c_zt, c_dt) = r
+            out.append({"width_date": str(d), "up": up, "down": down,
+                        "flat": flat, "zt": zt, "dt": dt,
+                        "main_up": m_up, "main_down": m_down, "main_flat": m_flat,
+                        "main_zt": m_zt, "main_dt": m_dt,
+                        "cyb_up": c_up, "cyb_down": c_down, "cyb_flat": c_flat,
+                        "cyb_zt": c_zt, "cyb_dt": c_dt})
+        return out
+
+    def get_etf_code_map(self):
+        """返回 {ETF名称: 代码} 映射（供报告盘前回退渲染补全「代码」列）。"""
+        with self._cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT ON (name) name, code
+                FROM etf_flows
+                WHERE code IS NOT NULL
+                ORDER BY name, id DESC
+            """)
+            return {n: c for n, c in cur.fetchall()}
+
+    def get_etf_flows_history(self, days=5):
+        """取最近 days 个真实数据日、每 (flow_date, code) 最新一条的 ETF 主力净流入（亿元）。
+
+        真实数据日 = COALESCE(data_date, flow_date)（data_date 为 override 记录的
+        westock 行情 EndDate，避免盘前/盘后入库导致的日期错位）。
+        返回 {data_date: {name: amount}}，按日期升序；无数据返回空 dict。
+        """
+        with self._cursor() as cur:
+            cur.execute("""
+                SELECT COALESCE(data_date, flow_date) AS ddate, name, amount
+                FROM etf_flows
+                WHERE id IN (SELECT MAX(id) FROM etf_flows GROUP BY flow_date, code)
+                ORDER BY ddate
+            """)
+            rows = cur.fetchall()
+        from collections import OrderedDict
+        out = OrderedDict()
+        for ddate, name, amount in rows:
+            if amount is None:
+                continue
+            out.setdefault(str(ddate), {})[name] = float(amount)
+        # 取最近 days 个日期（跳过数据缺失的周末等）
+        dates = list(out.keys())
+        trimmed = OrderedDict()
+        for d in dates[-days:]:
+            trimmed[d] = out[d]
+        return trimmed
+
+if __name__ == "__main__":
+    db = StockAgentDB(password="1q2w3e4r")
+    db.init_database()
+    print("数据库初始化完成，可运行 stock_report_agent.py 开始入库")

@@ -31,6 +31,15 @@ sys.path.insert(0, str(BASE))
 SNAP_DIR = BASE / "data" / "snapshots"
 REPORT_DIRS = [BASE / "reports" / t for t in ("早报", "晚报", "周报")]
 
+# 源码真实位置：2026-09-21 包化后实现移入 ra/<层>/，根级同名文件仅为兼容壳
+# （壳只含 runpy 转调，不含实现）→ 任何「读源码做断言」的测试必须走这里。
+SRC = {
+    "stock_report_agent": BASE / "ra" / "stock_report_agent.py",
+    "build_report": BASE / "ra" / "report" / "build_report.py",
+    "chan_report": BASE / "ra" / "report" / "chan_report.py",
+    "chan_analysis": BASE / "ra" / "analysis" / "chan_analysis.py",
+}
+
 # 报告必须存在的章节锚点（h2 标题关键字）
 # 注：缠论已于 2026-09-18 拆出日报独立成报（chan_report.py），不再计入日报章节。
 SECTION_ANCHORS = ["核心结论", "中美动量对照", "隔夜美股", "CPI", "传导链", "地缘", "原油", "ETF", "舆情解构",
@@ -100,7 +109,7 @@ class TestViewState(unittest.TestCase):
     """口径层自身的行为契约。"""
 
     def setUp(self):
-        import view
+        from ra.infra import view
         self.view = view
 
     def test_pre_market_maps_to_prev_trading_day(self):
@@ -141,12 +150,12 @@ class TestEtfGuard(unittest.TestCase):
     """盘前 ETF 假 0 值不得入库（9/11 产生过脏行）。"""
 
     def test_zero_rows_rejected(self):
-        import stock_report_agent as sra
+        from ra import stock_report_agent as sra
         rows = [["沪深300ETF", "510300", "净申购", "b-red", "近一日净流入 0.00亿元"]]
         self.assertFalse(sra._etf_amount_valid(rows))
 
     def test_real_rows_accepted(self):
-        import stock_report_agent as sra
+        from ra import stock_report_agent as sra
         rows = [["沪深300ETF", "510300", "净流出", "b-green", "净流出 11.08亿元"]]
         self.assertTrue(sra._etf_amount_valid(rows))
 
@@ -159,7 +168,7 @@ class TestAiCapexGating(unittest.TestCase):
     """
 
     def setUp(self):
-        import ai_capex
+        from ra.sources import ai_capex
         self.ac = ai_capex
         seed = BASE / "seeds" / "ai_capex.json"
         if not seed.exists():
@@ -229,7 +238,7 @@ class TestArrTopicData(unittest.TestCase):
         self.assertTrue(d["arr_cn"].get("rows"), "中国 ARR 行不可为空")
 
     def test_renders_standalone_html(self):
-        import arr_report
+        from ra.report import arr_report
         d = arr_report.load_data()
         if not d:
             self.skipTest("无专题数据")
@@ -278,7 +287,7 @@ class TestGenericCharts(unittest.TestCase):
     """通用图表组件（charts.py）：折线/条形都必须产出合法 SVG，且口径正确。"""
 
     def test_line_chart_renders_multiple_series(self):
-        import charts
+        from ra.infra import charts
         out = charts.line_chart({
             "dates": [f"2026-09-{d:02d}" for d in range(1, 11)],
             "lines": [{"name": "WTI", "values": [90 + i for i in range(10)]},
@@ -293,33 +302,33 @@ class TestGenericCharts(unittest.TestCase):
 
         ⚠️ 只能查 <text> 标签：svg 的 style="width:100%" 里天然含 %。
         """
-        import charts
+        from ra.infra import charts
         out = charts.line_chart({"dates": ["a", "b"],
                                  "lines": [{"name": "WTI", "values": [90, 95]}]})
         self.assertNotIn("%</text>", out, "轴/图例标签不该带 %")
         self.assertIn("WTI 95</text>", out, "价格应按整数显示，不带正负号")
 
     def test_percent_axis_keeps_suffix(self):
-        import charts
+        from ra.infra import charts
         out = charts.line_chart({"dates": ["a", "b"], "y_unit": "%",
                                  "lines": [{"name": "x", "values": [-1, 2]}]})
         self.assertIn("%", out)
 
     def test_gap_does_not_connect_across_none(self):
         """缺口必须断线：单点片段不画 polyline，避免跨缺口连线误导。"""
-        import charts
+        from ra.infra import charts
         out = charts.line_chart({"dates": ["a", "b", "c"],
                                  "lines": [{"name": "x", "values": [1, None, 3]}]})
         self.assertEqual(0, out.count("<polyline"))
 
     def test_bar_chart_counts_are_integers(self):
-        import charts
+        from ra.infra import charts
         out = charts.bar_chart({"items": [{"name": "利多", "value": 3}], "unit": " 条"})
         self.assertIn("3 条", out)
         self.assertNotIn("+3", out, "计数不该带正号")
 
     def test_empty_spec_returns_empty(self):
-        import charts
+        from ra.infra import charts
         self.assertEqual("", charts.line_chart({}))
         self.assertEqual("", charts.bar_chart({"items": []}))
 
@@ -328,7 +337,7 @@ class TestOilTracking(unittest.TestCase):
     """原油跟踪数据契约与情绪打分口径。"""
 
     def test_data_contract(self):
-        import oil
+        from ra.sources import oil
         d = oil.load("2026-09-21")
         if not d:
             self.skipTest("尚无原油数据")
@@ -342,14 +351,14 @@ class TestOilTracking(unittest.TestCase):
             self.assertEqual(len(ser["dates"]), len(l["values"]), "序列长度不齐")
 
     def test_sentiment_tone_keywords(self):
-        import oil
+        from ra.sources import oil
         self.assertEqual("bearish", oil._tone("Oil prices fall as inventories rise"))
         self.assertEqual("bullish", oil._tone("OPEC+ announces a supply cut"))
         self.assertEqual("neutral", oil._tone("Oil market steady today"))
 
     def test_stale_news_filtered(self):
         """搜索型 RSS 会混入陈旧条目，sentiment_from_news 必须过滤并回报条数。"""
-        import oil
+        from ra.sources import oil
         s = oil.sentiment_from_news("2026-09-21")
         if not s:
             self.skipTest("尚无资讯缓存")
@@ -413,14 +422,14 @@ class TestChanMultiLevel(unittest.TestCase):
     """
 
     def test_levels_conf_includes_5min(self):
-        import chan_analysis as ca
+        from ra.analysis import chan_analysis as ca
         klts = [k for k, _, _ in ca.LEVELS_CONF]
         self.assertIn(5, klts, "缠论级别配置缺少 5 分钟（三级别联立）")
         self.assertIn(30, klts)
         self.assertIn(101, klts)
 
     def test_truncate_from_keeps_after_only(self):
-        import chan_analysis as ca
+        from ra.analysis import chan_analysis as ca
         kl = [{"time": "2026-08-31 15:00", "close": 1},
               {"time": "2026-09-01 13:30", "close": 2},
               {"time": "2026-09-02 10:00", "close": 3}]
@@ -429,7 +438,7 @@ class TestChanMultiLevel(unittest.TestCase):
         self.assertEqual(len(ca.truncate_from(kl, None)), 3, "from_time 为空时应返回全量")
 
     def test_multi_level_synthesis_nested(self):
-        import chan_analysis as ca
+        from ra.analysis import chan_analysis as ca
         levels = [
             {"level": "5分钟", "horizon": "超短线", "last_price": 3874, "signal": {"signal": "中枢震荡"},
              "ubi": {"dir": "up"}, "zhongshu": {"zd": 3867.83, "zg": 3880.14}},
@@ -480,7 +489,7 @@ class TestChanMultiLevel(unittest.TestCase):
 
     def test_cross_level_link_bi_mapping(self):
         """笔映射：段内低级别笔计数须包含跨边界的部分覆盖笔。"""
-        import chan_analysis as ca
+        from ra.analysis import chan_analysis as ca
         lk = ca.cross_level_link(self._mk_low(), self._mk_high())
         self.assertIsNotNone(lk)
         self.assertEqual(lk["bi_ratio"], 5.0, "10 笔 : 2 笔 = 5.0")
@@ -493,7 +502,7 @@ class TestChanMultiLevel(unittest.TestCase):
 
     def test_cross_level_link_qujiantao(self):
         """区间套：低级别背驰离开段终点落在高级别最近走势段内 → 成立。"""
-        import chan_analysis as ca
+        from ra.analysis import chan_analysis as ca
         bc = {"dir": "down", "enter_power": 81.4, "leave_power": 24.1, "level": "强",
               "leave_start": "2026-09-16 13:50", "leave_end": "2026-09-17 10:15"}
         lk = ca.cross_level_link(self._mk_low(beichi=bc), self._mk_high())
@@ -507,12 +516,12 @@ class TestChanMultiLevel(unittest.TestCase):
     def test_chan_independent_report_renders_synthesis(self):
         """缠论已拆出日报独立成报：chan_report.py 必须渲染 synthesis/link 与锚点信息，
         且 build_report 不得再包含缠论章节（否则两处维护必然漂移）。"""
-        chan = (BASE / "chan_report.py").read_text(encoding="utf-8")
+        chan = SRC["chan_report"].read_text(encoding="utf-8")
         self.assertIn('c.get("synthesis")', chan, "chan_report 未接入 synthesis 联立结论")
         self.assertIn('c.get("link")', chan, "chan_report 未接入 link 关联计算")
         self.assertIn("起点锚定", chan, "chan_report 未展示起点锚定信息")
         self.assertIn("关联计算", chan, "chan_report 未渲染 30分钟↔5分钟 关联计算")
-        br = (BASE / "build_report.py").read_text(encoding="utf-8")
+        br = SRC["build_report"].read_text(encoding="utf-8")
         self.assertNotIn("chan_section", br, "build_report 未彻底移除缠论（应已拆出为独立报告）")
         self.assertNotIn("sec-chan", br, "build_report 仍残留缠论章节锚点")
 
@@ -526,13 +535,14 @@ class TestEnvironmentContract(unittest.TestCase):
             self.assertIn(pkg, req, f"requirements.txt 缺少 {pkg}")
 
     def test_modules_importable(self):
-        for mod in ("view", "db", "backtest", "chan_analysis", "chan_report",
-                    "weibo_llm", "news_intel"):
+        for mod in ("ra.infra.view", "ra.infra.db", "ra.analysis.backtest",
+                    "ra.analysis.chan_analysis", "ra.report.chan_report",
+                    "ra.analysis.weibo_llm", "ra.sources.news_intel"):
             with self.subTest(module=mod):
                 __import__(mod)
 
     def test_build_report_symbols(self):
-        import build_report as br
+        from ra.report import build_report as br
         for fn in ("load_context", "etf_section", "market_width_section",
                    "core_conclusion", "_index_snapshot"):
             self.assertTrue(hasattr(br, fn), f"build_report 缺少 {fn}")
@@ -543,7 +553,7 @@ class TestEnvironmentContract(unittest.TestCase):
         背景：2026-09-13 周报卡 1h45m、09-14 采集卡 4m54s 且产出空骨架快照，
         两者都会让主流程产出废报告。
         """
-        src = (BASE / "stock_report_agent.py").read_text(encoding="utf-8")
+        src = SRC["stock_report_agent"].read_text(encoding="utf-8")
         self.assertIn("_budget_ok(", src, "采集端缺少整体时间预算守卫")
         self.assertIn("BUDGET_SEC", src)
         self.assertIn("核心数据为空", src, "采集端缺少空骨架快照保护")
@@ -554,7 +564,7 @@ class TestEnvironmentContract(unittest.TestCase):
 
     def test_rendering_layer_has_no_own_date_math(self):
         """口径必须来自 VIEW / DB，渲染层不得自行推算交易日。"""
-        src = (BASE / "build_report.py").read_text(encoding="utf-8")
+        src = SRC["build_report"].read_text(encoding="utf-8")
         self.assertNotIn("PRE_MARKET", src, "渲染层仍存在旧的散落盘前判断")
         for bad in ("timedelta(", "weekday()"):
             self.assertNotIn(bad, src, f"渲染层出现自行推算日期的代码: {bad}")
@@ -567,7 +577,7 @@ class TestDatabaseConsistency(unittest.TestCase):
     def setUpClass(cls):
         try:
             import json as _json
-            from db import StockAgentDB
+            from ra.infra.db import StockAgentDB
             cfg = _json.loads((BASE / "config.json").read_text(encoding="utf-8"))["database"]
             cls.db = StockAgentDB(host=cfg["host"], port=cfg.get("port", 5432),
                                   user=cfg["user"], password=cfg["password"],

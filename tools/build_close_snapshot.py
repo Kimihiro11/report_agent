@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
-import stock_report_agent as s
+from ra import stock_report_agent as s
 OLD = BASE / "data" / "snapshots" / "fetched_20260904_084626.json"
 NEW = BASE / "data" / "snapshots" / "fetched_20260904_153000.json"
 
