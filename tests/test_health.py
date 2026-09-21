@@ -381,7 +381,7 @@ class TestDiagnosisAnchoring(unittest.TestCase):
         import json
         import pathlib
         base = pathlib.Path(__file__).resolve().parent.parent
-        files = [f for f in sorted((base / "data" / "diagnosis").glob("diagnosis_*.json"))
+        files = [f for f in sorted((base / "data" / "derived" / "diagnosis").glob("diagnosis_*.json"))
                  if ".bak" not in f.name]
         if not files:
             self.skipTest("尚无诊断缓存")

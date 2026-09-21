@@ -19,7 +19,6 @@ import argparse
 import re
 from datetime import datetime
 from html import escape as _html_escape
-from pathlib import Path
 
 from ra import stock_report_agent as agent
 from ra.sources import news_intel as _ni
@@ -290,7 +289,7 @@ def load_context():
 
     # ---- 个股诊断（实时；缓存自愈：自选股增减后自动重跑） ----
     diag_raw = []
-    diag_path = BASE_DIR / "data" / "diagnosis" / f"diagnosis_{DATE8}.json"
+    diag_path = BASE_DIR / "data" / "derived" / "diagnosis" / f"diagnosis_{DATE8}.json"
 
     def _load_cached(path):
         try:
@@ -419,7 +418,7 @@ def load_tangshi_deep():
     解构为结构化深度解读（核心逻辑/方向/主线/回避/操作/风险）。文件缺失返回 None。
     """
     try:
-        p = BASE_DIR / "data" / "weibo_deep" / f"tangshi_{DATE8}.json"
+        p = BASE_DIR / "data" / "derived" / "weibo_deep" / f"tangshi_{DATE8}.json"
         if not p.exists():
             return None
         return json.loads(p.read_text(encoding="utf-8"))
@@ -1881,7 +1880,7 @@ def focus_section():
         from ra.analysis import focus_monitor as fm
         import json as _json
         from html import escape as _escape
-        fm_dir = BASE_DIR / "data" / "focus"
+        fm_dir = BASE_DIR / "data" / "derived" / "focus"
         cached = fm_dir / f"focus_state_{DATE8}.json"
         state = None
         if cached.exists():

@@ -326,7 +326,7 @@ def _westock_parse_fundflow(result):
 
 def _westock_override_path():
     """Agent 经已连接连接器生成的本地 ETF 覆盖文件路径（无需静态 token）。"""
-    return OUTPUT_DIR / "data" / "westock_etf_override.json"
+    return OUTPUT_DIR / "data" / "state" / "westock_etf_override.json"
 
 
 def _etf_westock_override():
@@ -535,7 +535,7 @@ def fetch_weibo(user_id, name, cookie="", only_today=True, lookback_days=1):
 
 def _fund_override_path():
     """Agent 经已连接连接器生成的资金面覆盖文件（两融/北向，date==今日 才有效）。"""
-    return OUTPUT_DIR / "data" / "westock_fund_override.json"
+    return OUTPUT_DIR / "data" / "state" / "westock_fund_override.json"
 
 
 def fetch_fund_flows():
@@ -1294,7 +1294,7 @@ def _persist_to_db(config, snapshot, ta_data):
             # 真实数据日（westock EndDate）从 override 文件读取，避免盘前/盘后错位
             _data_date = None
             try:
-                _ov = json.loads((OUTPUT_DIR / "data" / "westock_etf_override.json").read_text(encoding="utf-8"))
+                _ov = json.loads((OUTPUT_DIR / "data" / "state" / "westock_etf_override.json").read_text(encoding="utf-8"))
                 _data_date = _ov.get("data_date")
             except Exception:
                 _data_date = None

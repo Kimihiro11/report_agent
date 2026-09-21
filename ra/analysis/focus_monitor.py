@@ -40,7 +40,6 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from pathlib import Path
 
 from templates.prompts import FocusMonitorPrompts
 
@@ -510,7 +509,7 @@ def _synthesize_consensus(insts):
 # 主流程
 # ----------------------------------------------------------------------------
 def _load_latest_state():
-    d = OUTPUT_DIR / "data" / "focus"
+    d = OUTPUT_DIR / "data" / "derived" / "focus"
     if not d.exists():
         return None
     files = sorted(d.glob("focus_state_*.json"))
@@ -712,7 +711,7 @@ def render_focus_html(state, standalone=False, embed=False):
 def save_outputs(state):
     """仅持久化 state JSON（日报实时读取内联渲染），不再单独产出独立页。"""
     date8 = state.get("date") or datetime.now().strftime("%Y%m%d")
-    focus_dir = OUTPUT_DIR / "data" / "focus"
+    focus_dir = OUTPUT_DIR / "data" / "derived" / "focus"
     focus_dir.mkdir(parents=True, exist_ok=True)
     json_path = focus_dir / f"focus_state_{date8}.json"
     with open(json_path, "w", encoding="utf-8") as f:

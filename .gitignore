@@ -12,7 +12,10 @@ __pycache__/
 config.json
 
 # 运行时生成的产物（可选：如需版本化报告可移除此行）
-data/
+# 注：用 data/* 而非 data/，否则无法反选目录内的说明文件
+# （被排除的目录 git 不再向下遍历，`!data/README.md` 会失效）
+data/*
+!data/README.md
 
 # 妙想/东财查询输出（临时产物，不入库）
 miaoxiang/

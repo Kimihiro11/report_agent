@@ -8,7 +8,7 @@ from ra.infra.llm_client import atomic_write_json, call_json
 from templates.prompts import WeiboPrompts
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
-DEEP_DIR = BASE_DIR / "data" / "weibo_deep"
+DEEP_DIR = BASE_DIR / "data" / "derived" / "weibo_deep"
 _DIRECTIONS = {"偏多": "b-red", "偏空": "b-green", "中性": "b-blue"}
 _LEVELS = {"高", "中", "低"}
 _HORIZONS = {"日内", "1-5日", "1-3月"}

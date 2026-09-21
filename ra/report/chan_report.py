@@ -21,7 +21,6 @@ import subprocess
 import sys
 from datetime import datetime
 from html import escape as _html_escape
-from pathlib import Path
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
 CSS_PATH = BASE_DIR / "templates" / "style.css"
@@ -47,7 +46,7 @@ def load_css() -> str:
 
 
 def load_forecast(date8: str) -> dict:
-    p = BASE_DIR / "data" / "chan" / f"chan_forecast_{date8}.json"
+    p = BASE_DIR / "data" / "derived" / "chan" / f"chan_forecast_{date8}.json"
     if not p.exists():
         return {}
     try:
@@ -309,8 +308,8 @@ def main():
         today8 = datetime.now().strftime("%Y%m%d")
         want8 = args.date.replace("-", "")
         if today8 != want8:
-            src = BASE_DIR / "data" / "chan" / f"chan_forecast_{today8}.json"
-            dst = BASE_DIR / "data" / "chan" / f"chan_forecast_{want8}.json"
+            src = BASE_DIR / "data" / "derived" / "chan" / f"chan_forecast_{today8}.json"
+            dst = BASE_DIR / "data" / "derived" / "chan" / f"chan_forecast_{want8}.json"
             if src.exists():
                 dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
                 print(f"[缠论报告] 数据文件已对齐: {today8} → {want8}")

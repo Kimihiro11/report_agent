@@ -10,7 +10,6 @@
 依赖: numpy / pandas / requests（与 peak_detector.py 相同）
 """
 import sys
-import os
 from datetime import datetime
 
 import pandas as pd

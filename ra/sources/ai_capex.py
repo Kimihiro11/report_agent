@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
 SEED_PATH = BASE_DIR / "seeds" / "ai_capex.json"
-STATE_PATH = BASE_DIR / "data" / "ai_capex_state.json"
+STATE_PATH = BASE_DIR / "data" / "state" / "ai_capex_state.json"
 
 # 指纹只覆盖「投入与指引」类字段：版面文案（note/as_of 等）调整不应触发章节重现
 _FP_H_FIELDS = ("name", "quarterly_capex", "guidance_2026", "guidance_path", "direction", "recycle")

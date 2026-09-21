@@ -30,8 +30,8 @@ import urllib.request
 from datetime import datetime
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
-OUT_DIR = BASE_DIR / "data" / "oil"
-NEWS_DIR = BASE_DIR / "data" / "news_intel"
+OUT_DIR = BASE_DIR / "data" / "daily" / "oil"
+NEWS_DIR = BASE_DIR / "data" / "daily" / "news_intel"
 
 UA = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"}
 

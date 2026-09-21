@@ -1,100 +1,96 @@
 # A股舆情操作指引 Agent
 
-基于实时数据生成的 A 股舆情 / 宏观传导链 / 操作指引报告系统。每日输出 9 章节分析报告（早报 / 晚报 / 周报），并内置「限时关注的重点数据解析」——专攻日本央行（BOJ）加息程度研判（抓取各大所英文研报与观点、解析正文、输出合理中文观点并合成一致预期）。
+基于实时数据生成的 A 股舆情 / 宏观传导链 / 操作指引报告系统。每日输出 **9 章节**报告
+（早报 / 晚报 / 周报），并内置「限时关注」——专攻日本央行（BOJ）加息程度研判
+（抓取各大所英文研报与观点、解析正文、合成一致预期）。
 
-## 目录结构
+- **目录与分层、依赖图、命令清单 → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**
+- **data/ 产物目录的寿命与清理策略 → [`data/README.md`](data/README.md)**
+- **功能说明书 → [`docs/A股舆情操作指引Agent-功能说明书.md`](docs/A股舆情操作指引Agent-功能说明书.md)**
+- **运行规范 → [`docs/报告类型与手动运行规范.md`](docs/报告类型与手动运行规范.md)**
+
+## 目录结构（2026-09-21 包化后）
 
 ```
 report_agent/
-├── stock_report_agent.py          # 数据引擎：实时采集 → data/snapshots 快照 → 强制入库 PostgreSQL
-├── build_report.py            # 报告生成器：消费快照渲染 9 章节 HTML（含焦点模块嵌入）
-├── backtest.py               # 回测与交叉验证（1/3/5 交易日窗口）
-├── db.py                     # PostgreSQL 封装（11 张表 + upsert + 探活 + 自愈合建表）
-├── focus_monitor.py          # 限时关注：日本央行(BOJ)加息程度研判（抓取各大所英文研报/观点→解析正文→输出合理中文观点+一致预期）
-├── news_intel.py             # 外网资讯解析：英文源抓取 + 正文解析（Agent 总结为中文结论）
-├── stock_diagnosis.py        # 自选股实时诊断（调用 peak_detector）
-├── peak_detector.py          # 见顶 / 技术诊断引擎（被 stock_diagnosis 引用，须与之上同目录）
+├── ra/                       # 全部实现
+│   ├── paths.py              # 项目根与 data 分层常量（唯一来源）
+│   ├── stock_report_agent.py # 采集主编排（数据引擎）
+│   ├── infra/                # db / view / charts / llm_client
+│   ├── sources/              # momentum / oil / news_intel / ai_capex
+│   ├── analysis/             # peak_detector / stock_diagnosis / aggressive_analysis
+│   │                         # chan_analysis / focus_monitor / weibo_llm / backtest
+│   └── report/               # build_report / chan_report / arr_report
 │
-├── config.json               # 全部配置（含 weibo_cookie / 数据库凭证，**已被 gitignore 排除**）
-├── requirements.txt          # Python 依赖
-├── README.md                 # 本文件
+├── <19 个同名 .py>           # 兼容壳（自动生成，勿手改）：保持 python X.py 命令不变
 │
-├── docs/                     # 项目文档
-│   ├── A股舆情操作指引Agent-功能说明书.md
-│   └── 报告类型与手动运行规范.md
-│
+├── config.json               # 全部配置（含 weibo_cookie / DB 凭证），**gitignore 排除**
+├── requirements.txt
+├── docs/                     # ARCHITECTURE / 功能说明书 / 运行规范 / 代码审查报告
 ├── sql/                      # 数据库 schema
-│   └── init_db.sql
-│
-├── seeds/                    # 回测种子（版本控制）
-│   ├── judgments.json        # 个股判断本地存储（DB 不可用时的兜底）
-│   └── backtest_results.json # 回测结果本地存储
-│
-├── tools/                    # 一次性 / 工具脚本（含硬编码历史路径，非日常运行）
-│   ├── ingest_reports.py     # 将历史报告 HTML 入库（一次性）
-│   └── verify_ingest.py      # 入库校验（一次性）
-│
-├── data/                     # 运行时产物（data/ 已被 gitignore 排除）
-│   ├── snapshots/            # 数据引擎每次采集的 JSON 快照（fetched_YYYYMMDD_HHMMSS.json，**不入库**，自动清理≤2天）
-│   ├── diagnosis/            # 个股诊断缓存（diagnosis_YYYYMMDD.json，按需版本化）
-│   ├── focus/                # 焦点监控状态（focus_state_YYYYMMDD.json，按需版本化）
-│   └── news_intel/           # 外网资讯解析原始抓取（news_intel_YYYYMMDD.json，按需版本化）
-│
-├── reports/                  # 产出报告（版本控制）
-│   ├── 早报/  晚报/  周报/  回测/  早期版本/
-│
-└── archive/                  # 历史版本归档（按日期）
+├── seeds/                    # 人工维护种子：judgments / backtest_results / ai_capex / arr_cn_us
+├── templates/                # 提示词与报告静态资源（prompts.py / style.css / *.html）
+├── tools/                    # 运维工具（自选股同步、上传去重、注入、cookie 提取…）
+├── tests/                    # test_health.py：50 项契约断言
+├── data/                     # 运行时产物（gitignore，仅 README.md 入库）
+│   ├── snapshots/            #   ← 采集快照（唯一原始输入，保留 2 天）
+│   ├── daily/                #   ← 按日产物：momentum / oil / news_intel
+│   ├── derived/              #   ← 按日派生（含模型注入，勿删）：diagnosis / weibo_deep / focus / chan
+│   ├── state/                #   ← 跨日状态（覆盖写）：ai_capex_state / westock_*_override
+│   └── backup/               #   ← 配置与数据备份
+└── reports/                  # 产出报告（入库）：早报|晚报|周报|回测|专题|早期版本
 ```
 
-## 各文件职责（速查）
+## 核心模块速查
 
-| 文件 | 职责 |
-|------|------|
-| `stock_report_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 日本传导链实时采集 → 写 `data/snapshots/` 快照 → 强制全量入库 PostgreSQL（连接不通打印醒目 ⚠️ 告警）。含多源兜底框架：ETF 资金流以东方财富 push2 为主、腾讯自选股连接器（westock）兜底；美股以新浪为主、东方财富妙想兜底。 |
-| `build_report.py` | 实时 9 章节报告模板。读取当日 `data/snapshots/` 最新快照 + 诊断 + 焦点模块，渲染 HTML。支持 `--date` / `--type 早报\|晚报\|周报`。 |
-| `backtest.py` | 回测与交叉验证（方向命中 + 量价技术信号交叉验证）。`--all` 生成回测报告，`--seed` 解析报告 HTML 写入 `seeds/`。 |
-| `db.py` | PostgreSQL 封装：11 张表、`upsert`、探活 `test_connection`、自愈合 `init_database`。 |
-| `focus_monitor.py` | 研判日本央行（BOJ）加息「程度」（幅度/节奏/终点利率）：抓取各大所（高盛/摩根大通/摩根士丹利/瑞银/野村/三菱日联/瑞穗/大和/巴克莱/美银）英文研报与观点（Google News EN / Bing News EN，代理感知），还原 publisher 抓取正文解析内容，逐家提取加息预期并输出合理中文观点，最终合成一致预期与分歧。CLI：`--days N`（默认7）。 |
-| `news_intel.py` | 外网资讯解析模块：对隔夜美股 / 中美宏观 / 地缘政治原油 / 日本加息四类主题，**用英文 query 抓取外网源**（Bing News EN 优先→Google News EN 兜底），并把 RSS 结果还原真实 publisher 链接、**解析文章正文**（publisher 拦截时回退 RSS 领段文本）；产出 `data/news_intel/news_intel_YYYYMMDD.json`（原始英文解析），由 Agent 读取后**总结为中文结论**并经 `build_report.py` 渲染。CLI：`--date YYYY-MM-DD` / `--no-fetch`。 |
-| `stock_diagnosis.py` | 对 `config.json` 自选股做个股层面风险诊断，调用 `peak_detector`。 |
-| `peak_detector.py` | 见顶 / 技术诊断引擎，被 `stock_diagnosis` 以 `from peak_detector import ...` 引用，**须与 `stock_diagnosis.py` 同目录（根目录）**。 |
+| 模块（`ra/` 下） | 职责 |
+|---|---|
+| `stock_report_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 中美动量 / 日本传导链采集 → 写 `data/snapshots/` → 全量入库 PostgreSQL。含 180s 时间预算、空骨架保护、多源兜底。 |
+| `infra/view.py` | **口径层**：`basis`(pre_market/intraday/close) / `data_date` / `as_of` 的唯一来源。渲染层禁止自算交易日。 |
+| `report/build_report.py` | 9 章节报告渲染，读快照 + 诊断 + 动量 + 原油 + 资讯 + 微博解构。`--date` / `--type 早报\|晚报\|周报`。 |
+| `analysis/backtest.py` | 回测与交叉验证（1/3/5 交易日窗口）。`--seed` 解析报告写 `seeds/`，`--run` 全量回测出报告。**不自动跑，仅用户明确要求时执行。** |
+| `infra/db.py` | PostgreSQL 封装：建表自愈、upsert、探活。 |
+| `analysis/focus_monitor.py` | BOJ 加息程度研判：抓 10 家投行英文研报并解析正文 → 合成一致预期与分歧。 |
+| `sources/news_intel.py` | 外网资讯解析：英文 query 抓取 + publisher 正文解析 → `data/daily/news_intel/`；中文摘要在 `summary_mode=agent_inject` 下由模型注入。 |
+| `sources/oil.py` | 原油 WTI/Brent 双口径（新浪外盘期货）+ RSS 关键词情绪打分。 |
+| `sources/momentum.py` | 中美动量对照：美国 MTUM vs 中国科技指数（**中国侧必须用指数**，ETF 拆分致未复权失真）。 |
+| `infra/charts.py` | 通用 SVG 图表（`line_chart` / `bar_chart`），新章节优先复用。 |
+| `analysis/peak_detector.py` | 见顶 / 技术诊断引擎，被 `stock_diagnosis` 引用。 |
 
 ## 运行流程（手动）
 
+```bash
+# 1) 采集 + 强制入库
+python stock_report_agent.py
+
+# 2) 外网资讯（英文源 + 正文解析）
+python news_intel.py --date YYYY-MM-DD
+#    → 写入 data/daily/news_intel/news_intel_YYYYMMDD.json
+#    → Agent 读 content_en 总结中文，经 tools/inject_news_intel.py 回填
+
+# 3) 报告
+python build_report.py --date YYYY-MM-DD --type 早报|晚报|周报
+
+# 4) 回测（仅用户明确要求时）
+python backtest.py --seed && python backtest.py --run
+
+# 5) 上传资料库（必须走去重工具）
+printf '%s' "<token>" | python tools/upload_report.py <html 绝对路径>
 ```
-1) 数据引擎（采集 + 强制入库）
-   python stock_report_agent.py
-
-2) 外网资讯解析（英文源抓取 + 正文解析）
-   python news_intel.py --date YYYY-MM-DD
-   → 写入 data/news_intel/news_intel_YYYYMMDD.json（原始英文解析）
-   → **Agent 读取该 JSON 的 content_en，总结为中文结论并回填 summary_zh 字段**（这是优质中文研判的来源，不是简单标题搬运）
-
-3) 生成报告（消费快照 + 外网解析）
-   python build_report.py --date YYYY-MM-DD --type 早报|晚报|周报
-   （一/二/四节与三节的日本分项会渲染 news_intel 的中文总结；内置焦点模块会在当日无缓存时自动实时抓取）
-
-4) 回测（晚报/周报之后）
-   python backtest.py --all
-
-5) 限时关注监测：日本央行加息程度研判（仅产出 state JSON，由日报内联呈现，置于「今日操作策略」之前；不单独产出独立页）
-   python focus_monitor.py            # 实时抓取各大所英文研报+解析正文+研判，写入 data/focus/focus_state_YYYYMMDD.json
-   python focus_monitor.py --no-fetch # 用上次缓存 state JSON（离线模式）
-   python focus_monitor.py --days 7   # 设置近端时间窗（天，默认 7）
-```
-
-> **外网资讯质量要求**：境外信息一律用**英文 query** 获取外网源，并**解析文章正文**（而非只读标题）；Agent 需把解析出的英文内容**总结为中文结论**，聚焦对 A 股/市场走向的研判，便于判断。该要求已落地于 `news_intel.py` + `build_report.py` 的「外网解析」章节（一/二/四节 + 三节日本分项）。
 
 ## 配置与依赖
 
-- **配置**：`config.json`（被 gitignore 排除，含敏感凭证）。修改自选股 / 微博 cookie / 数据库 / 宏观参数均在此。
-- **依赖**：见 `requirements.txt`。项目虚拟环境为 `.venv`（已装 numpy / pandas / psycopg2-binary / requests / httpx / openpyxl）。**注意**：`psycopg2` 仅存在于 `.venv`，用管理版 Python 运行时跑入库会报 `No module named 'psycopg2'`，请用 `.venv/Scripts/python.exe` 运行涉及入库的命令。
-- **数据库**：PostgreSQL。连接不通时程序打印醒目 ⚠️ 告警并提示检查服务/配置，**不会静默跳过**；本地 `data/snapshots/*.json` 仅作缓存兜底，自动清理最多保留 2 天。
+- **配置**：`config.json`（gitignore 排除，含敏感凭证）。自选股 / 微博 cookie / 数据库 / 时段参数均在此。
+- **依赖**：`.venv`（numpy / pandas / psycopg2-binary / requests / czsc / cryptography 等）。
+  ⚠️ `psycopg2` 仅在 `.venv`，涉入库的命令请用 `.venv/Scripts/python.exe`。
+- **数据库**：PostgreSQL，跑在 Docker 容器 `my-postgres`（5432）。连接失败会打印醒目 ⚠️ 告警，**不静默跳过**。
 
 ## 不变式（重要约定）
 
-1. 涨跌颜色（中国习惯）：涨=红 `#d63031`、跌=绿 `#00a865`，不可颠倒。
-2. 9 章节报告结构固定；新增章节只能插在「今日操作策略」之前。
-3. 自选股固定 7 只（见 `config.json` 与 `backtest.py` 的 `WATCHLIST_NAME`）。
-4. 报告必须用实时数据，源码中无硬编码数值；数据缺口渲染为「实时数据缺失」占位，绝不出现假数。
-5. `config.json` 与 `data/` 不纳入版本控制（密钥 / 运行时产物）；`seeds/`、`reports/`、`docs/`、`sql/`、`tools/` 与核心脚本纳入版本控制。
+1. 涨跌颜色（中国习惯）：涨 = 红 `#d63031`、跌 = 绿 `#00a865`，不可颠倒。
+2. **9 章节结构固定**，新章节只能插在核心结论之后；缠论已独立成报。增删章节须同步 5 处。
+3. 自选股 = `config.json` 的 `watchlist_stocks`（当前 **10 只**），**数量禁写死**。增删用
+   `python tools/add_watchlist.py`，并同步微博解构重注入。
+4. 报告必须用实时数据，源码无硬编码数值；数据缺口渲染「实时数据缺失」，绝不造假。
+5. `config.json` 与 `data/` 不入库（`data/README.md` 除外）；`seeds/` `reports/` `docs/` `sql/` `tools/` `tests/` `templates/` 与 `ra/` 入库。
+6. **报告 HTML 上传/预览会被回写 `data-page-node-id` 属性**，且可延迟落地 → 提交前必须直接统计属性数，与 `git add` 放同一条命令。

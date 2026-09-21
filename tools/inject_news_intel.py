@@ -23,7 +23,7 @@ import pathlib
 import sys
 
 BASE = pathlib.Path(__file__).resolve().parent.parent
-NEWS_DIR = BASE / "data" / "news_intel"
+NEWS_DIR = BASE / "data" / "daily" / "news_intel"
 
 _FIELDS = ["direction", "confidence", "as_of", "facts", "core_conclusion",
            "transmission", "priced_in", "watch", "summary_zh"]

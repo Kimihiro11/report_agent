@@ -22,7 +22,6 @@
 import json
 import urllib.request
 import datetime
-from pathlib import Path
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
 # 东财指数 secid：上证 1.000001 / 深证 0.399001 / 创业板 0.399006 / 科创50 1.000688
@@ -842,7 +841,7 @@ def run(index_code="000001", bars_m30=1000, bars_d=600, from_time=None):
         "index_code": index_code,
     }
     today = datetime.datetime.now().strftime("%Y%m%d")
-    out_dir = BASE_DIR / "data" / "chan"
+    out_dir = BASE_DIR / "data" / "derived" / "chan"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"chan_forecast_{today}.json"
     path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

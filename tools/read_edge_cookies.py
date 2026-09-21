@@ -168,7 +168,7 @@ def main():
         cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"✅ 已写入 config.json 的 weibo_cookie（原值备份到 weibo_cookie_prev）")
     else:
-        outp = BASE / "data" / "weibo_cookie_browser.txt"
+        outp = BASE / "data" / "state" / "weibo_cookie_browser.txt"
         outp.parent.mkdir(exist_ok=True)
         outp.write_text(cookie_str, encoding="utf-8")
         print(f"✅ 已写入 {outp}（未改动 config.json）")

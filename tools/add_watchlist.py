@@ -33,8 +33,9 @@ if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
 CFG = BASE / "config.json"
-SECTOR_PY = BASE / "build_report.py"
-BACKTEST_PY = BASE / "backtest.py"
+# ⚠️ 必须指向 ra/ 下的真实实现：根级同名文件只是兼容壳（无实现内容）
+SECTOR_PY = BASE / "ra" / "report" / "build_report.py"
+BACKTEST_PY = BASE / "ra" / "analysis" / "backtest.py"
 
 
 # ---------------- config.json ----------------
@@ -42,7 +43,7 @@ BACKTEST_PY = BASE / "backtest.py"
 def update_config(code: str, name: str, sector: str) -> bool:
     """更新 config.json 三处；写前备份、写后 json.loads 回读。"""
     cfg = json.loads(CFG.read_text(encoding="utf-8"))
-    bk = BASE / "data" / f"config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json.bak"
+    bk = BASE / "data" / "backup" / f"config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json.bak"
     bk.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(CFG, bk)
 

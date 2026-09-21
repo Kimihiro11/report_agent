@@ -38,7 +38,6 @@
 python stock_report_agent.py              # 数据引擎：采集→JSON快照→可选入库（简版已取消，全功能报告走 build_report）
 python stock_report_agent.py --no-fetch   # 仅用缓存/配置出报告
 python stock_report_agent.py --backtest   # 跑回测（seed + run + 生成回测报告）
-python generate_full_report.py       # ⚠️ 注意：内含硬编码历史数据，仅作样式参考，不可用于实时
 python build_report.py      # ✅ 实时报告生成模板（WebSearch 数据），后续每日报告沿用此模式
 python backtest.py --seed            # 解析工作区报告 HTML → judgments.json
 python backtest.py --run             # 拉行情回测 → backtest_results.json + 回测报告 HTML
@@ -105,7 +104,7 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
    - 中性/持平 = 灰色 `.muted`
    - 回测报告、共振、操作 badge 全部沿用此语义。
 
-2. **实时报告必须用实时数据**：`generate_full_report.py` 内含 8/13 硬编码数据，**禁止**直接用于每日生产；每日报告应沿用 `build_report.py` 的"WebSearch 拉取 → 拼装"模式。
+2. **实时报告必须用实时数据**：源码中不得出现硬编码行情/宏观数值；数据缺口一律渲染「实时数据缺失」占位。（历史上曾有 `generate_full_report.py` 内含硬编码快照，该文件已随 `archive/` 一并删除。）
 
 3. **报告文件名带横线**：`A股操作指引-9章节-2026-08-16.html`、`回测报告-2026-08-16.html`。因中文 + 横线在 shell 易出错，**上传必须走 Python 子进程传绝对路径**。
 
@@ -123,25 +122,32 @@ python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回�
 
 ## 六、文件结构与职责
 
+> 2026-09-21 起全部实现收进 `ra/` 分层包，根目录同名 `.py` 为**兼容壳**（保持命令不变）。
+> **完整目录导览、分层依赖图、命令清单见 [`ARCHITECTURE.md`](ARCHITECTURE.md)**，本节只列速查。
+
 ```
-stock_report_agent.py          # 数据引擎：采集→JSON快照→入库 + --backtest 入口；被 generate/backtest/build 复用（简版模式已取消）
-config.json               # 全部配置：微博源/自选股/全球源/宏观/事件/技术/国家队/数据库/cookie
-db.py                     # PostgreSQL 封装 StockAgentDB（8 张表 + upsert 方法）
-generate_full_report.py   # ⚠️ 含硬编码历史数据，仅供样式参考
-build_report.py  # ✅ 实时 9 章节报告生成模板（后续每日沿用）
-backtest.py               # 个股判断回测与交叉验证模块
-peak_detector.py          # 见顶诊断引擎（5 维评分）
-stock_diagnosis.py        # 自选股诊断集成（调用 peak_detector）
-ingest_reports.py         # 把已生成 9 章节 HTML 解析回填 DB（幂等）
-verify_ingest.py          # DB 入库校验
-init_db.sql               # 建库建表 SQL（与 db.py 对应）
-judgments.json            # 个股判断本地主存储（回测用）
-backtest_results.json     # 回测结果本地主存储
-weibo_posts.json          # 微博抓取缓存（实时报告数据源之一）
-diagnosis_YYYYMMDD.json   # 个股诊断缓存
-archive/                  # 历史快照（按日期归档 src/reports/data/README）
-reports/                  # 产出物按类型分目录：早报/晚报/周报/回测（见手动运行规范）
-报告类型与手动运行规范.md # 早报/晚报/周报 触发时机、章节结构、命名、目录与手动流程
+ra/                                   # 全部实现
+├── paths.py                          # 项目根与 data 分层常量（唯一来源）
+├── stock_report_agent.py             # 数据引擎：采集→快照→入库
+├── infra/    db.py view.py charts.py llm_client.py
+├── sources/  momentum.py oil.py news_intel.py ai_capex.py
+├── analysis/ peak_detector.py stock_diagnosis.py aggressive_analysis.py
+│             chan_analysis.py focus_monitor.py weibo_llm.py backtest.py
+└── report/   build_report.py chan_report.py arr_report.py
+
+<19 个同名 .py>                       # 兼容壳（自动生成，勿手改）
+config.json                           # 全部配置：微博源/自选股/全球源/宏观/事件/技术/数据库/cookie
+templates/                            # 提示词（prompts.py）与报告静态资源（style.css/*.html）
+seeds/                                # 人工维护种子：judgments.json / backtest_results.json /
+                                      #   ai_capex.json / arr_cn_us.json
+sql/init_db.sql                       # 建库建表 SQL（与 db.py 对应）
+data/                                 # 运行时产物（不入库，仅 README.md 入库）
+  snapshots/                          #   采集快照（唯一原始输入）
+  daily/                              #   momentum / oil / news_intel
+  derived/                            #   diagnosis / weibo_deep / focus / chan（含模型注入，勿删）
+  state/ backup/                      #   跨日状态 / 配置备份
+reports/                              # 产出物：早报|晚报|周报|回测|专题|早期版本
+tools/                                # 运维工具（add_watchlist / upload_report / inject_* 等）
 ```
 
 ---
@@ -197,7 +203,7 @@ reports/                  # 产出物按类型分目录：早报/晚报/周报/�
 **目的**：用未来实际行情检验每日报告中的个股操作判断，并两类方法交叉验证，防止"叙事自洽但方向错误"。
 
 **流程**
-1. `--seed`：递归扫描 `reports/`（含 `早报-*.html` / `晚报-*.html` / `周报-*.html` 及历史 `A股操作指引*9章节*.html`），**排除 `archive/` 历史副本**；从 `stock-card` 提取判断；兼容 `badge` 与 `op-row` 两种卡片格式；同日期同代码冲突时优先保留非中性判断；写入 `judgments.json`（并可选同步 DB）。
+1. `--seed`：递归扫描 `reports/`（含 `早报-*.html` / `晚报-*.html` / `周报-*.html` 及历史 `A股操作指引*9章节*.html` / `A股舆情操作指引*9维度*.html`，含 `早期版本/`）；从 `stock-card` 提取判断；兼容 `badge` 与 `op-row` 两种卡片格式；同日期同代码冲突时优先保留非中性判断；写入 `judgments.json`（并可选同步 DB）。
 2. `--run`：读判断 → 新浪日 K（东方财富兜底）→ 算判断日后 1/3/5 交易日实际涨跌 → 方向命中（bullish 看涨、bearish 看跌）→ 独立技术信号（价格 vs MA20 + MA20 斜率）→ 一致率；写入 `backtest_results.json` + 生成 `回测报告-{YYYY-MM-DD}.html`。
 3. 未到交易日的窗口标记为 `pending`（待回测）。
 
@@ -240,4 +246,4 @@ reports/                  # 产出物按类型分目录：早报/晚报/周报/�
 - 不提供真实交易下单、不接券商。
 - 不做个股的硬预测承诺；报告与回测均为"参考/交叉验证"，含固定免责声明。
 - 不在无有效 cookie 时伪造微博数据；缺 cookie 则跳过并提示。
-- 不把 `generate_full_report.py` 的硬编码数据当作实时输出。
+- 不把任何硬编码数值当作实时输出；缺口宁缺勿假。

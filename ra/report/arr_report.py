@@ -16,7 +16,6 @@ import argparse
 import json
 from datetime import datetime
 from html import escape as _html_escape
-from pathlib import Path
 import re
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径

@@ -22,13 +22,12 @@
 """
 import argparse
 import json
-import pathlib
 import re
 import urllib.request
 from datetime import datetime
 
 from ra.paths import ROOT as BASE  # 包化后统一根路径
-OUT_DIR = BASE / "data" / "momentum"
+OUT_DIR = BASE / "data" / "daily" / "momentum"
 
 UA = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"}
 

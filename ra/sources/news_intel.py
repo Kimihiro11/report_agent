@@ -23,7 +23,6 @@ import re
 import html
 import argparse
 from datetime import datetime
-from pathlib import Path
 import urllib.parse
 import urllib.request
 
@@ -32,7 +31,7 @@ from ra.infra.llm_client import call_json
 from templates.prompts import NewsIntelPrompts
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
-OUTPUT_DIR = BASE_DIR / "data" / "news_intel"
+OUTPUT_DIR = BASE_DIR / "data" / "daily" / "news_intel"
 
 # ---- 英文 RSS 通道（境外源，hl=en-US / cc=US） ----
 GOOGLE_EN = "https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
