@@ -19,11 +19,11 @@
 数据缺口策略：任一源失败 / 超时自动跳过，绝不编造；无内容的机构标"观点缺失"。
 
 用法：
-    python focus_monitor.py            # 实时抓取 + 解析 + 研判 + 存 state JSON（日报内联渲染）
-    python focus_monitor.py --no-fetch # 不抓取，仅用上次缓存 state JSON（离线模式）
-    python focus_monitor.py --days 7   # 设置近端时间窗（天），默认 7（研报时效以周计）
+    python cli.py focus            # 实时抓取 + 解析 + 研判 + 存 state JSON（日报内联渲染）
+    python cli.py focus --no-fetch # 不抓取，仅用上次缓存 state JSON（离线模式）
+    python cli.py focus --days 7   # 设置近端时间窗（天），默认 7（研报时效以周计）
 
-不再单独产出独立页 / 片段（2026-08-18 起）：focus 章节由 build_report.py 实时读取
+不再单独产出独立页 / 片段（2026-08-18 起）：focus 章节由 `cli.py report` 实时读取
 state JSON 内联嵌入日报，置于「今日操作策略」之前；data/focus/focus_state_<DATE8>.json
 是唯一产出物。
 
@@ -455,7 +455,7 @@ def _synthesize_consensus(insts):
         return {
             "degree_label": "数据缺失", "degree_color": "#636e72",
             "consensus_text": ("当前未能从外网稳定解析到各大所日银加息研报，无法形成一致预期。"
-                               "请确认代理/外网可用后重跑 `python focus_monitor.py`。"),
+                               "请确认代理/外网可用后重跑 `python cli.py focus`。"),
             "hike_range": "", "terminal_range": "", "hawk_n": 0, "dove_n": 0, "neutral_n": 0,
         }
 

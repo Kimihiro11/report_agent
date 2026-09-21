@@ -17,8 +17,8 @@
   ⚠️ 关键词打分为确定性规则口径，非研报观点；`summary_zh` 由 Agent 注入。
 
 用法
-  python oil.py --date 2026-09-21            # 抓取+落盘
-  python oil.py --date 2026-09-21 --show     # 抓取并打印摘要
+  python cli.py oil --date 2026-09-21            # 抓取+落盘
+  python cli.py oil --date 2026-09-21 --show     # 抓取并打印摘要
 """
 from __future__ import annotations
 

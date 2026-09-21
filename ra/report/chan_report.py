@@ -9,8 +9,8 @@
 缺文件/解析失败时明确报错，绝不编造。
 
 用法：
-  python chan_report.py [--date YYYY-MM-DD]      # 默认取当日已生成的 chan_forecast
-  python chan_report.py --date 2026-09-18 --run  # 先生成数据再出报告
+  python cli.py chan-report [--date YYYY-MM-DD]      # 默认取当日已生成的 chan_forecast
+  python cli.py chan-report --date 2026-09-18 --run  # 先生成数据再出报告
 """
 from __future__ import annotations
 
@@ -300,7 +300,8 @@ def main():
     args = ap.parse_args()
 
     if args.run:
-        cmd = [sys.executable, str(BASE_DIR / "chan_analysis.py"),
+        # 走统一 CLI（2026-09-21 起根目录不再有 chan_analysis.py 兼容壳）
+        cmd = [sys.executable, str(BASE_DIR / "cli.py"), "chan",
                "000001", "1000", "600", "--from", args.from_time]
         print(f"[缠论报告] 生成数据: {' '.join(cmd[1:])}")
         subprocess.run(cmd, cwd=str(BASE_DIR))

@@ -3,7 +3,7 @@
 """
 数据库模块 - A股舆情Agent数据入库
 用法:
-    python db.py          # 初始化数据库和表
+    python cli.py db          # 初始化数据库和表
     在 stock_report_agent.py 中导入使用
 """
 import psycopg2

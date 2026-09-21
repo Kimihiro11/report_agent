@@ -35,15 +35,15 @@
 
 **命令行入口**
 ```bash
-python stock_report_agent.py              # 数据引擎：采集→JSON快照→可选入库（简版已取消，全功能报告走 build_report）
-python stock_report_agent.py --no-fetch   # 仅用缓存/配置出报告
-python stock_report_agent.py --backtest   # 跑回测（seed + run + 生成回测报告）
-python build_report.py      # ✅ 实时报告生成模板（WebSearch 数据），后续每日报告沿用此模式
-python backtest.py --seed            # 解析工作区报告 HTML → judgments.json
-python backtest.py --run             # 拉行情回测 → backtest_results.json + 回测报告 HTML
-python backtest.py --all             # seed + run
-python db.py                         # 初始化 PostgreSQL 库与全部表
-python ingest_reports.py             # 把已生成的 9 章节 HTML 解析回填 DB（幂等）
+python cli.py collect              # 数据引擎：采集→JSON快照→可选入库（简版已取消，全功能报告走 build_report）
+python cli.py collect --no-fetch   # 仅用缓存/配置出报告
+python cli.py collect --backtest   # 跑回测（seed + run + 生成回测报告）
+python cli.py report      # ✅ 实时报告生成模板（WebSearch 数据），后续每日报告沿用此模式
+python cli.py backtest --seed            # 解析工作区报告 HTML → judgments.json
+python cli.py backtest --run             # 拉行情回测 → backtest_results.json + 回测报告 HTML
+python cli.py backtest --all             # seed + run
+python cli.py db                         # 初始化 PostgreSQL 库与全部表
+python cli.py ingest-reports             # 把已生成的 9 章节 HTML 解析回填 DB（幂等）
 ```
 
 ---
@@ -237,7 +237,7 @@ tools/                                # 运维工具（add_watchlist / upload_re
 
 - ⚠️ 原 `automation-1786523682789`（工作日 21:00）**已于 2026-08-16 删除**，改为用户每日手动触发。
 - 手动运行标准见 **`报告类型与手动运行规范.md`**：分「早报 / 晚报 / 周报」三类 + 回测报告，产出物按类型放入 `reports/早报 | 晚报 | 周报 | 回测/`。
-- 手动流程要点：WebSearch 实时拼装 → 生成对应目录 HTML → 上传资料库「我的文档」。**回测独立于报告流程**：仅用户明确要求时跑 `python backtest.py --all` 并上传回测报告（2026-09-10 起）。
+- 手动流程要点：WebSearch 实时拼装 → 生成对应目录 HTML → 上传资料库「我的文档」。**回测独立于报告流程**：仅用户明确要求时跑 `python cli.py backtest --all` 并上传回测报告（2026-09-10 起）。
 
 ---
 

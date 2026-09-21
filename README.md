@@ -14,6 +14,8 @@
 ```
 report_agent/
 ├── ra/                       # 全部实现
+│   ├── cli.py                # 统一 CLI 分发器（子命令表 / 历史名别名 / runpy 转调）
+│   ├── __main__.py           # 支持 python -m ra <子命令>
 │   ├── paths.py              # 项目根与 data 分层常量（唯一来源）
 │   ├── stock_report_agent.py # 采集主编排（数据引擎）
 │   ├── infra/                # db / view / charts / llm_client
@@ -22,7 +24,8 @@ report_agent/
 │   │                         # chan_analysis / focus_monitor / weibo_llm / backtest
 │   └── report/               # build_report / chan_report / arr_report
 │
-├── <19 个同名 .py>           # 兼容壳（自动生成，勿手改）：保持 python X.py 命令不变
+├── cli.py                    # **全项目唯一命令入口**：python cli.py <子命令> [参数]
+│                             #   （薄壳，实现在 ra/cli.py；python cli.py list 看全部子命令）
 │
 ├── config.json               # 全部配置（含 weibo_cookie / DB 凭证），**gitignore 排除**
 ├── requirements.txt
@@ -43,39 +46,44 @@ report_agent/
 
 ## 核心模块速查
 
-| 模块（`ra/` 下） | 职责 |
-|---|---|
-| `stock_report_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 中美动量 / 日本传导链采集 → 写 `data/snapshots/` → 全量入库 PostgreSQL。含 180s 时间预算、空骨架保护、多源兜底。 |
-| `infra/view.py` | **口径层**：`basis`(pre_market/intraday/close) / `data_date` / `as_of` 的唯一来源。渲染层禁止自算交易日。 |
-| `report/build_report.py` | 9 章节报告渲染，读快照 + 诊断 + 动量 + 原油 + 资讯 + 微博解构。`--date` / `--type 早报\|晚报\|周报`。 |
-| `analysis/backtest.py` | 回测与交叉验证（1/3/5 交易日窗口）。`--seed` 解析报告写 `seeds/`，`--run` 全量回测出报告。**不自动跑，仅用户明确要求时执行。** |
-| `infra/db.py` | PostgreSQL 封装：建表自愈、upsert、探活。 |
-| `analysis/focus_monitor.py` | BOJ 加息程度研判：抓 10 家投行英文研报并解析正文 → 合成一致预期与分歧。 |
-| `sources/news_intel.py` | 外网资讯解析：英文 query 抓取 + publisher 正文解析 → `data/daily/news_intel/`；中文摘要在 `summary_mode=agent_inject` 下由模型注入。 |
-| `sources/oil.py` | 原油 WTI/Brent 双口径（新浪外盘期货）+ RSS 关键词情绪打分。 |
-| `sources/momentum.py` | 中美动量对照：美国 MTUM vs 中国科技指数（**中国侧必须用指数**，ETF 拆分致未复权失真）。 |
-| `infra/charts.py` | 通用 SVG 图表（`line_chart` / `bar_chart`），新章节优先复用。 |
-| `analysis/peak_detector.py` | 见顶 / 技术诊断引擎，被 `stock_diagnosis` 引用。 |
+| 子命令 | 模块（`ra/` 下） | 职责 |
+|---|---|---|
+| `collect` | `stock_report_agent.py` | 数据引擎：微博舆情 / A股行情 / 美股 / ETF 资金流 / 宏观 / 原油 / 中美动量 / 日本传导链采集 → 写 `data/snapshots/` → 全量入库 PostgreSQL。含 180s 时间预算、空骨架保护、多源兜底。 |
+| `report` | `report/build_report.py` | 9 章节报告渲染，读快照 + 诊断 + 动量 + 原油 + 资讯 + 微博解构。`--date` / `--type 早报\|晚报\|周报`。 |
+| `backtest` | `analysis/backtest.py` | 回测与交叉验证（1/3/5 交易日窗口）。`--seed` 解析报告写 `seeds/`，`--run` 全量回测出报告。**不自动跑，仅用户明确要求时执行。** |
+| `news` | `sources/news_intel.py` | 外网资讯解析：英文 query 抓取 + publisher 正文解析 → `data/daily/news_intel/`；中文摘要在 `summary_mode=agent_inject` 下由模型注入。 |
+| `oil` | `sources/oil.py` | 原油 WTI/Brent 双口径（新浪外盘期货）+ RSS 关键词情绪打分。 |
+| `momentum` | `sources/momentum.py` | 中美动量对照：美国 MTUM vs 中国科技指数（**中国侧必须用指数**，ETF 拆分致未复权失真）。 |
+| `focus` | `analysis/focus_monitor.py` | BOJ 加息程度研判：抓 10 家投行英文研报并解析正文 → 合成一致预期与分歧。 |
+| `chan` / `chan-report` | `analysis/chan_analysis.py` / `report/chan_report.py` | 缠论三级别推演与独立专题报告。 |
+| `arr` | `report/arr_report.py` | 中美 AI 资本开支与 ARR 对比专题。 |
+| — | `infra/view.py` | **口径层**：`basis`(pre_market/intraday/close) / `data_date` / `as_of` 的唯一来源。渲染层禁止自算交易日。 |
+| `db` | `infra/db.py` | PostgreSQL 封装：建表自愈、upsert、探活。 |
+| `charts` | `infra/charts.py` | 通用 SVG 图表（`line_chart` / `bar_chart`），新章节优先复用。 |
+| `peak` | `analysis/peak_detector.py` | 见顶 / 技术诊断引擎，被 `stock_diagnosis` 引用。 |
+| `watchlist` `upload` `inject-weibo` `inject-news` … | `tools/*.py` | 运维工具，完整清单见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 第五节。 |
+
+> 完整子命令列表：`python cli.py list`。历史脚本名（如 `build_report`）仍可作为别名使用。
 
 ## 运行流程（手动）
 
 ```bash
 # 1) 采集 + 强制入库
-python stock_report_agent.py
+python cli.py collect
 
 # 2) 外网资讯（英文源 + 正文解析）
-python news_intel.py --date YYYY-MM-DD
+python cli.py news --date YYYY-MM-DD
 #    → 写入 data/daily/news_intel/news_intel_YYYYMMDD.json
 #    → Agent 读 content_en 总结中文，经 tools/inject_news_intel.py 回填
 
 # 3) 报告
-python build_report.py --date YYYY-MM-DD --type 早报|晚报|周报
+python cli.py report --date YYYY-MM-DD --type 早报|晚报|周报
 
 # 4) 回测（仅用户明确要求时）
-python backtest.py --seed && python backtest.py --run
+python cli.py backtest --seed && python cli.py backtest --run
 
 # 5) 上传资料库（必须走去重工具）
-printf '%s' "<token>" | python tools/upload_report.py <html 绝对路径>
+printf '%s' "<token>" | python cli.py upload <html 绝对路径>
 ```
 
 ## 配置与依赖
@@ -90,7 +98,7 @@ printf '%s' "<token>" | python tools/upload_report.py <html 绝对路径>
 1. 涨跌颜色（中国习惯）：涨 = 红 `#d63031`、跌 = 绿 `#00a865`，不可颠倒。
 2. **9 章节结构固定**，新章节只能插在核心结论之后；缠论已独立成报。增删章节须同步 5 处。
 3. 自选股 = `config.json` 的 `watchlist_stocks`（当前 **10 只**），**数量禁写死**。增删用
-   `python tools/add_watchlist.py`，并同步微博解构重注入。
+   `python cli.py watchlist`，并同步微博解构重注入。
 4. 报告必须用实时数据，源码无硬编码数值；数据缺口渲染「实时数据缺失」，绝不造假。
 5. `config.json` 与 `data/` 不入库（`data/README.md` 除外）；`seeds/` `reports/` `docs/` `sql/` `tools/` `tests/` `templates/` 与 `ra/` 入库。
 6. **报告 HTML 上传/预览会被回写 `data-page-node-id` 属性**，且可延迟落地 → 提交前必须直接统计属性数，与 `git add` 放同一条命令。

@@ -8,7 +8,7 @@
 数据缺失时跳过对应区块，绝不编造。
 
 用法：
-  python arr_report.py [--date YYYY-MM-DD]
+  python cli.py arr [--date YYYY-MM-DD]
 """
 from __future__ import annotations
 

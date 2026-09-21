@@ -6,8 +6,11 @@
 
 ```
 report_agent/
+├── cli.py                  ← **全项目唯一命令入口**（见第三节）
 ├── ra/                     ← 全部实现（Python 包）
-│   ├── paths.py            项目根与 data/ 分层常量（唯一来源）
+│   ├── cli.py               CLI 分发器（子命令表 / 别名 / runpy 转调）
+│   ├── __main__.py          支持 `python -m ra <子命令>`
+│   ├── paths.py             项目根与 data/ 分层常量（唯一来源）
 │   ├── stock_report_agent.py   采集主编排（数据引擎）
 │   ├── infra/              基础设施（无业务语义）
 │   │   ├── db.py           PostgreSQL 封装
@@ -32,13 +35,12 @@ report_agent/
 │       ├── chan_report.py    缠论推演专题
 │       └── arr_report.py     中美 AI 资本开支与 ARR 专题
 │
-├── <19 个同名 .py>          ← **兼容壳**（自动生成，勿手改），见第三节
 ├── templates/              提示词与报告静态资源（prompts.py / style.css / *.html / sentiment_words.json）
 ├── seeds/                  人工维护的种子数据（judgments / backtest_results / ai_capex / arr_cn_us）
 ├── data/                   运行时产物（不入库，仅 README.md 入库）→ 见 data/README.md
 ├── reports/                报告输出（入库）：早报|晚报|周报|回测|专题|早期版本
 ├── docs/                   文档
-├── tools/                  运维工具（见第五节）
+├── tools/                  运维工具（全部经 cli.py 调用，见第五节）
 ├── tests/                  test_health.py（50 项契约断言）
 ├── sql/                    建表语句
 ├── miaoxiang/              妙想（东财）查询输出（不入库）
@@ -76,55 +78,71 @@ report_agent/
 
 **新增模块时**：按职责放对应目录；跨层引用一律 `from ra.<层>.<模块> import ...`。
 
-## 三、根目录兼容壳（命令不变的关键）
+## 三、统一 CLI（唯一命令入口）
 
-根目录保留了 19 个与模块同名的 `.py`，每个约 20 行，**自动生成、不含任何实现**：
+历史上根目录平铺 19 个模块，包化后一度保留 19 个同名兼容壳 —— 但壳本身就是新的累赘。
+现改为**单一入口 `cli.py`**（薄壳 20 行，实现在 `ra/cli.py`）：
 
-- `python build_report.py --date ... --type 早报` → `runpy.run_path("ra/report/build_report.py", run_name="__main__")`
-- `import db` → 转出 `ra.infra.db` 的真实模块对象（含私有名，如 `backtest._DEFAULT_WATCHLIST_NAME`）
+```bash
+python cli.py list                # 列出全部子命令
+python cli.py <子命令> [参数...]   # 参数原样透传给该模块的 argparse
+python -m ra <子命令> [参数...]    # 等价写法
+```
 
-因此 **所有既有命令、文档示例、定时自动化均无需改动**。
+分发机制：`runpy.run_path(实现文件, run_name="__main__")` + 重设 `sys.argv`。
+用 runpy 而非 `import + main()`，是因为部分模块只有 `if __name__ == "__main__"` 块、没有 `main()`。
 
-改代码请改 `ra/` 下的实现；**不要编辑根级壳**（下次生成会被覆盖，且壳里没有逻辑）。
+**历史脚本名仍可用作别名**（平滑迁移），例如：
+
+```
+python cli.py build_report --date 2026-09-21 --type 早报    # = python cli.py report ...
+python cli.py stock_report_agent                            # = python cli.py collect
+```
+
+添加新能力：在 `ra/cli.py` 的 `COMMANDS` 表登记一行（名字 → 实现文件 + 说明），
+`list` 会自动列出；入口文件无需改动。
 
 ## 四、常用命令（均在项目根执行）
 
 ```bash
-# 采集 → 快照 → 入库（行情优先于舆情，180s 预算）
-python stock_report_agent.py
+# 主流程
+python cli.py collect                                     # 采集 → 快照 → 入库（行情优先于舆情，180s 预算）
+python cli.py report --date 2026-09-21 --type 早报          # 早报|晚报|周报
+python cli.py backtest --seed && python cli.py backtest --run   # 回测（仅用户明确要求时）
 
-# 报告（早报|晚报|周报）
-python build_report.py --date 2026-09-21 --type 早报
+# 数据源
+python cli.py news --date 2026-09-21
+python cli.py oil --date 2026-09-21 --show
+python cli.py momentum --date 2026-09-21 --show
 
-# 专项
-python chan_analysis.py 000001 1000 600 --from auto && python chan_report.py --date 2026-09-21
-python arr_report.py --date 2026-09-15
-python oil.py --date 2026-09-21 --show
-python momentum.py --date 2026-09-21 --show
-python news_intel.py --date 2026-09-21
+# 分析 / 专题
+python cli.py focus --no-fetch
+python cli.py chan 000001 1000 600 --from auto
+python cli.py chan-report --date 2026-09-21
+python cli.py arr --date 2026-09-15
 
-# 回测（仅用户明确要求时执行）
-python backtest.py --seed && python backtest.py --run
-
-# 自选股：一致性体检（新增/删改后必跑）
-python tools/add_watchlist.py --check
+# 运维
+python cli.py watchlist --check                    # 自选股一致性体检（改动后必跑）
+printf '%s' "<token>" | python cli.py upload <html 绝对路径>
+python cli.py inject-news --date 2026-09-21 --content <summaries.json>
+python cli.py archive-dups --dry-run
 
 # 契约测试（50 项，改动后必跑）
 .venv/Scripts/python.exe tests/test_health.py
 ```
 
-## 五、tools/ 清单
+## 五、tools/ 清单（经 `cli.py` 对应子命令调用）
 
-| 工具 | 用途 |
-|---|---|
-| `add_watchlist.py` | 自选股新增/体检：同步 config 三处 + 两张兜底表 + 日K回填 |
-| `upload_report.py` | 报告上传资料库（**同名 UPDATE 覆盖，禁 `import_html.py` 直传**）+ 自动剥离回写属性 |
-| `archive_duplicates.py` | 资料库同名重复批量归档（`--dry-run`） |
-| `inject_weibo_llm.py` | 按目标快照重算 `input_hash` 注入微博解构 |
-| `inject_news_intel.py` | 资讯中文摘要注入（`summary_mode=agent_inject` 规范化） |
-| `build_close_snapshot.py` | 收盘口径快照补建 |
-| `read_edge_cookies.py` | 从 Edge/Chrome 提取微博 cookie（**须先退出浏览器**） |
-| `ingest_reports.py` / `verify_ingest.py` | 历史报告入库与校验（归档用途） |
+| 子命令 | 实现 | 用途 |
+|---|---|---|
+| `watchlist` | `add_watchlist.py` | 自选股新增/体检：同步 config 三处 + 两张兜底表 + 日K回填 |
+| `upload` | `upload_report.py` | 报告上传资料库（**同名 UPDATE 覆盖，禁 `import_html.py` 直传**）+ 自动剥离回写属性 |
+| `archive-dups` | `archive_duplicates.py` | 资料库同名重复批量归档（`--dry-run`） |
+| `inject-weibo` | `inject_weibo_llm.py` | 按目标快照重算 `input_hash` 注入微博解构 |
+| `inject-news` | `inject_news_intel.py` | 资讯中文摘要注入（`summary_mode=agent_inject` 规范化） |
+| `close-snapshot` | `build_close_snapshot.py` | 收盘口径快照补建 |
+| `cookies` | `read_edge_cookies.py` | 从 Edge/Chrome 提取微博 cookie（**须先退出浏览器**） |
+| `ingest-reports` / `verify-ingest` | `ingest_reports.py` / `verify_ingest.py` | 历史报告入库与校验（归档用途） |
 
 ## 六、路径约定（易错点）
 
@@ -133,6 +151,8 @@ python tools/add_watchlist.py --check
   —— 模块在 `ra/<层>/` 下，该表达式会指向包内目录（曾把产物写到 `ra/sources/data/`）。
 - `data/` 二级分层见 `data/README.md`；常量在 `ra/paths.py`（`DATA_SNAPSHOTS` 等）。
 - `seeds/`、`templates/`、`reports/` 固定在项目根，属数据/模板资产而非代码。
+- 模块间以**子进程**调用时，不要指向已不存在的根级脚本名；走
+  `[sys.executable, str(BASE_DIR / "cli.py"), "<子命令>", ...]`（`chan_report.py` 即此写法）。
 
 ## 七、报告结构（9 编号章节，AI 资本开支按需 +1）
 

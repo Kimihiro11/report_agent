@@ -14,9 +14,9 @@
 build_report 渲染原始解析内容（英文）占位，待 Agent 补全中文总结。
 
 用法:
-  python news_intel.py                 # 实时抓取+解析，写入 data/news_intel/news_intel_YYYYMMDD.json
-  python news_intel.py --date 2026-08-17
-  python news_intel.py --no-fetch      # 仅重渲染已缓存的原始解析内容（离线模式，不重新抓取）
+  python cli.py news                 # 实时抓取+解析，写入 data/news_intel/news_intel_YYYYMMDD.json
+  python cli.py news --date 2026-08-17
+  python cli.py news --no-fetch      # 仅重渲染已缓存的原始解析内容（离线模式，不重新抓取）
 """
 import json
 import re

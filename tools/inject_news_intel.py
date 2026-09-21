@@ -71,7 +71,7 @@ def main():
 
     path = NEWS_DIR / f"news_intel_{args.date.replace('-', '')}.json"
     if not path.exists():
-        print(f"[错误] 缓存不存在：{path}（先运行 python news_intel.py --date {args.date}）")
+        print(f"[错误] 缓存不存在：{path}（先运行 python cli.py news --date {args.date}）")
         return 1
     payload = json.loads(path.read_text(encoding="utf-8"))
     topics = payload.get("topics") or {}

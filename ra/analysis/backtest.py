@@ -11,9 +11,9 @@ A股舆情Agent · 个股判断回测与交叉验证模块
   4. 生成回测 HTML 报告，并写入 stock_judgments / backtest_results 表
 
 用法：
-  python backtest.py --seed         # 解析工作区所有报告 HTML，写入 stock_judgments
-  python backtest.py --run          # 读取判断 + 拉行情回测 + 生成报告 + 入库
-  python backtest.py --all          # seed + run
+  python cli.py backtest --seed         # 解析工作区所有报告 HTML，写入 stock_judgments
+  python cli.py backtest --run          # 读取判断 + 拉行情回测 + 生成报告 + 入库
+  python cli.py backtest --all          # seed + run
 """
 import re
 import json

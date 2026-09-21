@@ -3,7 +3,7 @@
 """生成 A股操作指引报告（9~10 章节，参数化日期与类型），数据全部来自实时快照。
 AI 资本开支章节为季度频率内容，默认仅在数据有更新（指纹变化）时出现，见 ai_capex.render_if_updated。
 
-用法: python build_report.py --date 2026-08-17 --type 早报|盘中|晚报|周报
+用法: python cli.py report --date 2026-08-17 --type 早报|盘中|晚报|周报
 
 数据来源（全部实时，无任何写死行情/宏观/原油/ETF 数值）：
   - 数据引擎 stock_report_agent.py 采集写入 data/snapshots/fetched_YYYYMMDD_HHMMSS.json
@@ -12,7 +12,7 @@ AI 资本开支章节为季度频率内容，默认仅在数据有更新（指�
 任何数据缺口均渲染为「实时数据缺失」占位，绝不出现假数据。
 
 import 本模块无副作用（不解析 argv / 不联网 / 不写盘）；执行入口为 main()，
-仅在 `python build_report.py`（__main__）时运行。
+仅在 `python cli.py report`（__main__）时运行。
 """
 import json
 import argparse
@@ -141,7 +141,7 @@ NEG_WORDS = _SENTIMENT_WORDS.get("negation", [])
 
 
 # 数据缺口统一占位（绝不编造数值）
-PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python stock_report_agent.py` 采集后再生成报告）。</p>'
+PLACEHOLDER = '<p class="muted" style="font-size:12px;">实时数据缺失（请先运行 `python cli.py collect` 采集后再生成报告）。</p>'
 
 # ---- 模块级状态：由 load_context() 填充；import 本模块无副作用（不解析 argv / 不联网 / 不写盘） ----
 TODAY = datetime.now().strftime("%Y-%m-%d")
@@ -247,7 +247,7 @@ def load_context():
         except Exception as e:
             print(f"[警告] 快照解析失败 {snap_path}: {e}")
     else:
-        print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python stock_report_agent.py` 采集数据。报告仅含占位。")
+        print(f"[警告] 未找到 {DATE8} 的实时快照，请先运行 `python cli.py collect` 采集数据。报告仅含占位。")
 
     weibo_data = snapshot.get("weibo_data", {})
     quotes = snapshot.get("quotes", {})
@@ -1000,7 +1000,7 @@ def momentum_section():
     data = _mom.load(TODAY)
     if not data:
         return ('<p class="muted">动量数据缺失（data/momentum/momentum_' + DATE8
-                + '.json 未生成，请先运行 python momentum.py --date ' + TODAY + '）。</p>')
+                + '.json 未生成，请先运行 python cli.py momentum --date ' + TODAY + '）。</p>')
 
     def _pct_cell(v):
         if v is None:
@@ -1081,7 +1081,7 @@ def oil_section():
     data = _oil.load(TODAY)
     if not data:
         return ('<p class="muted">原油数据缺失（data/oil/oil_' + DATE8 + '.json 未生成，'
-                '请先运行 <code>python oil.py --date ' + TODAY + '</code>）。</p>')
+                '请先运行 <code>python cli.py oil --date ' + TODAY + '</code>）。</p>')
 
     def _pct(v):
         if v is None:
@@ -1641,7 +1641,7 @@ def intel_block(key):
     t = _intel_topics.get(key)
     if not t:
         return ('<div class="intel-wrap"><p class="muted" style="font-size:12px;">'
-                '外网资讯解析缺失（请先运行 `python news_intel.py` 抓取英文源并总结）。</p></div>')
+                '外网资讯解析缺失（请先运行 `python cli.py news` 抓取英文源并总结）。</p></div>')
     summary = t.get("summary_zh", "").strip()
     ss = t.get("summary_structured")
     if isinstance(ss, dict) and (ss.get("core_conclusion") or summary):
@@ -1654,7 +1654,7 @@ def intel_block(key):
         body = '<p class="muted" style="font-size:12px;">外网资讯已抓取解析，中文结论待生成。</p>'
     else:
         return ('<div class="intel-wrap"><p class="muted" style="font-size:12px;">'
-                '外网资讯解析缺失（请先运行 `python news_intel.py` 抓取英文源并总结）。</p></div>')
+                '外网资讯解析缺失（请先运行 `python cli.py news` 抓取英文源并总结）。</p></div>')
     return f'<div class="intel-wrap">{body}</div>'
 
 
@@ -1897,7 +1897,7 @@ def focus_section():
             return ('<div class="card" id="sec-focus"><h2>限时关注的重点数据解析（实时）</h2>'
                     '<p class="muted" style="font-size:12px;">实时数据缺失（外网/代理不可达，'
                     '未能获取各大所日银加息研报研判。'
-                    '请先运行 `python focus_monitor.py` 采集后再生成报告）。</p></div>')
+                    '请先运行 `python cli.py focus` 采集后再生成报告）。</p></div>')
         frag = fm.render_focus_html(state, standalone=False, embed=True)
         return f'<div class="card" id="sec-focus"><h2>限时关注的重点数据解析（实时）</h2>{frag}</div>'
     except Exception as e:

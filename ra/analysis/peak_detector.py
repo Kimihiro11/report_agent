@@ -2043,11 +2043,11 @@ def print_diagnosis(result, stock_code, stock_name=''):
 
 def main():
     if len(sys.argv) < 2:
-        print("用法: python peak_detector.py <股票代码> [日期] [股票名称]")
-        print("示例: python peak_detector.py 600118 中国卫星")
-        print("      python peak_detector.py 001309 德明利")
-        print("      python peak_detector.py 300308 2026.7.14")
-        print("      python peak_detector.py 300308 2026-07-14 中际旭创")
+        print("用法: python cli.py peak <股票代码> [日期] [股票名称]")
+        print("示例: python cli.py peak 600118 中国卫星")
+        print("      python cli.py peak 001309 德明利")
+        print("      python cli.py peak 300308 2026.7.14")
+        print("      python cli.py peak 300308 2026-07-14 中际旭创")
         return
     
     stock_code = sys.argv[1]

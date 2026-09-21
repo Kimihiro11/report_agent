@@ -15,8 +15,8 @@
 
 用法
 ----
-    python momentum.py --date 2026-09-18           # 抓取并写 data/momentum/momentum_<DATE8>.json
-    python momentum.py --date 2026-09-18 --show    # 抓取后打印汇总
+    python cli.py momentum --date 2026-09-18           # 抓取并写 data/momentum/momentum_<DATE8>.json
+    python cli.py momentum --date 2026-09-18 --show    # 抓取后打印汇总
 
 产物由 build_report 的「中美动量对照」章节消费；抓取失败时报告渲染占位，绝不写死假数。
 """

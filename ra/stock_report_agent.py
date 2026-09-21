@@ -3,12 +3,12 @@
 """
 A股舆情操作指引 Agent（数据引擎）
 读取 config.json，抓取微博舆情 + 全球宏观 + 日本传导链 + A股行情，写入 JSON 快照与可选 PostgreSQL。
-全功能 9 章节报告由 build_report.py + WebSearch 实时拼装生成（简版模式已取消）。
+全功能 9 章节报告由 `cli.py report` 实时拼装生成（简版模式已取消）。
 
 用法:
-    python stock_report_agent.py            # 采集数据 → 快照 → 入库（全功能报告另由 build_report 生成）
-    python stock_report_agent.py --no-fetch # 仅用缓存数据生成快照
-    python stock_report_agent.py --backtest # 回测模式（独立，生成回测报告）
+    python cli.py collect            # 采集数据 → 快照 → 入库（全功能报告另由 `cli.py report` 生成）
+    python cli.py collect --no-fetch # 仅用缓存数据生成快照
+    python cli.py collect --backtest # 回测模式（独立，生成回测报告）
 
 依赖: 仅需Python标准库（urllib/json/re），无需pip安装
 """
