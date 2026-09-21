@@ -62,9 +62,19 @@ _DEFAULT_TOPICS = {
     "geopolitics": {
         "label_zh": "地缘政治与原油",
         "queries_en": [
-            "crude oil price today geopolitical supply",
-            "Middle East oil supply news today",
+            "Middle East conflict shipping lanes oil supply risk",
+            "sanctions Iran Russia oil exports news",
             "global geopolitical risk markets today",
+        ],
+    },
+    # 原油专项（价格/供需/库存）：供 oil.py 做原油情绪打分与图表
+    "oil": {
+        "label_zh": "原油价格与供需",
+        "queries_en": [
+            "crude oil price today WTI Brent",
+            "OPEC+ production decision oil supply",
+            "US crude oil inventories EIA demand",
+            "oil market outlook demand supply forecast",
         ],
     },
     "japan": {

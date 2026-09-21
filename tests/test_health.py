@@ -33,7 +33,7 @@ REPORT_DIRS = [BASE / "reports" / t for t in ("早报", "晚报", "周报")]
 
 # 报告必须存在的章节锚点（h2 标题关键字）
 # 注：缠论已于 2026-09-18 拆出日报独立成报（chan_report.py），不再计入日报章节。
-SECTION_ANCHORS = ["核心结论", "中美动量对照", "隔夜美股", "CPI", "传导链", "地缘", "ETF", "舆情解构",
+SECTION_ANCHORS = ["核心结论", "中美动量对照", "隔夜美股", "CPI", "传导链", "地缘", "原油", "ETF", "舆情解构",
                    "共振信号", "自选股", "限时关注", "免责"]
 
 REQUIRED_SNAPSHOT_KEYS = ["date", "quotes", "weibo_data", "market_state"]
@@ -267,6 +267,96 @@ class TestReportAnchors(unittest.TestCase):
         """模板占位符外泄说明渲染分支出错。"""
         for bad in ("{{", "}}"):  # CSS 双大括号转义事故（8 月修过）
             self.assertNotIn(bad, self.html, f"报告残留未渲染标记 {bad}")
+
+    def test_oil_tracking_present(self):
+        """原油价格 + 舆情跟踪（2026-09-21 新增）必须出现在第五节。"""
+        for anchor in ("原油价格跟踪", "原油舆情跟踪"):
+            self.assertIn(anchor, self.html, f"报告缺少 {anchor}")
+
+
+class TestGenericCharts(unittest.TestCase):
+    """通用图表组件（charts.py）：折线/条形都必须产出合法 SVG，且口径正确。"""
+
+    def test_line_chart_renders_multiple_series(self):
+        import charts
+        out = charts.line_chart({
+            "dates": [f"2026-09-{d:02d}" for d in range(1, 11)],
+            "lines": [{"name": "WTI", "values": [90 + i for i in range(10)]},
+                      {"name": "Brent", "values": [93 + i for i in range(10)]}],
+        })
+        self.assertIn("<svg", out)
+        self.assertEqual(2, out.count("<polyline"), "两条序列应各产出一条折线")
+        self.assertEqual(2, out.count("<circle"), "每条序列端点应各有一个标记")
+
+    def test_absolute_axis_has_no_percent_suffix(self):
+        """绝对价格图的轴标签不能带 %（曾因 y_unit 默认 '%' 出错）。
+
+        ⚠️ 只能查 <text> 标签：svg 的 style="width:100%" 里天然含 %。
+        """
+        import charts
+        out = charts.line_chart({"dates": ["a", "b"],
+                                 "lines": [{"name": "WTI", "values": [90, 95]}]})
+        self.assertNotIn("%</text>", out, "轴/图例标签不该带 %")
+        self.assertIn("WTI 95</text>", out, "价格应按整数显示，不带正负号")
+
+    def test_percent_axis_keeps_suffix(self):
+        import charts
+        out = charts.line_chart({"dates": ["a", "b"], "y_unit": "%",
+                                 "lines": [{"name": "x", "values": [-1, 2]}]})
+        self.assertIn("%", out)
+
+    def test_gap_does_not_connect_across_none(self):
+        """缺口必须断线：单点片段不画 polyline，避免跨缺口连线误导。"""
+        import charts
+        out = charts.line_chart({"dates": ["a", "b", "c"],
+                                 "lines": [{"name": "x", "values": [1, None, 3]}]})
+        self.assertEqual(0, out.count("<polyline"))
+
+    def test_bar_chart_counts_are_integers(self):
+        import charts
+        out = charts.bar_chart({"items": [{"name": "利多", "value": 3}], "unit": " 条"})
+        self.assertIn("3 条", out)
+        self.assertNotIn("+3", out, "计数不该带正号")
+
+    def test_empty_spec_returns_empty(self):
+        import charts
+        self.assertEqual("", charts.line_chart({}))
+        self.assertEqual("", charts.bar_chart({"items": []}))
+
+
+class TestOilTracking(unittest.TestCase):
+    """原油跟踪数据契约与情绪打分口径。"""
+
+    def test_data_contract(self):
+        import oil
+        d = oil.load("2026-09-21")
+        if not d:
+            self.skipTest("尚无原油数据")
+        self.assertTrue(d.get("quotes"), "原油行情为空")
+        for q in d["quotes"]:
+            for k in ("code", "name", "last", "m5", "m20", "m60"):
+                self.assertIn(k, q, f"原油行情缺字段 {k}")
+        ser = d.get("series") or {}
+        self.assertGreaterEqual(len(ser.get("dates") or []), 5, "序列过短")
+        for l in ser.get("lines") or []:
+            self.assertEqual(len(ser["dates"]), len(l["values"]), "序列长度不齐")
+
+    def test_sentiment_tone_keywords(self):
+        import oil
+        self.assertEqual("bearish", oil._tone("Oil prices fall as inventories rise"))
+        self.assertEqual("bullish", oil._tone("OPEC+ announces a supply cut"))
+        self.assertEqual("neutral", oil._tone("Oil market steady today"))
+
+    def test_stale_news_filtered(self):
+        """搜索型 RSS 会混入陈旧条目，sentiment_from_news 必须过滤并回报条数。"""
+        import oil
+        s = oil.sentiment_from_news("2026-09-21")
+        if not s:
+            self.skipTest("尚无资讯缓存")
+        self.assertIn("dropped_stale", s)
+        self.assertGreaterEqual(s.get("max_age_days", 0), 1)
+        for h in s.get("headlines") or []:
+            self.assertIn(h.get("tone"), ("bullish", "bearish", "neutral"))
 
 
 class TestChanMultiLevel(unittest.TestCase):

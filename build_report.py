@@ -1055,6 +1055,120 @@ def momentum_section():
     )
 
 
+def oil_section():
+    """原油价格与舆情跟踪（数据由 oil.py 产出；缺失渲染占位，绝不写死假数）。
+
+    图表走通用组件 charts.py：折线=WTI/Brent 收盘价走势，条形=舆情情绪分布。
+    """
+    try:
+        import oil as _oil
+        import charts as _ch
+    except Exception as e:
+        return '<p class="muted">原油模块不可用：' + _esc(str(e)) + '</p>'
+    data = _oil.load(TODAY)
+    if not data:
+        return ('<p class="muted">原油数据缺失（data/oil/oil_' + DATE8 + '.json 未生成，'
+                '请先运行 <code>python oil.py --date ' + TODAY + '</code>）。</p>')
+
+    def _pct(v):
+        if v is None:
+            return '<span class="muted">—</span>'
+        cls = "up" if v > 0 else ("down" if v < 0 else "muted")
+        return '<span class="' + cls + '">' + f'{v:+.2f}%' + '</span>'
+
+    def _num(v):
+        return str(v) if v is not None else '<span class="muted">—</span>'
+
+    quotes = data.get("quotes") or []
+    rows = ""
+    for q in quotes:
+        rows += ("<tr><td><b>" + _esc(q.get("short") or q.get("name")) + "</b>"
+                 + "<span class='muted' style='font-size:11px'> " + _esc(q.get("name", "")) + "</span></td>"
+                 + "<td><b>" + _num(q.get("last")) + "</b></td>"
+                 + "<td>" + _pct(q.get("chg")) + "</td>"
+                 + "<td>" + _num(q.get("ma5")) + "</td>"
+                 + "<td>" + _pct(q.get("m5")) + "</td>"
+                 + "<td>" + _pct(q.get("m20")) + "</td>"
+                 + "<td>" + _pct(q.get("m60")) + "</td>"
+                 + "<td>" + _pct(q.get("from_high")) + "</td>"
+                 + "<td>" + _pct(q.get("from_low")) + "</td></tr>")
+    head = ("<tr><th>标的</th><th>最新(美元/桶)</th><th>当日</th><th>MA5</th>"
+            "<th>近5日</th><th>近20日</th><th>近60日</th><th>距52周高</th><th>距52周低</th></tr>")
+    empty = '<tr><td colspan="9" class="muted">实时数据缺失</td></tr>'
+
+    # 概览徽章（红涨绿跌）
+    badges = []
+    for q in quotes:
+        cls = "b-red" if (q.get("chg") or 0) > 0 else ("b-green" if (q.get("chg") or 0) < 0 else "b-gray")
+        badges.append(f'<span class="badge {cls}">{_esc(q.get("short"))} '
+                      f'{q.get("last")} ({q.get("chg"):+.2f}%)</span>' if q.get("chg") is not None
+                      else f'<span class="badge b-gray">{_esc(q.get("short"))} {q.get("last")}</span>')
+    s = data.get("sentiment") or {}
+    if s:
+        scls = "b-red" if s.get("score", 0) > 0 else ("b-green" if s.get("score", 0) < 0 else "b-gray")
+        badges.append(f'<span class="badge {scls}">舆情 {s.get("label")} '
+                      f'(利多{s.get("bullish",0)}/利空{s.get("bearish",0)})</span>')
+    summary = '<div class="us-sum">' + "".join(badges) + '</div>' if badges else ""
+
+    # 价格走势折线图（通用图表组件）
+    chart = ""
+    ser = data.get("series")
+    if ser and ser.get("dates") and ser.get("lines"):
+        chart = _ch.line_chart({
+            "dates": ser["dates"],
+            "lines": [{"name": l.get("name"), "values": l.get("values")} for l in ser["lines"]],
+            "title": f'近 {len(ser["dates"])} 个交易日原油收盘价（美元/桶）',
+            "zero_line": False, "legend_cols": 2, "plot_h": 210,
+            "note": "数据截至 " + str((quotes[0].get("data_date") if quotes else "") or ""),
+        })
+
+    # 舆情：情绪分布条形图 + 标题列表
+    sent_html = ""
+    if s:
+        bars = _ch.bar_chart({
+            "items": [
+                {"name": "利多油价", "value": s.get("bullish", 0), "color": _ch.UP_COLOR},
+                {"name": "利空油价", "value": s.get("bearish", 0), "color": _ch.DOWN_COLOR},
+                {"name": "中性", "value": s.get("neutral", 0), "color": _ch.NEUTRAL_COLOR},
+            ],
+            "title": "原油舆情情绪分布（关键词口径）",
+            "unit": " 条",
+        })
+        tone_zh = {"bullish": ("利多", "b-red"), "bearish": ("利空", "b-green"),
+                   "neutral": ("中性", "b-gray")}
+        lis = ""
+        for h in (s.get("headlines") or []):
+            lbl, cls = tone_zh.get(h.get("tone"), ("中性", "b-gray"))
+            lis += ('<li style="margin:4px 0;font-size:12.5px;">'
+                    + f'<span class="badge {cls}">{lbl}</span> '
+                    + f'<span class="muted" style="font-size:11px;">{_esc(h.get("published_date") or "")}</span> '
+                    + _esc(h.get("title")) + '</li>')
+        st_note = (f'来源 {_esc(s.get("source", ""))}（截至 {_esc(s.get("source_date", ""))}），'
+                   f'已剔除 {s.get("dropped_stale", 0)} 条超出 {s.get("max_age_days", 7)} 天的陈旧条目')
+        sent_html = (bars
+                     + ('<ul style="margin:8px 0 0;padding-left:18px;">' + lis + '</ul>' if lis else "")
+                     + '<p class="muted" style="font-size:11px;margin:6px 0 0;">' + st_note + '</p>')
+
+    summary_zh = s.get("summary_zh") if s else ""
+    zh = ('<div class="point" style="margin-top:12px;"><div class="pt-title">原油舆情小结</div>'
+          '<div class="pt-body">' + _esc(summary_zh) + '</div></div>') if summary_zh else ""
+
+    errs = data.get("errors") or []
+    foot = ('<p class="muted" style="font-size:11px;margin-top:8px;">'
+            '口径：WTI=纽约轻质原油（新浪外盘期货 hf_CL），Brent=布伦特（hf_OIL）；'
+            '动量为区间涨跌幅，52 周窗口取近 250 个交易日。'
+            + ('抓取异常：' + _esc("；".join(errs)) if errs else '') + '</p>')
+
+    return (summary
+            + '<div style="font-size:13px;font-weight:700;color:#3C3489;margin:12px 0 4px;">'
+            '原油价格跟踪（双口径）</div>'
+            + '<table><thead>' + head + '</thead><tbody>' + (rows or empty) + '</tbody></table>'
+            + chart
+            + ('<div style="font-size:13px;font-weight:700;color:#3C3489;margin:18px 0 4px;">'
+               '原油舆情跟踪</div>' + sent_html if sent_html else "")
+            + zh + foot)
+
+
 def us_section():
     if not us_market:
         return PLACEHOLDER
@@ -2281,7 +2395,7 @@ def _render_html():
 <li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
 <li><a href="#sec-chain">宏观传导链监控（独立因子·实时）</a></li>
 <li><a href="#sec-fima">FIMA 高亮（外国央行美债托管 · 临时）</a></li>
-<li><a href="#sec-geo">地缘政治与原油（事件因子 · 外网解析）</a></li>
+<li><a href="#sec-geo">地缘政治与原油（实时价量 + 外网解析）</a></li>
 <li><a href="#sec-etf">ETF资金流向（实时）</a></li>
 <li><a href="#sec-weibo">微博舆情解构（{" / ".join(s.get("name", "") for s in VS_SOURCES) or "大V"} · 实时）</a></li>
 <li><a href="#sec-resonance">共振信号（多源交叉·实时）</a></li>
@@ -2322,7 +2436,9 @@ def _render_html():
 </div>
 
 <div class="card" id="sec-geo">
-<h2>五、地缘政治与原油（事件因子 · 外网解析）</h2>
+<h2>五、地缘政治与原油（实时价量 + 外网解析）</h2>
+{oil_section()}
+<div style="font-size:13px;font-weight:700;color:#3C3489;margin:18px 0 4px;">地缘政治与原油资讯（外网解析）</div>
 {intel_block("geopolitics")}
 </div>
 

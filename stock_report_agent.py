@@ -1449,6 +1449,19 @@ def main():
                 print("  [动量] 中美动量数据已更新")
             except Exception as e:
                 print(f"  [警告] 动量数据采集失败: {e}")
+        # 原油价格与舆情（WTI/Brent 双口径 + news_intel 主题情绪打分）
+        # 产物落 data/oil/oil_<DATE8>.json，报告第五节直接读文件（缺失则渲染占位）
+        if _budget_ok("原油跟踪"):
+            try:
+                import oil as _oil
+                _today = datetime.now().strftime("%Y-%m-%d")
+                _od = _oil.collect(_today)
+                _oil.save(_od)
+                _n = len(_od.get("quotes") or [])
+                _s = _od.get("sentiment") or {}
+                print(f"  [原油] 已更新（{_n} 个口径；舆情 {_s.get('label','—')}）")
+            except Exception as e:
+                print(f"  [警告] 原油数据采集失败: {e}")
         print(f"[数据引擎] 行情采集完成（耗时 {_time_mod.monotonic() - _t0:.0f}s，剩余 {_budget_left():.0f}s）")
 
     if not no_fetch:
