@@ -251,8 +251,11 @@ def _etf_mx():
             if f"({code}." not in line and f"({code})" not in line:
                 continue
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            # ⚠️ 妙想返回的是「近 N 日」区间表，表头日期**降序**（第 1 列 = 最新交易日）。
+            #    必须取 cells[1]（最新），取 cells[-1] 会拿到最早那天（2026-09-22 实测：
+            #    159516 取成 9/15 的 +5.28亿，而当日实际是 -4.17亿）。
             if len(cells) >= 2:
-                amt = _mx_amount_yi(cells[-1])
+                amt = _mx_amount_yi(cells[1])
                 if amt is not None:
                     break
         if amt is None:
