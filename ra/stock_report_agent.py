@@ -268,6 +268,36 @@ def _etf_mx():
     return out
 
 
+def _kline_tencent(code):
+    """腾讯实时行情（收盘后即当日 OHLC）→ [{date,open,high,low,close}]，失败 []。
+
+    妙想对同一查询的返回布局**不稳定**（2026-09-22 实测：同一问句一次给完整日K表、
+    另一次只给「当前」快照表且缺收盘价 → 解析为空），故补缺口用腾讯兜底：
+    单次 HTTP GET、GBK、字段 f[5]=今开 f[33]=最高 f[34]=最低 f[3]=最新价（收盘后=收盘）。
+    """
+    import urllib.request
+    try:
+        prefix = "sh" if str(code)[0] == "6" else "sz"
+        req = urllib.request.Request(f"http://qt.gtimg.cn/q={prefix}{code}",
+                                     headers={"User-Agent": "Mozilla/5.0",
+                                              "Referer": "https://gu.qq.com/"})
+        raw = urllib.request.urlopen(req, timeout=8).read().decode("gbk", errors="replace")
+        f = raw.split('"')[1].split("~")
+        if len(f) < 35:
+            return []
+        d = f[30][:8] if len(f) > 30 else ""
+        if len(d) != 8:
+            return []
+        date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+        o, h, l, c = (float(f[5]), float(f[33]), float(f[34]), float(f[3]))
+        if not (l <= min(o, c) and h >= max(o, c)):
+            return []
+        return [{"date": date, "open": o, "high": h, "low": l, "close": c}]
+    except Exception as e:
+        print(f"  [K线] {code} 腾讯行情失败（{e}）")
+        return []
+
+
 def _idx_mx():
     """指数行情（妙想 = 第一数据源）。返回 {name: {price,chg,chg_pct,volume}} 或 {}。"""
     _, name_map = _load_index_quotes()
@@ -1488,11 +1518,17 @@ def _persist_to_db(config, snapshot, ta_data):
         if snapshot.get("us_market"):
             db.save_us_market(td, snapshot["us_market"])
         if snapshot.get("etf"):
-            # 真实数据日（westock EndDate）从 override 文件读取，避免盘前/盘后错位
+            # 真实数据日：**仅当本次确实消费了 override 时**才采信它的 data_date。
+            #   fetch_etf_flows 只在 override["date"] == 运行日 时才走 override（优先级最高），
+            #   否则数据来自妙想/push2 —— 那是**当日**值，data_date 必须回落到 flow_date。
+            #   ⚠️ 曾无条件读 override 的 data_date：收盘采集（data 走妙想=当日）却沿用
+            #   override 里上一交易日的数据日 → 与前一交易日的行**撞同一个 COALESCE 键**，
+            #   把 `get_etf_flows_history` 的历史值整段顶掉（2026-09-22 实测）。
             _data_date = None
             try:
                 _ov = json.loads((OUTPUT_DIR / "data" / "state" / "westock_etf_override.json").read_text(encoding="utf-8"))
-                _data_date = _ov.get("data_date")
+                if str(_ov.get("date") or "") == datetime.now().strftime("%Y%m%d"):
+                    _data_date = _ov.get("data_date")
             except Exception:
                 _data_date = None
             # 盘前 push2 常返回 0.00 假值 → 全部为 0 时视为无效，不入库（防止脏行污染历史）

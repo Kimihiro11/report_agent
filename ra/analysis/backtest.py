@@ -303,19 +303,31 @@ def _kline_fill_tail(code, out, end):
     """
     if not (out and end and out[-1]["date"] < end):
         return out
+    from datetime import timedelta
+    from ra import stock_report_agent as _sra
+    have = {k["date"] for k in out}
+    start = (datetime.strptime(end, "%Y-%m-%d") - timedelta(days=10)).strftime("%Y-%m-%d")
+    add = []
+    # ① 妙想（区间短于 ~7 交易日时给全 OHLC）
     try:
-        from datetime import timedelta
-        from ra import stock_report_agent as _sra
-        start = (datetime.strptime(end, "%Y-%m-%d")
-                 - timedelta(days=10)).strftime("%Y-%m-%d")
-        mx = _sra._kline_mx(code, beg=start, end=end)
-        have = {k["date"] for k in out}
-        add = [k for k in mx if k["date"] not in have]
+        add = [k for k in _sra._kline_mx(code, beg=start, end=end) if k["date"] not in have]
         if add:
-            out = sorted(out + add, key=lambda x: x["date"])
-            print(f"  [K线] {code} 尾端缺口 {len(add)} 根由妙想补齐（至 {out[-1]['date']}）")
+            print(f"  [K线] {code} 尾端缺口 {len(add)} 根由妙想补齐（至 {add[-1]['date']}）")
     except Exception as e:
-        print(f"  [K线] {code} 妙想补缺口失败（{e}），沿用现有序列")
+        print(f"  [K线] {code} 妙想补缺口失败（{e}）")
+    # ② 腾讯实时行情兜底（妙想返回布局不稳定，可能只给「当前」表而缺收盘价）
+    if not add:
+        try:
+            tx = [k for k in _sra._kline_tencent(code) if k["date"] not in have]
+            if tx:
+                add = tx
+                print(f"  [K线] {code} 尾端缺口 {len(add)} 根由腾讯行情补齐（至 {add[-1]['date']}）")
+            else:
+                print(f"  [K线] {code} 尾端仍缺 {end}（妙想/腾讯均未取到）")
+        except Exception as e:
+            print(f"  [K线] {code} 腾讯补缺口失败（{e}）")
+    if add:
+        out = sorted(out + add, key=lambda x: x["date"])
     return out
 
 
