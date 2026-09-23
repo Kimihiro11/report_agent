@@ -97,14 +97,33 @@ def main():
         print(f"[错误] 未知主题 {unknown}；可选：{list(topics.keys())}")
         return 1
 
+    # ⚠️ 结构校验：必须嵌套在 summary_structured 下。曾把字段写成扁平结构，
+    #    被 normalize 静默吃掉 → direction 全变「中性」、facts 全空，报告仍是「已注入」不可见异常。
+    bad_shape = [k for k, v in content.items()
+                 if not isinstance(v, dict) or not isinstance(v.get("summary_structured"), dict)]
+    if bad_shape:
+        print(f"[错误] {bad_shape} 缺少 summary_structured 嵌套层。"
+              f"正确结构：{{\"主题\": {{\"summary_zh\": \"…\", \"summary_structured\": {{SUMMARY_SCHEMA}}}}}}")
+        return 1
+
+    warns = []
     for key, item in content.items():
         t = topics[key]
         t["summary_zh"] = _norm(item.get("summary_zh", ""))
         t["summary_structured"] = normalize(item.get("summary_structured") or {},
                                             item.get("summary_zh", ""))
         t["summary_mode"] = "agent_inject"
-        print(f"  [注入] {key:<12} {t['summary_structured'].get('direction')} "
-              f"zh={len(t['summary_zh'])}字 facts={len(t['summary_structured'].get('facts') or [])}")
+        ss = t["summary_structured"]
+        if not ss.get("direction") or ss.get("direction") == "中性":
+            warns.append(f"{key} 方向为「中性」（若本意非中性则可能字段写错）")
+        if not ss.get("facts"):
+            warns.append(f"{key} facts 为空（核对是否漏写）")
+        if not ss.get("confidence"):
+            warns.append(f"{key} confidence 为 0")
+        print(f"  [注入] {key:<12} {ss.get('direction')} "
+              f"zh={len(t['summary_zh'])}字 facts={len(ss.get('facts') or [])}")
+    for w in warns:
+        print(f"  ⚠️  {w}")
 
     payload["topics"] = topics
     out = json.dumps(payload, ensure_ascii=False, indent=2)

@@ -845,7 +845,17 @@ def _fetch_board_width(fs_raw, label, zt_th):
             pn += 1
             if pn > 60:  # 安全上限
                 break
-        if (up + down + flat) == 0:
+        counted = up + down + flat
+        if counted == 0:
+            return None
+        # ⚠️ 盘前/接口异常时分页只返回一部分，会产出「涨 1198 / 跌 0」这类畸形值。
+        #    此前该值经 UPSERT 覆盖掉前一交易日的完整记录（COALESCE 只挡 None、挡不住 0），
+        #    实测 2026-09-23 盘前把 9/22 的 main_down 1880→0、cyb_* 全清空。故在此判定不完整。
+        if total and counted < int(total) * 0.6:
+            print(f"[宽度] {label} 仅取到 {counted}/{total} 只（分页不完整），跳过")
+            return None
+        if up > 200 and down == 0:
+            print(f"[宽度] {label} 涨 {up} 而跌 0，判为不完整，跳过")
             return None
         return {"up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
     except Exception as e:
@@ -1520,10 +1530,8 @@ def _persist_to_db(config, snapshot, ta_data):
         if snapshot.get("etf"):
             # 真实数据日：**仅当本次确实消费了 override 时**才采信它的 data_date。
             #   fetch_etf_flows 只在 override["date"] == 运行日 时才走 override（优先级最高），
-            #   否则数据来自妙想/push2 —— 那是**当日**值，data_date 必须回落到 flow_date。
-            #   ⚠️ 曾无条件读 override 的 data_date：收盘采集（data 走妙想=当日）却沿用
-            #   override 里上一交易日的数据日 → 与前一交易日的行**撞同一个 COALESCE 键**，
-            #   把 `get_etf_flows_history` 的历史值整段顶掉（2026-09-22 实测）。
+            #   否则数据来自妙想/push2 —— 那是**当次口径所属交易日**的值，data_date 须回落 `_qdate`。
+            #   ⚠️ 曾无条件读 override 的 data_date（stale 值会与前一日的行撞同一个 COALESCE 键）。
             _data_date = None
             try:
                 _ov = json.loads((OUTPUT_DIR / "data" / "state" / "westock_etf_override.json").read_text(encoding="utf-8"))
@@ -1531,9 +1539,14 @@ def _persist_to_db(config, snapshot, ta_data):
                     _data_date = _ov.get("data_date")
             except Exception:
                 _data_date = None
+            # ⚠️ flow_date 必须用 `_qdate`（口径层判定的行情所属交易日）而**不是运行日 `td`**：
+            #   盘前采集（08:xx）拿到的是**上一交易日**收盘的 ETF 主力净流入，若按运行日入库，
+            #   会在 history 里多出一行「未来交易日」（实测 2026-09-23 盘前生成 ghost 的 09-23 行，
+            #   值与 09-22 完全相同），近 5 日柱状图随即出现重复柱。
+            _etf_dd = _data_date or _qdate
             # 盘前 push2 常返回 0.00 假值 → 全部为 0 时视为无效，不入库（防止脏行污染历史）
             if _etf_amount_valid(snapshot["etf"]):
-                db.save_etf_flows(td, snapshot["etf"], data_date=_data_date)
+                db.save_etf_flows(_qdate, snapshot["etf"], data_date=_etf_dd)
             else:
                 print("  [DB] ETF 资金流全部为 0（盘前无效值），跳过入库")
         if snapshot.get("weibo_data"):
