@@ -847,6 +847,10 @@ def _fetch_board_width(fs_raw, label, zt_th):
                 break
         counted = up + down + flat
         if counted == 0:
+            # 分页接口整体不可用时（2026-09-23 实测东财 clist/get 全主机无响应，
+            # 而 getTopicZDFenBu / ulist.np 正常）会走到这里 —— 静默返回 None 不利于排查，
+            # 故显式告警：主板/创业板宽度将留空，对应 ADL 序列出现缺口。
+            print(f"[宽度] {label} 分页接口无返回（total={total}），本次不落库")
             return None
         # ⚠️ 盘前/接口异常时分页只返回一部分，会产出「涨 1198 / 跌 0」这类畸形值。
         #    此前该值经 UPSERT 覆盖掉前一交易日的完整记录（COALESCE 只挡 None、挡不住 0），
