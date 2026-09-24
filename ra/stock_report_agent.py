@@ -655,6 +655,11 @@ def _parse_rss(text, max_items=5, max_len=300):
     return out
 
 
+_SRC_FAILS = {}          # 新闻源连续失败计数（进程内，每轮 collect 自动重置）
+_SRC_DEAD = set()        # 本轮已判定不可用的源
+_SRC_FAIL_LIMIT = 3
+
+
 def search_news(query, max_items=5):
     """外网新闻搜索：Google News RSS 优先，回退 必应（国内版）-> 必应国际版。
 
@@ -663,19 +668,29 @@ def search_news(query, max_items=5):
     - Google 尝试静默（quiet=True）：它在受限网络常失败，且有 Bing 兜底，
       避免每次都刷 [fetch error] 噪音；Bing 失败仍正常打印以便排查。
     - 沙箱常屏蔽 Google，必应国际版（en-us/cc=US）可作为第三层兜底，提高新闻命中率。
+    - ⚠️ **熔断**：某源连续失败 `_SRC_FAIL_LIMIT` 次即本轮跳过。实测受限网络下
+      Google 走代理会 `Tunnel connection failed: 502`，每次卡满超时（10s×45 主题＝450s），
+      直接把 180s 采集预算烧光、舆情只剩 3 类（2026-09-24 实测）。熔断后只损失前几次超时。
+      Google 单独给更短超时（6s），进一步压缩无谓等待。
     """
     q = urllib.parse.quote(query)
     sources = [
-        ("Google", GOOGLE_NEWS_RSS.format(q=q), True),
-        ("必应", BING_NEWS_RSS.format(q=q), False),
-        ("必应国际版", BING_NEWS_RSS_INT.format(q=q), False),
+        ("Google", GOOGLE_NEWS_RSS.format(q=q), True, 6),
+        ("必应", BING_NEWS_RSS.format(q=q), False, 10),
+        ("必应国际版", BING_NEWS_RSS_INT.format(q=q), False, 10),
     ]
-    for name, url, quiet in sources:
-        text = fetch_url(url, quiet=quiet)
-        if text:
-            res = _parse_rss(text, max_items)
-            if res:
-                return res
+    for name, url, quiet, tmo in sources:
+        if name in _SRC_DEAD:
+            continue
+        text = fetch_url(url, quiet=quiet, timeout=tmo)
+        res = _parse_rss(text, max_items) if text else []
+        if res:
+            _SRC_FAILS[name] = 0
+            return res
+        _SRC_FAILS[name] = _SRC_FAILS.get(name, 0) + 1
+        if _SRC_FAILS[name] >= _SRC_FAIL_LIMIT:
+            _SRC_DEAD.add(name)
+            print(f"  [新闻源] {name} 连续失败 {_SRC_FAIL_LIMIT} 次，本轮跳过（后续直接用下一源）")
     return []
 
 
