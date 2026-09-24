@@ -1482,10 +1482,24 @@ def market_width_section():
         hist = db.get_market_width(days=20)
         # 盘前回退：快照无当日宽度（开盘前东财无当日口径）→ 用 DB 最近一个交易日展示，
         # 标注「上一交易日」语义；非盘前仍按原逻辑（缺失即不展示）。
+        # ⚠️ 必须**向前回溯**到最近一条「有板块数据」的记录：东财 clist 会整体不可用
+        #   （2026-09-23 实测），当日 main_*/cyb_* 为 NULL；若只看 hist[-1]，回溯失败会使
+        #   main_up/cyb_up 同为 None → 整段宽度被跳过（连可用的全市场参考行也一起消失）。
         if VIEW.is_pre_market and not market_width and hist:
-            _last = hist[-1]
-            if _last.get("main_up") is not None or _last.get("cyb_up") is not None:
+            _last = None
+            for _r in reversed(hist):
+                if _r.get("main_up") is not None or _r.get("cyb_up") is not None:
+                    _last = _r
+                    break
+            if _last is not None:
                 _fallback_date = str(_last["width_date"])[5:]
+                # 全市场参考行一并回退，否则会渲染成「涨 0 / 跌 0」的伪 0
+                if not up and not down:
+                    up = _last.get("up") or 0
+                    down = _last.get("down") or 0
+                    flat = _last.get("flat") or 0
+                    zt = _last.get("zt") or 0
+                    dt = _last.get("dt") or 0
                 if main_up is None:
                     main_up = _last.get("main_up")
                 if main_down is None:
@@ -1519,7 +1533,9 @@ def market_width_section():
     # 当日两板块均无数据 → 整块跳过（不占格）
     if main_up is None and cyb_up is None:
         return ""
-    _fb = f'（早报 · 上一交易日 {_fallback_date} 收盘口径，开盘后自动更新为当日）' if _fallback_date else ''
+    # 标签用**实际回退到的日期**而非「上一交易日」措辞：回退可能跨越多个交易日
+    # （如某日板块数据缺失时回溯到更早一天），写死「上一交易日」会与日期自相矛盾。
+    _fb = f'（早报 · 板块口径截至 {_fallback_date} 收盘，开盘后自动更新为当日）' if _fallback_date else ''
     _fb_note = f'<p class="muted" style="font-size:11px;margin:2px 0 4px">{_fb}</p>' if _fb else ''
     main_chart = _adl_line_chart(main_hist[-10:]) if main_hist else ""
     cyb_chart = _adl_line_chart(cyb_hist[-10:]) if cyb_hist else ""
