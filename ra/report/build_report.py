@@ -183,6 +183,7 @@ def load_context():
     global TODAY, DATE8, REPORT_TYPE, NOW, REPORT_LABEL, REPORT_STATE, AI_CAPEX_MODE
     global cfg, WATCHLIST, VS_NAMES, VS_SOURCES
     global snap_path, snapshot, weibo_data, quotes, us_market, etf, fund_flows, market_state, matched_sectors
+    global WEIBO_FETCH_FAILED
     global market_width, VIEW
     global intel, _intel_topics
     global tangshi, touxing_asset, touxing_yeye
@@ -240,6 +241,7 @@ def load_context():
                 _candidates = _with_meta
     snap_path = _candidates[-1] if _candidates else None
     snapshot = {}
+    WEIBO_FETCH_FAILED = set()   # 微博抓取失败的源名（快照 meta.weibo_fetch_failed）；区分「数据缺失」与「真未更新」
     if snap_path is not None and snap_path.exists():
         try:
             snapshot = json.loads(snap_path.read_text(encoding="utf-8"))
@@ -263,6 +265,10 @@ def load_context():
     # 盘前语义下：行情为上一交易日收盘基准，宽度/ADL 回退 DB 最近交易日，不显示伪 0 涨跌。
     VIEW = _view.build_view(REPORT_TYPE, snapshot.get("meta"), quotes)
     print(f"[口径] {VIEW.describe()}")
+    # 微博抓取失败源（cookie 失效/接口异常）：必须渲染为「数据缺失」，不得写成「大V未更新」
+    WEIBO_FETCH_FAILED = set((snapshot.get("meta") or {}).get("weibo_fetch_failed") or [])
+    if WEIBO_FETCH_FAILED:
+        print(f"[微博] ⚠️ 抓取失败源: {sorted(WEIBO_FETCH_FAILED)}（快照已标注，报告将渲染为「数据缺失」）")
 
     # ---- 外网资讯解析（英文源抓取 + 正文解析，Agent 总结为中文结论） ----
     intel = _ni.load_intel(TODAY)
@@ -2247,8 +2253,13 @@ def vs_summary():
         tier = meta.get("tier", 2)
         desc = meta.get("description", "")
         if not meta.get("updated"):
-            src_rows.append(f'<tr><td><b>{_esc(name)}</b></td><td class="muted">T{tier} · {_esc(desc)}</td>'
-                            f'<td class="muted">当日未更新</td></tr>')
+            if name in WEIBO_FETCH_FAILED:
+                src_rows.append(f'<tr><td><b>{_esc(name)}</b></td><td class="muted">T{tier} · {_esc(desc)}</td>'
+                                f'<td><span class="badge b-orange">数据缺失</span>'
+                                f'<span class="muted"> 抓取失败（cookie 失效/接口异常）</span></td></tr>')
+            else:
+                src_rows.append(f'<tr><td><b>{_esc(name)}</b></td><td class="muted">T{tier} · {_esc(desc)}</td>'
+                                f'<td class="muted">当日未更新</td></tr>')
             continue
         updated_any = True
         if tier == 1 and tangshi_deep:
@@ -2270,7 +2281,12 @@ def vs_summary():
     else:
         consensus_label, consensus_cls = d["consensus"]
     if not updated_any and not (llm and (llm.get("consensus", {}) or {}).get("text")):
-        consensus_html = WeiboPrompts.NO_UPDATE_CONSENSUS + src_table
+        if WEIBO_FETCH_FAILED:
+            consensus_html = (f'⚠️ 微博数据缺失：{"、".join(sorted(WEIBO_FETCH_FAILED))} 抓取失败'
+                              f'（cookie 失效或接口异常），本轮无舆情数据可用，'
+                              f'<b>不代表当日无观点</b>。请更新 cookie 后重跑采集。') + src_table
+        else:
+            consensus_html = WeiboPrompts.NO_UPDATE_CONSENSUS + src_table
     else:
         consensus_html = (f'<div style="margin-bottom:8px"><span class="badge {consensus_cls}" style="font-size:13px">{consensus_label}</span>'
                           f' <b>大V整体共识</b> <span class="muted" style="font-size:12px">（仅当日更新，T1权重1.5）</span></div>')
@@ -2303,7 +2319,8 @@ def vs_summary():
                                + (f' <span class="muted" style="font-size:11px">置信度 {conf}</span>' if conf else '')
                                + '</div>')
     if not updated_any:
-        stock_line = WeiboPrompts.NO_UPDATE_STOCK
+        stock_line = ("⚠️ 微博数据缺失（抓取失败），本轮无自选股舆情信号。" if WEIBO_FETCH_FAILED
+                      else WeiboPrompts.NO_UPDATE_STOCK)
     elif stock_items:
         stock_line = "".join(stock_items)
     else:
@@ -2323,7 +2340,8 @@ def vs_summary():
                 f'<div class="kp-fact"><b>事实：</b>{_esc(fact)}</div>{inf}</div>')
 
     if not updated_any and not (llm and llm.get("key_points")):
-        key_html = WeiboPrompts.NO_UPDATE_KEY
+        key_html = ("⚠️ 微博数据缺失（抓取失败），本轮无关键论点可解构。" if WEIBO_FETCH_FAILED
+                    else WeiboPrompts.NO_UPDATE_KEY)
     elif llm and llm.get("key_points"):
         key_html = "".join(
             _kp_card(kp.get("source", ""), kp.get("stance", "中性"), kp.get("fact", kp.get("text", "")),
@@ -2507,6 +2525,16 @@ def _render_html():
 def main():
     load_context()
     html = _render_html()
+
+    # 微博抓取失败时，把模板中所有「未更新」表述改为「数据缺失」——
+    # 语义不同：抓不到 ≠ 没发帖（2026-09-28 修复）。
+    if WEIBO_FETCH_FAILED:
+        _failed = "、".join(sorted(WEIBO_FETCH_FAILED))
+        html = html.replace("当日大V均未更新微博", f"微博数据抓取失败（{_failed}），本轮无舆情数据")
+        html = html.replace("大V当日未更新微博", "微博数据抓取失败")
+        html = html.replace("大V当日未更新", "微博数据抓取失败")
+        html = html.replace("当日无大V更新", f"微博数据抓取失败（{_failed}）")
+        html = html.replace("大V整体共识", "微博数据不可用")
 
     out_dir = BASE_DIR / "reports" / REPORT_TYPE
     out_dir.mkdir(parents=True, exist_ok=True)

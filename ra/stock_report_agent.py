@@ -716,14 +716,18 @@ def _parse_weibo_time(created_at):
 def fetch_weibo(user_id, name, cookie="", only_today=True, lookback_days=1):
     """抓取微博用户最新内容（m.weibo.cn API），需在config.json配置weibo_cookie。
 
-    only_today=True（默认）：仅保留当日发布的微博；当日无更新返回空列表。
+    only_today=True（默认）：仅保留当日发布的微博。
     lookback_days：允许回溯的天数窗口（1=仅当日，2=当日+昨日）。唐史主任等
     T1 源在周一早盘常结合周末/昨日观点，由调用方按源层级传 2。
-    返回 [{"text":..., "time":...}, ...]，统一结构供下游消费。
+
+    ⚠️ 返回值语义（2026-09-28 区分）：
+      - list（可能为空）→ 抓取**成功**；空列表 = 确实当日无更新
+      - None           → 抓取**失败**（cookie 缺失/失效、HTTP 错误、ok!=1）
+    此前失败也返回 []，导致渲染层把「抓不到」误报为「大V未更新」（不实陈述）。
     """
     if not cookie:
         print(f"[微博] 跳过 {name} (UID:{user_id}) — 未配置 weibo_cookie")
-        return []
+        return None
     print(f"[微博] 抓取 {name} (UID:{user_id})...")
     containerid = f"107603{user_id}"
     url = f"https://m.weibo.cn/api/container/getIndex?type=uid&value={user_id}&containerid={containerid}"
@@ -735,12 +739,12 @@ def fetch_weibo(user_id, name, cookie="", only_today=True, lookback_days=1):
     }
     text = fetch_url(url, headers)
     if not text:
-        return []
+        return None
     try:
         data = json.loads(text)
         if data.get("ok") != 1:
             print(f"  [微博] {name} 返回 ok={data.get('ok')}，cookie 可能已失效，请更新 config.json 的 weibo_cookie")
-            return []
+            return None
         cards = data.get("data", {}).get("cards", [])
         posts = []
         for card in cards:
@@ -1673,6 +1677,7 @@ def main():
     weibo_cookie = config.get("weibo_cookie", "")
     weibo_data = {}
     ta_data = {}
+    _weibo_failed = []      # 抓取失败（None）的源名，写入快照 meta 供渲染层如实标注
 
     # ---- 采集整体时间预算：防止单个外部源长尾拖死整个流程 ----
     # 背景：2026-09-13 周报卡 1h45m、2026-09-14 收盘采集卡 4m54s，
@@ -1740,6 +1745,9 @@ def main():
             # 由 fetch_weibo 内部的时间窗口自行收敛。
             lb = 2
             posts = fetch_weibo(src["user_id"], src["name"], weibo_cookie, lookback_days=lb)
+            if posts is None:
+                _weibo_failed.append(src["name"])
+                posts = []
             weibo_data[src["name"]] = posts
         for src in config.get("global_sources", []):
             if not _budget_ok(f"全球源 {src['name']}"):
@@ -1783,6 +1791,8 @@ def main():
     snap_path = snap_dir / f"fetched_{today}_{ts}.json"
     # 统一口径：盘前采集到的行情属于上一交易日，data_date 由口径层判定（根治历史错位）
     meta = _view.build_snapshot_meta() if _view else {}
+    if _weibo_failed:
+        meta["weibo_fetch_failed"] = list(_weibo_failed)
     snapshot = {
         "date": today,
         "meta": meta,
