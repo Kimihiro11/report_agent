@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股舆情操作指引 · 9章节 · 2026-09-29（盘前版）</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f5f7;color:#1d2129;line-height:1.8}
+.wrap{max-width:980px;margin:0 auto;padding:24px 20px 60px}
+.header{background:linear-gradient(135deg,#3C3489 0%,#534AB7 100%);color:#fff;border-radius:14px;padding:28px 30px;margin-bottom:22px}
+.header h1{font-size:24px;font-weight:700;margin-bottom:6px}
+.header .sub{font-size:13px;opacity:.85}
+.header .meta{display:flex;gap:12px;margin-top:14px;font-size:12px;flex-wrap:wrap}
+.header .meta span{background:rgba(255,255,255,.16);padding:4px 14px;border-radius:20px}
+.card{background:#fff;border-radius:12px;padding:22px 24px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.card h2{font-size:16px;font-weight:700;color:#3C3489;margin-bottom:14px;padding-left:10px;border-left:4px solid #534AB7}
+.card h3{font-size:14px;font-weight:600;color:#333;margin:16px 0 8px}
+.card p{font-size:13px;color:#444;margin-bottom:8px}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;margin:2px}
+.b-red{background:#fde8e8;color:#d63031}
+.b-blue{background:#e8f0fe;color:#1967d2}
+.b-orange{background:#fff3e0;color:#e67e22}
+.b-green{background:#e8f8f0;color:#00a865}
+.b-gray{background:#f0f2f5;color:#666}
+.tag{display:inline-block;background:#f0f2f5;color:#555;padding:2px 8px;border-radius:10px;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0}
+th{background:#f0f2f5;color:#555;font-weight:600;padding:8px 10px;text-align:left;border-bottom:2px solid #e0e3e8}
+td{padding:8px 10px;border-bottom:1px solid #eef0f3}
+.up{color:#d63031;font-weight:600}
+.down{color:#00a865;font-weight:600}
+.muted{color:#999}
+.point{padding:12px 14px;background:#f8f7ff;border-radius:8px;margin-bottom:10px;border-left:3px solid #AFA9EC}
+.point .pt-title{font-size:14px;font-weight:600;color:#3C3489;margin-bottom:4px}
+.point .pt-body{font-size:13px;color:#444}
+.point .pt-action{font-size:12px;color:#e67e22;margin-top:4px;font-weight:500}
+.alert{padding:12px 14px;border-radius:8px;margin-bottom:10px;font-size:13px}
+.alert-red{background:#fde8e8;border-left:3px solid #d63031;color:#b03a2e}
+.alert-orange{background:#fff3e0;border-left:3px solid #e67e22;color:#b3541a}
+.alert-green{background:#e8f8f0;border-left:3px solid #00a865;color:#1e8449}
+.alert-blue{background:#e8f0fe;border-left:3px solid #1967d2;color:#1f4e8c}
+.conclusion-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.conclusion-item{background:#fafbfc;border-radius:10px;padding:14px;border:1px solid #eef0f3}
+.conclusion-item .label{font-size:12px;color:#888;margin-bottom:4px}
+.conclusion-item .value{font-size:14px;font-weight:600;color:#1a2b4a}
+.cc-view{background:#fafbff;border:1px solid #e8eaf6;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.cc-head{font-size:13px;font-weight:700;color:#3C3489;margin:12px 0 6px;padding-left:8px;border-left:3px solid #534AB7}
+.cc-head:first-child{margin-top:0}
+.cc-body{font-size:13px;color:#333;line-height:1.8}
+.cc-stocks .badge,.cc-stocks .tag{margin:3px 5px 3px 0;display:inline-block}
+.cc-grid-title{font-size:12px;color:#888;margin:6px 0 8px;font-weight:600}
+/* ===== 第六节 微博舆情解构 ===== */
+.vs-src-table{margin:6px 0 4px;font-size:12.5px}
+.vs-src-table th{padding:6px 10px;font-size:11.5px}
+.vs-src-table td{padding:7px 10px}
+.vs-src-table td:first-child{white-space:nowrap}
+.kp-card{border:1px solid #e8eaf6;border-radius:8px;padding:10px 12px;margin:8px 0;background:#fff}
+.kp-head{font-size:12.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.kp-fact{font-size:12.5px;color:#333;line-height:1.7;padding:2px 0 2px 10px;border-left:2px solid #c8cdec}
+.kp-inf{font-size:12.5px;color:#4a5568;line-height:1.7;padding:2px 0 2px 10px;border-left:2px solid #e8eaf6;margin-top:4px}
+.risk-row{font-size:12.5px;color:#7b241c;background:#fde8e8;border-radius:8px;padding:7px 10px;margin:6px 0}
+.deep-card{background:#fff;border-radius:8px;padding:12px}
+.deep-grid{display:grid;gap:6px;margin-bottom:6px}
+.deep-row{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+.deep-k{display:inline-block;min-width:44px;font-size:12px;font-weight:600;color:#534AB7;background:#f0f2f5;border-radius:6px;padding:2px 8px;text-align:center}
+/* ===== 第五节 ETF 近5日柱状图 ===== */
+.ef-chart-wrap{margin-top:14px;background:#fafbff;border:1px solid #e8eaf6;border-radius:10px;padding:12px 14px}
+.ef-title{font-size:12.5px;font-weight:600;color:#3C3489;margin-bottom:10px}
+.ef-chart{display:flex;gap:6px;align-items:stretch}
+.ef-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.ef-date{font-size:11px;color:#888;white-space:nowrap}
+.ef-bars{display:flex;gap:3px;align-items:flex-end;height:110px;width:100%}
+.ef-bar-cell{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:2px;min-width:0}
+.ef-bar{width:68%;border-radius:3px 3px 0 0;min-height:3px}
+.ef-bar-empty{width:68%;height:3px;background:#f0f2f5;border-radius:3px}
+.ef-bar-val{font-size:9.5px;color:#777;white-space:nowrap}
+.ef-legend{font-size:11.5px;color:#555;margin-top:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ef-leg-dot{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px}
+.ef-leg-dot.ef-in{background:#d63031}
+.ef-leg-dot.ef-out{background:#00a865}
+.stock-card{border:1px solid #eef0f3;border-radius:10px;padding:16px;margin-bottom:12px}
+.stock-title{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.stock-title .name{font-size:15px;font-weight:700;color:#1a2b4a}
+.stock-logic{font-size:13px;color:#444;margin-bottom:6px}
+.stock-meta{font-size:12px;color:#888;margin-bottom:8px}
+.stock-price{font-size:13px;color:#2d3436;margin:2px 0 6px}
+.stock-price b{font-size:15px;font-weight:700}
+.sig-block{margin-top:10px;border-top:1px dashed #eef0f3;padding-top:9px}
+.sig-group{display:flex;align-items:flex-start;gap:8px;margin:6px 0;flex-wrap:wrap}
+.sig-label{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;white-space:nowrap;border:1px solid}
+.sig-chips{display:flex;flex-wrap:wrap;gap:5px;flex:1;min-width:65%}
+.sig-chip{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:11px;border:1px solid;line-height:1.5;white-space:nowrap}
+.sig-chip .sig-desc{opacity:.72;margin:0 3px}
+.sig-chip .sig-score{font-weight:700}
+.op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.op-row .op{font-size:12px;padding:3px 10px;border-radius:8px}
+.op-buy{background:#fde8e8;color:#d63031}
+.op-hold{background:#fff3e0;color:#e67e22}
+.op-sell{background:#e8f8f0;color:#00a865}
+.op-watch{background:#e8f0fe;color:#1967d2}
+
+/* 外网资讯解析（英文源·中文总结） */
+.intel-wrap{margin-top:14px;border-top:1px dashed #eef0f3;padding-top:12px}
+.intel-summary{font-size:13.5px;line-height:1.9;color:#243;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef2f7;border-radius:10px;padding:13px 15px}
+.intel-summary b{color:#1967d2}
+/* 结构化解析卡片：方向徽章 + 核心结论 + 传导 + 已定价 + 关注点 */
+.in-struct{background:#fbfcfe;border:1px solid #eef2f7;border-radius:10px;padding:12px 14px}
+.in-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.in-core{font-size:13.5px;line-height:1.8;color:#1a2b4a;background:#f8f7ff;border-left:3px solid #534AB7;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-weight:500}
+.in-sec{font-size:12.5px;color:#444;line-height:1.75;margin:5px 0}
+.in-sec .in-k{display:inline-block;min-width:52px;font-size:11.5px;font-weight:700;color:#534AB7;background:#f0f2f5;border-radius:6px;padding:1px 8px;text-align:center;margin-right:8px}
+.in-sec ul{margin:4px 0 0;padding-left:14px}
+.in-sec li{margin:2px 0}
+.in-sec li::marker{color:#AFA9EC}
+.in-watch{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.in-chip{display:inline-block;font-size:11.5px;padding:2px 10px;border-radius:10px;background:#e8f0fe;color:#1967d2;border:1px solid #c8d8f5}
+/* 隔夜美股汇总行 */
+.us-sum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#fafbff;border:1px solid #e8eaf6;border-radius:8px;margin:2px 0 10px}
+.us-sum .tag{white-space:nowrap}
+/* 缠论多级别推演 */
+.chan-lv-head{font-size:14px;font-weight:700;color:#3C3489;margin:14px 0 6px;padding:6px 10px;background:#f5f4ff;border-left:4px solid #534AB7;border-radius:6px}
+.card .chan-lv-head:first-of-type{margin-top:4px}
+.disclaimer{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:18px 22px;font-size:12px;color:#666;line-height:1.8}
+.disclaimer strong{color:#d63031}
+.chain-svg{width:100%;height:auto;display:block;margin:8px 0}
+.toc{background:#fff;border-radius:12px;padding:18px 24px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.toc h2{font-size:15px;color:#3C3489;margin-bottom:10px}
+.toc ol{margin-left:20px;font-size:13px;color:#444}
+.toc li{margin:4px 0}
+.toc a{color:#3C3489;text-decoration:none;border-bottom:1px dashed transparent;transition:color .15s,border-color .15s}
+.toc a:hover{color:#d63031;border-bottom-color:#d63031}
+html{scroll-behavior:smooth}
+.card{scroll-margin-top:14px}
+.bar-row{display:flex;align-items:center;margin:5px 0;font-size:12.5px}
+.bar-name{width:150px;text-align:right;padding-right:10px;color:#555}
+.bar-wrap{flex:1;background:#f0f2f5;border-radius:4px;height:16px;overflow:hidden}
+.bar-fill{height:100%}
+.bar-val{width:70px;padding-left:10px}
+
+/* 进攻视角（激进 · 技术面）子卡 */
+.agg-box{margin-top:10px;border:1px solid #e3e8f0;border-left:3px solid #1967d2;border-radius:8px;padding:8px 12px;background:#fbfcff}
+.agg-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.agg-title{font-size:12.5px;font-weight:700;color:#1967d2}
+.agg-expo{font-size:11.5px;color:#4a5568}
+.agg-cap{font-size:11px;color:#d63031;font-weight:600}
+.agg-note{font-size:11.5px;color:#b45309;background:#fff8e6;border-radius:6px;padding:4px 8px;margin:4px 0}
+.agg-t{margin:5px 0}
+.agg-t td,.agg-t th{font-size:11.5px;padding:3px 8px;vertical-align:top}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="header">
+<h1>A股舆情操作指引 · 9章节完整报告</h1>
+<div class="sub">微博舆情 + 全球人物 + 宏观 + 事件因子 + 行情资金 + 技术走势 + 国家队 + 自选股（盘前版）</div>
+<div class="meta">
+<span>报告日期：2026-09-29（盘前版）</span>
+<span>生成时间：2026-09-29 08:45</span>
+<span>10只自选股</span>
+<span>实时指数：上证-1.67%　深证成指-3.44%　创业板指-4.53%</span>
+</div>
+</div>
+
+<div class="toc">
+<h2>目录</h2>
+<ol>
+<li><a href="#sec-core">核心结论（实时 · 含今日操作策略与主要指数）</a></li>
+<li><a href="#sec-momentum">中美动量对照（美国动量因素 · 中国科技）</a></li>
+
+<li><a href="#sec-us">隔夜美股（实时 · 外网解析）</a></li>
+<li><a href="#sec-macro">CPI与宏观（实时 · 外网解析）</a></li>
+<li><a href="#sec-chain">宏观传导链监控（独立因子·实时）</a></li>
+<li><a href="#sec-fima">FIMA 高亮（外国央行美债托管 · 临时）</a></li>
+<li><a href="#sec-geo">地缘政治与原油（实时价量 + 外网解析）</a></li>
+<li><a href="#sec-etf">ETF资金流向（实时）</a></li>
+<li><a href="#sec-weibo">微博舆情解构（唐史主任司马迁 · 实时）</a></li>
+<li><a href="#sec-resonance">共振信号（多源交叉·实时）</a></li>
+<li><a href="#sec-watchlist">10只自选股操作指引（实时诊断）</a></li>
+<li><a href="#sec-focus">限时关注的重点数据解析（实时）</a></li>
+</ol>
+</div>
+
+<div class="card" id="sec-core">
+<h2>核心结论（实时 · 含今日操作策略与主要指数）</h2>
+
+    <div class="cc-body" style="font-size:14px;line-height:1.9;margin-bottom:12px">盘前综合舆情与隔夜外盘信息研判（指数未开盘，以上一交易日收盘为基准）：大V意见领袖共识 <b class='b-green'>偏空</b>。情绪与指数双弱，以防御为主。主线聚焦「存储、AI」；日本传导链有预警。</div>
+    <div class="cc-stocks"><span class="badge b-green">大V共识 偏空</span><span class="badge b-blue">指数 待开盘</span><span class="badge b-orange">主线 存储、AI</span><span class="badge b-green">风险 日本传导链有预警</span></div>
+    <div class="cc-grid-title">实时数据速览</div>
+    <div class="conclusion-grid"><div class="conclusion-item">
+    <div class="label">市场状态</div>
+    <div class="value" style="color:#1967d2;">待开盘</div>
+  </div><div class="conclusion-item">
+    <div class="label">主线板块</div>
+    <div class="value" style="color:#d63031;">存储、AI</div>
+  </div><div class="conclusion-item">
+    <div class="label">隔夜美股</div>
+    <div class="value" style="color:#e67e22;">3/15 上涨</div>
+  </div><div class="conclusion-item">
+    <div class="label">风险</div>
+    <div class="value" style="color:#d63031;">日本加息/套息平仓预警（实时信号 29 条）</div>
+  </div><div class="conclusion-item">
+    <div class="label">市场宽度</div>
+    <div class="value" style="color:#00a865;">16% 家上涨（涨停 40 / 跌停 173）</div>
+  </div><div class="conclusion-item">
+    <div class="label">判断兑现率(3日)</div>
+    <div class="value" style="color:#d63031;">17%（4/23）</div>
+  </div></div>
+    <div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px"><div class="cc-grid-title">今日操作策略（盘前研判）</div><table><thead><tr><th style="width:18%">维度</th><th>策略</th></tr></thead><tbody><tr><td><b>大盘</b></td><td>市场状态 <b>盘前研判</b>；参考仓位 <b class="up">40-60%</b>（中性基准，个股按诊断±修正，见第八节）</td></tr><tr><td><b>主线</b></td><td>存储、AI</td></tr><tr><td><b>风险</b></td><td>日本传导链预警 29 条（详见传导链章节）</td></tr><tr><td><b>回避</b></td><td>富创精密、汇成真空、卧龙电驱、欧莱新材、先导基电、鼎通科技、烽火通信、长鑫科技</td></tr></tbody></table></div>
+    <div style="margin-top:10px;border-top:1px dashed #e0e3e8;padding-top:6px"><div class="cc-grid-title">主要指数（2026-09-28 收盘基准）</div><table style="min-width:320px"><thead><tr><th>指数</th><th style="text-align:right">最新</th><th style="text-align:right">涨跌</th><th style="text-align:right">涨跌幅</th></tr></thead><tbody><tr><td>上证指数</td><td style="text-align:right">3823.62</td><td class="down" style="text-align:right">-64.75</td><td class="down" style="text-align:right">-1.67%</td></tr><tr><td>深证成指</td><td style="text-align:right">12858.75</td><td class="down" style="text-align:right">-458.22</td><td class="down" style="text-align:right">-3.44%</td></tr><tr><td>创业板指</td><td style="text-align:right">3139.82</td><td class="down" style="text-align:right">-149.12</td><td class="down" style="text-align:right">-4.53%</td></tr><tr><td>科创50</td><td style="text-align:right">1555.98</td><td class="down" style="text-align:right">-65.89</td><td class="down" style="text-align:right">-4.06%</td></tr><tr><td>沪深300</td><td style="text-align:right">4340.76</td><td class="down" style="text-align:right">-98.39</td><td class="down" style="text-align:right">-2.22%</td></tr></tbody></table></div>
+    
+</div>
+
+<div class="card" id="sec-momentum">
+<h2>一、中美动量对照（美国动量因素 · 中国科技 · 实时）</h2>
+<p style="font-size:12.5px;color:#636e72;margin:0 0 10px;">美国侧用 <b>安硕 MSCI 美国动量因素 ETF（MTUM）</b>——跟踪 MSCI USA Momentum SR Variant Index，持仓科技占比约 57%（半导体约 26%、存储约 24%），可视作「美国科技动量」的代理。中国侧取科技类指数（科创50 / 科创芯片 / 国证芯片 / 创业板指），沪深300 作宽基对照。动量为区间涨跌幅，「距52周高」反映趋势所处位置。</p><div style="font-size:13px;font-weight:700;color:#3C3489;margin:12px 0 4px;">美国动量因素</div><table><thead><tr><th>标的</th><th>最新</th><th>当日</th><th>近5日</th><th>近20日</th><th>近60日</th><th>距52周高</th></tr></thead><tbody><tr><td><b>安硕 MSCI 美国动量因素 ETF</b><span class='muted' style='font-size:11px'> MTUM</span></td><td>315.59</td><td><span class="down">-0.91%</span></td><td><span class="down">-0.21%</span></td><td><span class="up">+5.30%</span></td><td><span class="down">-0.30%</span></td><td><span class="down">-8.68%</span></td></tr></tbody></table><div style="font-size:13px;font-weight:700;color:#3C3489;margin:16px 0 4px;">中国科技动量</div><table><thead><tr><th>标的</th><th>最新</th><th>当日</th><th>近5日</th><th>近20日</th><th>近60日</th><th>距52周高</th></tr></thead><tbody><tr><td><b>科创50</b><span class='muted' style='font-size:11px'> 000688</span></td><td>1555.98</td><td><span class="down">-4.06%</span></td><td><span class="down">-5.85%</span></td><td><span class="down">-6.39%</span></td><td><span class="down">-21.24%</span></td><td><span class="down">-31.01%</span></td></tr><tr><td><b>科创芯片</b><span class='muted' style='font-size:11px'> 000685</span></td><td>3721.807</td><td><span class="down">-4.50%</span></td><td><span class="down">-6.43%</span></td><td><span class="down">-5.60%</span></td><td><span class="down">-23.26%</span></td><td><span class="down">-34.25%</span></td></tr><tr><td><b>国证芯片</b><span class='muted' style='font-size:11px'> 399995</span></td><td>3409.691</td><td><span class="down">-2.20%</span></td><td><span class="down">-3.64%</span></td><td><span class="down">-5.80%</span></td><td><span class="down">-9.00%</span></td><td><span class="down">-23.58%</span></td></tr><tr><td><b>创业板指</b><span class='muted' style='font-size:11px'> 399006</span></td><td>3139.825</td><td><span class="down">-4.53%</span></td><td><span class="down">-6.90%</span></td><td><span class="down">-8.31%</span></td><td><span class="down">-21.89%</span></td><td><span class="down">-28.32%</span></td></tr><tr><td><b>沪深300</b><span class='muted' style='font-size:11px'> 000300</span></td><td>4340.755</td><td><span class="down">-2.22%</span></td><td><span class="down">-3.70%</span></td><td><span class="down">-5.82%</span></td><td><span class="down">-10.36%</span></td><td><span class="down">-14.29%</span></td></tr></tbody></table><div style="margin:14px 0 4px;font-size:13px;font-weight:700;color:#3C3489;">近 60 个交易日累计涨跌幅（起点=0%）</div><svg viewBox="0 0 660 312" style="width:100%;height:auto;display:block"><line x1="44" y1="16.0" x2="646" y2="16.0" stroke="#eef0f4" stroke-width="1"/><text x="38" y="19.0" text-anchor="end" font-size="9" fill="#9aa3b2">+14.6%</text><line x1="44" y1="74.0" x2="646" y2="74.0" stroke="#eef0f4" stroke-width="1"/><text x="38" y="77.0" text-anchor="end" font-size="9" fill="#9aa3b2">+2.9%</text><line x1="44" y1="132.0" x2="646" y2="132.0" stroke="#eef0f4" stroke-width="1"/><text x="38" y="135.0" text-anchor="end" font-size="9" fill="#9aa3b2">-8.9%</text><line x1="44" y1="190.0" x2="646" y2="190.0" stroke="#eef0f4" stroke-width="1"/><text x="38" y="193.0" text-anchor="end" font-size="9" fill="#9aa3b2">-20.7%</text><line x1="44" y1="248.0" x2="646" y2="248.0" stroke="#eef0f4" stroke-width="1"/><text x="38" y="251.0" text-anchor="end" font-size="9" fill="#9aa3b2">-32.4%</text><line x1="44" y1="88.1" x2="646" y2="88.1" stroke="#c3cad6" stroke-width="1" stroke-dasharray="4,3"/><polyline points="44.0,88.1 54.2,102.3 64.4,98.6 74.6,88.9 84.8,88.0 95.0,99.0 105.2,91.1 115.4,102.0 125.6,116.2 135.8,118.2 146.0,117.4 156.2,99.2 166.4,99.5 176.6,99.9 186.8,111.6 197.1,117.8 207.3,133.2 217.5,147.3 227.7,123.3 237.9,122.0 248.1,118.7 258.3,100.9 268.5,106.1 278.7,108.9 288.9,107.1 299.1,110.2 309.3,108.6 319.5,98.8 329.7,96.8 339.9,95.0 350.1,87.6 360.3,103.3 370.5,112.4 380.7,113.6 390.9,113.5 401.1,120.5 411.3,117.7 421.5,115.2 431.7,114.9 441.9,121.8 452.1,120.9 462.3,126.7 472.5,125.9 482.7,122.3 492.9,113.9 503.2,113.9 513.4,108.1 523.6,107.1 533.8,116.6 544.0,110.6 554.2,121.8 564.4,122.1 574.6,121.6 584.8,112.0 595.0,106.6 605.2,96.5 615.4,93.9 625.6,95.4 635.8,94.6 646.0,97.5" fill="none" stroke="#1967d2" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="646.0" cy="97.5" r="2.8" fill="#1967d2"><title>安硕 MSCI 美国动量因素 ETF -1.90%</title></circle><polyline points="44.0,88.1 54.2,86.8 64.4,83.1 74.6,41.3 84.8,71.1 95.0,88.5 105.2,84.8 115.4,105.9 125.6,125.0 135.8,157.4 146.0,156.7 156.2,111.1 166.4,121.7 176.6,139.1 186.8,139.7 197.1,134.6 207.3,162.9 217.5,166.5 227.7,188.8 237.9,177.1 248.1,197.6 258.3,181.9 268.5,162.8 278.7,161.0 288.9,150.4 299.1,151.9 309.3,158.9 319.5,152.1 329.7,156.9 339.9,156.9 350.1,139.3 360.3,138.8 370.5,169.3 380.7,172.9 390.9,172.7 401.1,185.4 411.3,184.8 421.5,178.1 431.7,162.9 441.9,170.6 452.1,165.1 462.3,174.2 472.5,181.6 482.7,183.2 492.9,191.6 503.2,182.2 513.4,188.2 523.6,190.9 533.8,193.6 544.0,197.5 554.2,203.7 564.4,197.8 574.6,182.0 584.8,184.4 595.0,173.0 605.2,171.8 615.4,169.9 625.6,171.0 635.8,180.6 646.0,196.9" fill="none" stroke="#d63031" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="646.0" cy="196.9" r="2.8" fill="#d63031"><title>科创50 -22.05%</title></circle><polyline points="44.0,88.1 54.2,85.9 64.4,79.8 74.6,35.3 84.8,73.2 95.0,92.2 105.2,87.3 115.4,113.8 125.6,137.4 135.8,174.1 146.0,182.4 156.2,129.3 166.4,138.9 176.6,158.5 186.8,155.7 197.1,150.5 207.3,182.8 217.5,188.1 227.7,215.6 237.9,203.8 248.1,228.7 258.3,209.9 268.5,186.9 278.7,182.1 288.9,169.3 299.1,170.1 309.3,177.1 319.5,168.6 329.7,173.4 339.9,171.6 350.1,150.9 360.3,150.1 370.5,183.0 380.7,185.2 390.9,184.7 401.1,197.5 411.3,199.0 421.5,192.4 431.7,174.8 441.9,184.6 452.1,176.9 462.3,188.9 472.5,195.7 482.7,197.5 492.9,208.5 503.2,196.2 513.4,202.5 523.6,204.8 533.8,207.3 544.0,212.3 554.2,218.8 564.4,211.8 574.6,193.3 584.8,195.4 595.0,181.0 605.2,180.1 615.4,178.5 625.6,179.5 635.8,189.2 646.0,206.8" fill="none" stroke="#e67e22" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="646.0" cy="206.8" r="2.8" fill="#e67e22"><title>科创芯片 -24.06%</title></circle><polyline points="44.0,88.1 54.2,99.8 64.4,102.3 74.6,99.8 84.8,96.8 95.0,107.5 105.2,101.9 115.4,102.0 125.6,111.1 135.8,122.2 146.0,119.6 156.2,114.1 166.4,111.1 176.6,107.2 186.8,119.0 197.1,110.5 207.3,114.2 217.5,111.1 227.7,113.6 237.9,107.3 248.1,106.0 258.3,107.0 268.5,101.6 278.7,101.7 288.9,100.9 299.1,97.4 309.3,101.0 319.5,98.0 329.7,102.5 339.9,102.6 350.1,97.2 360.3,99.0 370.5,112.0 380.7,107.0 390.9,109.6 401.1,110.1 411.3,107.0 421.5,101.7 431.7,101.9 441.9,100.4 452.1,103.1 462.3,102.2 472.5,107.9 482.7,107.6 492.9,107.5 503.2,106.6 513.4,101.6 523.6,99.9 533.8,100.8 544.0,110.3 554.2,113.3 564.4,118.6 574.6,115.4 584.8,114.5 595.0,111.2 605.2,108.1 615.4,110.5 625.6,110.7 635.8,118.1 646.0,128.3" fill="none" stroke="#00a865" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="646.0" cy="128.3" r="2.8" fill="#00a865"><title>国证芯片 -8.15%</title></circle><polyline points="44.0,88.1 54.2,92.7 64.4,101.0 74.6,79.4 84.8,101.4 95.0,116.3 105.2,100.3 115.4,106.1 125.6,120.1 135.8,153.1 146.0,151.3 156.2,121.0 166.4,135.8 176.6,134.7 186.8,146.5 197.1,132.8 207.3,165.8 217.5,159.3 227.7,176.0 237.9,163.7 248.1,168.8 258.3,145.6 268.5,139.8 278.7,142.2 288.9,136.3 299.1,139.5 309.3,138.0 319.5,131.4 329.7,133.4 339.9,128.4 350.1,114.2 360.3,118.5 370.5,147.5 380.7,144.7 390.9,138.5 401.1,152.7 411.3,157.0 421.5,154.8 431.7,147.5 441.9,153.6 452.1,151.8 462.3,157.5 472.5,167.6 482.7,167.6 492.9,170.8 503.2,156.8 513.4,161.7 523.6,162.3 533.8,164.4 544.0,166.4 554.2,171.0 564.4,175.6 574.6,167.7 584.8,169.3 595.0,160.1 605.2,156.7 615.4,156.7 625.6,159.2 635.8,170.5 646.0,189.2" fill="none" stroke="#8e44ad" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="646.0" cy="189.2" r="2.8" fill="#8e44ad"><title>创业板指 -20.49%</title></circle><polyline points="44.0,88.1 54.2,93.2 64.4,96.9 74.6,84.6 84.8,94.3 95.0,103.0 105.2,92.7 115.4,93.7 125.6,102.7 135.8,120.0 146.0,112.9 156.2,98.6 166.4,100.8 176.6,99.7 186.8,107.7 197.1,102.3 207.3,115.9 217.5,112.7 227.7,117.9 237.9,113.9 248.1,118.5 258.3,112.7 268.5,106.8 278.7,107.5 288.9,103.1 299.1,102.4 309.3,106.3 319.5,103.5 329.7,106.3 339.9,106.1 350.1,98.4 360.3,99.9 370.5,113.9 380.7,113.5 390.9,110.8 401.1,116.5 411.3,117.6 421.5,113.7 431.7,109.7 441.9,111.8 452.1,110.2 462.3,111.6 472.5,118.0 482.7,117.6 492.9,118.0 503.2,115.3 513.4,117.0 523.6,115.5 533.8,118.0 544.0,121.9 554.2,124.9 564.4,128.0 574.6,124.9 584.8,127.0 595.0,122.2 605.2,118.9 615.4,118.4 625.6,121.2 635.8,129.1 646.0,139.2" fill="none" stroke="#16a085" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="646.0" cy="139.2" r="2.8" fill="#16a085"><title>沪深300 -10.35%</title></circle><line x1="8" y1="278" x2="24" y2="278" stroke="#1967d2" stroke-width="2.4"/><text x="29" y="281.5" font-size="10" fill="#4a5568">安硕 MSCI 美国动量因素 ETF -1.9%</text><line x1="221" y1="278" x2="237" y2="278" stroke="#d63031" stroke-width="2.4"/><text x="242" y="281.5" font-size="10" fill="#4a5568">科创50 -22.1%</text><line x1="434" y1="278" x2="450" y2="278" stroke="#e67e22" stroke-width="2.4"/><text x="455" y="281.5" font-size="10" fill="#4a5568">科创芯片 -24.1%</text><line x1="8" y1="295" x2="24" y2="295" stroke="#00a865" stroke-width="2.4"/><text x="29" y="298.5" font-size="10" fill="#4a5568">国证芯片 -8.2%</text><line x1="221" y1="295" x2="237" y2="295" stroke="#8e44ad" stroke-width="2.4"/><text x="242" y="298.5" font-size="10" fill="#4a5568">创业板指 -20.5%</text><line x1="434" y1="295" x2="450" y2="295" stroke="#16a085" stroke-width="2.4"/><text x="455" y="298.5" font-size="10" fill="#4a5568">沪深300 -10.3%</text><text x="44.0" y="263" text-anchor="middle" font-size="9" fill="#9aa3b2">07-06</text><text x="146.0" y="263" text-anchor="middle" font-size="9" fill="#9aa3b2">07-20</text><text x="248.1" y="263" text-anchor="middle" font-size="9" fill="#9aa3b2">08-03</text><text x="350.1" y="263" text-anchor="middle" font-size="9" fill="#9aa3b2">08-17</text><text x="452.1" y="263" text-anchor="middle" font-size="9" fill="#9aa3b2">08-31</text><text x="554.2" y="263" text-anchor="middle" font-size="9" fill="#9aa3b2">09-14</text></svg><div class="point" style="margin-top:12px;"><div class="pt-title">动量对照研判</div><div class="pt-body"><b>短期动量（5日）美国占优</b>：中位 -5.85%（中国） vs -0.21%（美国）；中期（60日）美国动量更强：-21.24%（中国） vs -0.30%（美国）；距 52 周高点回撤更深的为中国科技（中国中位 -28.3% / 美国中位 -8.7%）</div></div><p class="muted" style="font-size:11px;margin-top:8px;">口径：近 N 个交易日的区间涨跌幅；数据截至 2026-09-29。</p>
+</div>
+
+
+
+<div class="card" id="sec-us">
+<h2>二、隔夜美股（实时 · 外网解析）</h2>
+<div style="margin:2px 0"><div class="us-sum"><span class="badge b-green">道琼斯 -0.67%</span><span class="badge b-green">纳指 -0.92%</span><span class="badge b-green">标普 -0.77%</span><span class="tag">上涨 3/15</span><span class="tag">领涨 英伟达 +1.68%</span><span class="tag">领跌 特斯拉 -3.94%</span></div><div class="bar-row"><div class="bar-name">道琼斯</div><div class="bar-wrap"><div class="bar-fill" style="width:17.0%;background:#00a865"></div></div><div class="bar-val down">-0.67%</div></div><div class="bar-row"><div class="bar-name">纳斯达克</div><div class="bar-wrap"><div class="bar-fill" style="width:23.4%;background:#00a865"></div></div><div class="bar-val down">-0.92%</div></div><div class="bar-row"><div class="bar-name">标普500</div><div class="bar-wrap"><div class="bar-fill" style="width:19.5%;background:#00a865"></div></div><div class="bar-val down">-0.77%</div></div><div class="bar-row"><div class="bar-name">费城半导体</div><div class="bar-wrap"><div class="bar-fill" style="width:40.9%;background:#00a865"></div></div><div class="bar-val down">-1.61%</div></div><div class="bar-row"><div class="bar-name">英伟达</div><div class="bar-wrap"><div class="bar-fill" style="width:42.6%;background:#d63031"></div></div><div class="bar-val up">+1.68%</div></div><div class="bar-row"><div class="bar-name">特斯拉</div><div class="bar-wrap"><div class="bar-fill" style="width:100.0%;background:#00a865"></div></div><div class="bar-val down">-3.94%</div></div><div class="bar-row"><div class="bar-name">美光科技</div><div class="bar-wrap"><div class="bar-fill" style="width:66.2%;background:#00a865"></div></div><div class="bar-val down">-2.61%</div></div><div class="bar-row"><div class="bar-name">希捷科技</div><div class="bar-wrap"><div class="bar-fill" style="width:12.9%;background:#d63031"></div></div><div class="bar-val up">+0.51%</div></div><div class="bar-row"><div class="bar-name">西部数据</div><div class="bar-wrap"><div class="bar-fill" style="width:19.8%;background:#00a865"></div></div><div class="bar-val down">-0.78%</div></div><div class="bar-row"><div class="bar-name">闪迪</div><div class="bar-wrap"><div class="bar-fill" style="width:92.6%;background:#00a865"></div></div><div class="bar-val down">-3.65%</div></div><div class="bar-row"><div class="bar-name">应用材料</div><div class="bar-wrap"><div class="bar-fill" style="width:9.1%;background:#d63031"></div></div><div class="bar-val up">+0.36%</div></div><div class="bar-row"><div class="bar-name">博通</div><div class="bar-wrap"><div class="bar-fill" style="width:23.4%;background:#00a865"></div></div><div class="bar-val down">-0.92%</div></div><div class="bar-row"><div class="bar-name">Lumentum</div><div class="bar-wrap"><div class="bar-fill" style="width:54.8%;background:#00a865"></div></div><div class="bar-val down">-2.16%</div></div><div class="bar-row"><div class="bar-name">康宁</div><div class="bar-wrap"><div class="bar-fill" style="width:83.5%;background:#00a865"></div></div><div class="bar-val down">-3.29%</div></div><div class="bar-row"><div class="bar-name">安硕美国动量ETF</div><div class="bar-wrap"><div class="bar-fill" style="width:23.1%;background:#00a865"></div></div><div class="bar-val down">-0.91%</div></div></div>
+<div class="intel-wrap"><div class="in-struct"><div class="in-head"><span class="badge b-green">偏空</span><span class="muted" style="font-size:11.5px">置信度 0.72</span><span class="muted" style="font-size:11.5px">截至 2026-09-29</span></div><div class="in-core">美股在收益率上行压制下回落，9 月创 2023 年以来最差</div><div class="in-sec"><span class="in-k">传导</span>对 A 股传导路径<ul><li>美债收益率高企持续压制成长股估值</li><li>AI 与芯片股动量本周初衰减，风险偏好边际转弱</li><li>外盘走弱削弱 A 股科技板块的外部支撑</li></ul></div><div class="in-sec"><span class="in-k">已定价</span>市场已定价美联储进一步紧缩</div><div class="in-sec"><span class="in-k">关注</span><span class="in-watch"><span class="in-chip">10Y 美债收益率走势</span><span class="in-chip">AI 与芯片股能否止跌</span><span class="in-chip">美国 8 月 PCE 与 9 月非农</span></span></div></div></div>
+</div>
+
+<div class="card" id="sec-macro">
+<h2>三、CPI与宏观（实时 · 外网解析）</h2>
+<div class="intel-wrap"><div class="in-struct"><div class="in-head"><span class="badge b-green">偏空</span><span class="muted" style="font-size:11.5px">置信度 0.78</span><span class="muted" style="font-size:11.5px">截至 2026-09-29</span></div><div class="in-core">美联储紧缩已落地且措辞偏鹰，通胀黏性压制全球估值</div><div class="in-sec"><span class="in-k">传导</span>对 A 股传导路径<ul><li>美债收益率上行推升全球风险资产折现率</li><li>美元走强对新兴市场形成资金流出压力</li><li>远期估值品种（科技、创新药）对利率预期最敏感</li></ul></div><div class="in-sec"><span class="in-k">已定价</span>市场已定价进一步加息，10 月底 FOMC 是关键节点</div><div class="in-sec"><span class="in-k">关注</span><span class="in-watch"><span class="in-chip">10 月底 FOMC 会议</span><span class="in-chip">美国 8 月 PCE 通胀数据</span><span class="in-chip">9 月非农就业报告</span></span></div></div></div>
+</div>
+
+<div class="card" id="sec-chain">
+<h2>四、宏观传导链监控（独立因子·实时）</h2>
+<svg class="chain-svg" viewBox="0 0 1036 110" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="20" width="128" height="54" rx="8" fill="#e67e22" opacity="0.92"/><text x="80.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">原油(触发)</text><text x="80.0" y="60" fill="#fff" font-size="10" text-anchor="middle">上游地缘/供需</text><line x1="148" y1="47" x2="162" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="162" y="20" width="128" height="54" rx="8" fill="#d63031" opacity="0.92"/><text x="226.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">日本加息</text><text x="226.0" y="60" fill="#fff" font-size="10" text-anchor="middle">输入型通胀→被迫加息</text><line x1="294" y1="47" x2="308" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="308" y="20" width="128" height="54" rx="8" fill="#e67e22" opacity="0.92"/><text x="372.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">抛美债压力</text><text x="372.0" y="60" fill="#fff" font-size="10" text-anchor="middle">10Y 5.24%</text><line x1="440" y1="47" x2="454" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="454" y="20" width="128" height="54" rx="8" fill="#e67e22" opacity="0.92"/><text x="518.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">FIMA回购</text><text x="518.0" y="60" fill="#fff" font-size="10" text-anchor="middle">押美债借美元干预</text><line x1="586" y1="47" x2="600" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="600" y="20" width="128" height="54" rx="8" fill="#d63031" opacity="0.92"/><text x="664.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">日元干预</text><text x="664.0" y="60" fill="#fff" font-size="10" text-anchor="middle">联合干预汇率</text><line x1="732" y1="47" x2="746" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="746" y="20" width="128" height="54" rx="8" fill="#d63031" opacity="0.92"/><text x="810.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">套息平仓</text><text x="810.0" y="60" fill="#fff" font-size="10" text-anchor="middle">unwind 黑天鹅</text><line x1="878" y1="47" x2="892" y2="47" stroke="#bbb" stroke-width="2" marker-end="url(#ar)"/><rect x="892" y="20" width="128" height="54" rx="8" fill="#1967d2" opacity="0.92"/><text x="956.0" y="42" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">A股传导</text><text x="956.0" y="60" fill="#fff" font-size="10" text-anchor="middle">风险偏好</text><defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#bbb"/></marker></defs></svg><p class="muted" style="font-size:12px;">传导链主线由日元主导；当前实时日本信号 29 条（详见下方文本）。</p>
+<div class="card" id="sec-fima" style="margin-top:12px;background:linear-gradient(180deg,#fffdf5,#fff8e6);border:1px solid #eab308;box-shadow:0 2px 8px rgba(234,179,8,.15);"><h2 style="color:#92400e;">★ FIMA 高亮 · 外国央行美债托管（截至 2026-08-31）</h2><table style="margin-top:4px;"><thead><tr><th>指标</th><th>最新值</th><th>解读</th></tr></thead><tbody><tr><td><b>外国央行年内净卖美债</b></td><td><b class="b-green" style="font-size:14px;">≈ -1000 亿美元</b></td><td style="font-size:12px;color:#666;">去年同期为 +1000 亿买家，一年内方向逆转约 2000 亿</td></tr><tr><td><b>外国政府持有美债占比</b></td><td><b class="b-green" style="font-size:14px;">≈ 12%</b></td><td style="font-size:12px;color:#666;">2008 危机前后约 40%，美债需求结构剧变</td></tr><tr><td><b>日本持有美债（最大持有人）</b></td><td><b class="b-orange" style="font-size:14px;">1.117 万亿美元</b></td><td style="font-size:12px;color:#666;">日本 9 月加息若触发套息平仓，抛售压力沿日元→美债→FIMA 链放大</td></tr><tr><td><b>中国持有美债</b></td><td><b class="b-orange" style="font-size:14px;">≈ 6330 亿美元</b></td><td style="font-size:12px;color:#666;">自峰值 1.3 万亿近乎腰斩，十年持续减持</td></tr><tr><td><b>8/31 美债 10Y 收益率</b></td><td><b class="b-red" style="font-size:14px;">4.76%+</b></td><td style="font-size:12px;color:#666;">创 2025 年 1 月以来新高，长端利率上行压制全球成长股估值</td></tr></tbody></table><div style="margin-top:10px;padding:8px 12px;background:#fff8e6;border-left:3px solid #d97706;border-radius:4px;font-size:13px;color:#7c4a03;"><b>研判：</b>外国官方资金从「美债的稳定买家」转为「净卖方」，叠加日本 9 月加息在即，FIMA 托管流出 → 美债长端利率上行 → 全球估值锚上移，是 A 股成长（科创/半导体/光模块）短期承压的核心外部链路；8/31 美股股债汇三杀已先行走出一轮预演。</div><p class="muted" style="font-size:11px;margin-top:8px;">口径说明：FIMA = 外国官方及国际货币当局（纽约联储托管）；净卖数据截至 2026-06 底，10Y 美债为 8/31 收盘。临时高亮模块，可随时移除。</p></div>
+<div style="margin-top:12px;"><table><thead><tr><th>指标</th><th>最新可用值</th><th>属性</th><th>对 A 股影响</th></tr></thead><tbody><tr><td><b>美债 10Y 收益率</b></td><td><b>5.24%</b></td><td><span class="badge b-red">科技估值锚</span></td><td>高位，显著压制成长股估值（尤其科创/创业板高估值）</td></tr><tr><td>美债 2Y 收益率</td><td><b>4.92%</b></td><td><span class="badge b-blue">短端利率</span></td><td>收益率曲线短端，套息资金成本参考</td></tr></tbody></table><p class="muted" style="font-size:11px;margin-top:6px;">数据时点：2026-09-28；美国财政部日度收益率曲线。</p></div>
+<div class="intel-wrap"><div class="in-struct"><div class="in-head"><span class="badge b-green">偏空</span><span class="muted" style="font-size:11.5px">置信度 0.64</span><span class="muted" style="font-size:11.5px">截至 2026-09-29</span></div><div class="in-core">日元套息平仓风险被延迟而非消除，构成流动性尾部风险</div><div class="in-sec"><span class="in-k">传导</span>对 A 股传导路径<ul><li>日本加息推升日债收益率，吸引日资回流、施压全球套息头寸</li><li>套息平仓放大了全球成长股的波动幅度</li><li>日本减持海外债券对美债收益率形成额外上行压力</li></ul></div><div class="in-sec"><span class="in-k">已定价</span>市场已部分定价日本央行进一步加息</div><div class="in-sec"><span class="in-k">关注</span><span class="in-watch"><span class="in-chip">日本 10 年期国债收益率</span><span class="in-chip">美元/日元是否突破 158</span><span class="in-chip">美债海外持仓与 FIMA 回购余额</span></span></div></div></div>
+</div>
+
+<div class="card" id="sec-geo">
+<h2>五、地缘政治与原油（实时价量 + 外网解析）</h2>
+<div class="us-sum"><span class="badge b-red">WTI 93.14 (+0.53%)</span><span class="badge b-red">Brent 98.58 (+0.70%)</span><span class="badge b-green">舆情 偏空 (利多0/利空1)</span></div><div style="font-size:13px;font-weight:700;color:#3C3489;margin:12px 0 4px;">原油价格跟踪（双口径）</div><table><thead><tr><th>标的</th><th>最新(美元/桶)</th><th>当日</th><th>MA5</th><th>近5日</th><th>近20日</th><th>近60日</th><th>距52周高</th><th>距52周低</th></tr></thead><tbody><tr><td><b>WTI</b><span class='muted' style='font-size:11px'> WTI原油（纽约）</span></td><td><b>93.14</b></td><td><span class="up">+0.53%</span></td><td>93.264</td><td><span class="up">+3.65%</span></td><td><span class="up">+2.72%</span></td><td><span class="up">+29.02%</span></td><td><span class="down">-22.05%</span></td><td><span class="up">+69.68%</span></td></tr><tr><td><b>Brent</b><span class='muted' style='font-size:11px'> 布伦特原油</span></td><td><b>98.58</b></td><td><span class="up">+0.70%</span></td><td>98.642</td><td><span class="up">+4.08%</span></td><td><span class="up">+3.65%</span></td><td><span class="up">+29.86%</span></td><td><span class="down">-17.51%</span></td><td><span class="up">+67.88%</span></td></tr></tbody></table><div style="margin:14px 0 4px;font-size:13px;font-weight:700;color:#3C3489;">近 60 个交易日原油收盘价（美元/桶）</div><svg viewBox="0 0 660 267" style="width:100%;height:auto;display:block"><line x1="52" y1="16.0" x2="644" y2="16.0" stroke="#eef0f4" stroke-width="1"/><text x="46" y="19.0" text-anchor="end" font-size="9" fill="#9aa3b2">113.05</text><line x1="52" y1="68.5" x2="644" y2="68.5" stroke="#eef0f4" stroke-width="1"/><text x="46" y="71.5" text-anchor="end" font-size="9" fill="#9aa3b2">101.72</text><line x1="52" y1="121.0" x2="644" y2="121.0" stroke="#eef0f4" stroke-width="1"/><text x="46" y="124.0" text-anchor="end" font-size="9" fill="#9aa3b2">90.38</text><line x1="52" y1="173.5" x2="644" y2="173.5" stroke="#eef0f4" stroke-width="1"/><text x="46" y="176.5" text-anchor="end" font-size="9" fill="#9aa3b2">79.05</text><line x1="52" y1="226.0" x2="644" y2="226.0" stroke="#eef0f4" stroke-width="1"/><text x="46" y="229.0" text-anchor="end" font-size="9" fill="#9aa3b2">67.72</text><polyline points="52.0,193.4 62.0,207.1 72.1,208.5 82.1,178.4 92.1,170.0 102.2,170.5 112.2,174.3 122.2,160.9 132.3,157.9 142.3,148.1 152.3,139.1 162.4,111.8 172.4,120.6 182.4,160.3 192.5,173.3 202.5,147.8 212.5,150.9 222.6,137.8 232.6,168.9 242.6,191.7 252.7,192.0 262.7,177.3 272.7,182.6 282.8,158.6 292.8,154.2 302.8,157.2 312.9,163.7 322.9,162.2 332.9,150.1 343.0,148.8 353.0,148.8 363.1,140.4 373.1,138.3 383.1,146.1 393.2,164.1 403.2,160.4 413.2,152.7 423.3,153.2 433.3,140.0 443.3,119.7 453.4,119.9 463.4,115.1 473.4,117.1 483.5,110.4 493.5,103.1 503.5,91.9 513.6,58.2 523.6,76.5 533.6,67.8 543.7,51.1 553.7,89.0 563.7,92.5 573.8,97.4 583.8,113.7 593.8,123.4 603.9,110.2 613.9,100.7 623.9,111.5 634.0,107.6 644.0,108.2" fill="none" stroke="#1967d2" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="644.0" cy="108.2" r="2.8" fill="#1967d2"><title>WTI原油（纽约） 93.14</title></circle><polyline points="52.0,171.8 62.0,188.0 72.1,191.1 82.1,154.5 92.1,145.5 102.2,146.1 112.2,146.7 122.2,130.5 132.3,128.3 142.3,115.7 152.3,118.6 162.4,103.1 172.4,109.6 182.4,144.4 192.5,155.0 202.5,132.0 212.5,137.5 222.6,118.0 232.6,152.5 242.6,175.0 252.7,171.6 262.7,154.8 272.7,158.4 282.8,132.6 292.8,126.0 302.8,129.9 312.9,136.9 322.9,129.0 332.9,117.8 343.0,116.6 353.0,115.5 363.1,108.0 373.1,113.8 383.1,121.4 393.2,142.3 403.2,138.4 413.2,130.0 423.3,130.8 433.3,119.7 443.3,99.1 453.4,98.5 463.4,95.6 473.4,95.7 483.5,89.1 493.5,79.6 503.5,68.4 513.6,33.5 523.6,58.9 533.6,46.8 543.7,37.2 553.7,51.3 563.7,79.0 573.8,80.9 583.8,95.0 593.8,100.9 603.9,84.0 613.9,75.5 623.9,88.4 634.0,82.8 644.0,83.0" fill="none" stroke="#e67e22" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="644.0" cy="83.0" r="2.8" fill="#e67e22"><title>布伦特原油 98.58</title></circle><line x1="8" y1="252" x2="24" y2="252" stroke="#1967d2" stroke-width="2.4"/><text x="29" y="255.5" font-size="10" fill="#4a5568">WTI原油（纽约） 93.14</text><line x1="330" y1="252" x2="346" y2="252" stroke="#e67e22" stroke-width="2.4"/><text x="351" y="255.5" font-size="10" fill="#4a5568">布伦特原油 98.58</text><text x="52.0" y="240" text-anchor="middle" font-size="9" fill="#9aa3b2">07-08</text><text x="152.3" y="240" text-anchor="middle" font-size="9" fill="#9aa3b2">07-22</text><text x="252.7" y="240" text-anchor="middle" font-size="9" fill="#9aa3b2">08-05</text><text x="353.0" y="240" text-anchor="middle" font-size="9" fill="#9aa3b2">08-19</text><text x="453.4" y="240" text-anchor="middle" font-size="9" fill="#9aa3b2">09-02</text><text x="553.7" y="240" text-anchor="middle" font-size="9" fill="#9aa3b2">09-16</text></svg><p class="muted" style="font-size:11px;margin:4px 0 0;">数据截至 2026-09-29</p><div style="font-size:13px;font-weight:700;color:#3C3489;margin:18px 0 4px;">原油舆情跟踪</div><div style="margin:14px 0 4px;font-size:13px;font-weight:700;color:#3C3489;">原油舆情情绪分布（关键词口径）</div><svg viewBox="0 0 660 80" style="width:100%;height:auto;display:block"><text x="88" y="19.0" text-anchor="end" font-size="10.5" fill="#4a5568">利多油价</text><rect x="96" y="9.0" width="486" height="12" rx="3" fill="#f4f6f9"/><rect x="96" y="9.0" width="1.0" height="12" rx="3" fill="#d63031"><title>利多油价 0 条</title></rect><text x="590" y="19.0" font-size="10.5" fill="#d63031" font-weight="600">0 条</text><text x="88" y="43.0" text-anchor="end" font-size="10.5" fill="#4a5568">利空油价</text><rect x="96" y="33.0" width="486" height="12" rx="3" fill="#f4f6f9"/><rect x="96" y="33.0" width="121.5" height="12" rx="3" fill="#00a865"><title>利空油价 1 条</title></rect><text x="590" y="43.0" font-size="10.5" fill="#00a865" font-weight="600">1 条</text><text x="88" y="67.0" text-anchor="end" font-size="10.5" fill="#4a5568">中性</text><rect x="96" y="57.0" width="486" height="12" rx="3" fill="#f4f6f9"/><rect x="96" y="57.0" width="486.0" height="12" rx="3" fill="#9aa3b2"><title>中性 4 条</title></rect><text x="590" y="67.0" font-size="10.5" fill="#9aa3b2" font-weight="600">4 条</text></svg><ul style="margin:8px 0 0;padding-left:18px;"><li style="margin:4px 0;font-size:12.5px;"><span class="badge b-gray">中性</span> <span class="muted" style="font-size:11px;">2026-09-22</span> Brent crude oil price is crashing today: is this the end of the bull run?</li><li style="margin:4px 0;font-size:12.5px;"><span class="badge b-gray">中性</span> <span class="muted" style="font-size:11px;">2026-09-22</span> The difference between the &quot;paper&quot; price of Brent crude and what refiners pay for it</li><li style="margin:4px 0;font-size:12.5px;"><span class="badge b-gray">中性</span> <span class="muted" style="font-size:11px;">2026-09-19</span> Crude oil: Brent and WTI eye rebound as Houthi and Saudi clashes escalate</li><li style="margin:4px 0;font-size:12.5px;"><span class="badge b-green">利空</span> <span class="muted" style="font-size:11px;">2026-09-17</span> Oil prices fall as Saudi Arabia reportedly offers more crude via Hormuz after pipeline attack</li><li style="margin:4px 0;font-size:12.5px;"><span class="badge b-gray">中性</span> <span class="muted" style="font-size:11px;">2026-09-09</span> Brent crude oil tops $101 to close at highest level since May as fighting escalates in Persian Gulf</li></ul><p class="muted" style="font-size:11px;margin:6px 0 0;">来源 news_intel:oil（截至 2026-09-29），已剔除 3 条超出 7 天的陈旧条目</p><p class="muted" style="font-size:11px;margin-top:8px;">口径：WTI=纽约轻质原油（新浪外盘期货 hf_CL），Brent=布伦特（hf_OIL）；动量为区间涨跌幅，52 周窗口取近 250 个交易日。</p>
+<div style="font-size:13px;font-weight:700;color:#3C3489;margin:18px 0 4px;">地缘政治与原油资讯（外网解析）</div>
+<div class="intel-wrap"><div class="in-struct"><div class="in-head"><span class="badge b-green">偏空</span><span class="muted" style="font-size:11.5px">置信度 0.60</span><span class="muted" style="font-size:11.5px">截至 2026-09-29</span></div><div class="in-core">地缘溢价反复，供应端消息主导短期油价方向</div><div class="in-sec"><span class="in-k">传导</span>对 A 股传导路径<ul><li>油价变化经输入型通胀传导至央行紧缩压力</li><li>航运中断风险推升亚欧制造业能源成本</li><li>避险情绪阶段性抬升风险溢价</li></ul></div><div class="in-sec"><span class="in-k">已定价</span>地缘溢价已部分回吐</div><div class="in-sec"><span class="in-k">关注</span><span class="in-watch"><span class="in-chip">美伊谈判进展与海峡通航</span><span class="in-chip">胡塞武装对沙特设施的袭击</span><span class="in-chip">OPEC+ 产量政策调整</span></span></div></div></div>
+</div>
+
+<div class="card" id="sec-etf">
+<h2>六、ETF资金流向（实时）</h2>
+<p class="muted" style="font-size:11px;margin:2px 0 6px">早报 · 上一交易日（09-28）收盘主力净流入，开盘后自动更新为当日盘中。</p><table><thead><tr><th>ETF</th><th>代码</th><th>方向</th><th>信号</th></tr></thead><tbody><tr><td>沪深300ETF</td><td>510300</td><td><span class="badge b-green">净流出</span></td><td>主力 -15.47亿元</td></tr><tr><td>科创50ETF</td><td>588280</td><td><span class="badge b-green">净流出</span></td><td>主力 -0.08亿元</td></tr><tr><td>半导体设备ETF国泰</td><td>159516</td><td><span class="badge b-green">净流出</span></td><td>主力 -2.57亿元</td></tr><tr><td>芯片ETF</td><td>159995</td><td><span class="badge b-green">净流出</span></td><td>主力 -1.15亿元</td></tr></tbody></table><div class="ef-chart-wrap"><div class="ef-title">近5日 ETF 主力净流入（亿元）· 数据库历史</div><div class="ef-chart"><div class="ef-col"><div class="ef-date">09-21</div><div class="ef-bars"><div class="ef-bar-cell" title="芯片ETF -0.63亿元"><div class="ef-bar" style="height:4.1%;background:#00a865"></div><span class="ef-bar-val">-0.6</span></div><div class="ef-bar-cell" title="半导体设备ETF国泰 -4.17亿元"><div class="ef-bar" style="height:27.0%;background:#00a865"></div><span class="ef-bar-val">-4.2</span></div><div class="ef-bar-cell" title="科创50ETF -0.01亿元"><div class="ef-bar" style="height:4.0%;background:#00a865"></div><span class="ef-bar-val">-0.0</span></div><div class="ef-bar-cell" title="沪深300ETF +2.74亿元"><div class="ef-bar" style="height:17.7%;background:#d63031"></div><span class="ef-bar-val">+2.7</span></div></div></div><div class="ef-col"><div class="ef-date">09-22</div><div class="ef-bars"><div class="ef-bar-cell" title="芯片ETF +0.43亿元"><div class="ef-bar" style="height:4.0%;background:#d63031"></div><span class="ef-bar-val">+0.4</span></div><div class="ef-bar-cell" title="半导体设备ETF国泰 -3.47亿元"><div class="ef-bar" style="height:22.4%;background:#00a865"></div><span class="ef-bar-val">-3.5</span></div><div class="ef-bar-cell" title="科创50ETF +0.04亿元"><div class="ef-bar" style="height:4.0%;background:#d63031"></div><span class="ef-bar-val">+0.0</span></div><div class="ef-bar-cell" title="沪深300ETF +2.83亿元"><div class="ef-bar" style="height:18.3%;background:#d63031"></div><span class="ef-bar-val">+2.8</span></div></div></div><div class="ef-col"><div class="ef-date">09-23</div><div class="ef-bars"><div class="ef-bar-cell" title="芯片ETF -0.62亿元"><div class="ef-bar" style="height:4.0%;background:#00a865"></div><span class="ef-bar-val">-0.6</span></div><div class="ef-bar-cell" title="半导体设备ETF国泰 +0.61亿元"><div class="ef-bar" style="height:4.0%;background:#d63031"></div><span class="ef-bar-val">+0.6</span></div><div class="ef-bar-cell" title="科创50ETF -0.01亿元"><div class="ef-bar" style="height:4.0%;background:#00a865"></div><span class="ef-bar-val">-0.0</span></div><div class="ef-bar-cell" title="沪深300ETF -3.18亿元"><div class="ef-bar" style="height:20.6%;background:#00a865"></div><span class="ef-bar-val">-3.2</span></div></div></div><div class="ef-col"><div class="ef-date">09-24</div><div class="ef-bars"><div class="ef-bar-cell" title="芯片ETF -0.90亿元"><div class="ef-bar" style="height:5.8%;background:#00a865"></div><span class="ef-bar-val">-0.9</span></div><div class="ef-bar-cell" title="半导体设备ETF国泰 -2.93亿元"><div class="ef-bar" style="height:18.9%;background:#00a865"></div><span class="ef-bar-val">-2.9</span></div><div class="ef-bar-cell" title="科创50ETF -0.03亿元"><div class="ef-bar" style="height:4.0%;background:#00a865"></div><span class="ef-bar-val">-0.0</span></div><div class="ef-bar-cell" title="沪深300ETF -10.42亿元"><div class="ef-bar" style="height:67.4%;background:#00a865"></div><span class="ef-bar-val">-10.4</span></div></div></div><div class="ef-col"><div class="ef-date">09-28</div><div class="ef-bars"><div class="ef-bar-cell" title="芯片ETF -1.15亿元"><div class="ef-bar" style="height:7.4%;background:#00a865"></div><span class="ef-bar-val">-1.1</span></div><div class="ef-bar-cell" title="半导体设备ETF国泰 -2.57亿元"><div class="ef-bar" style="height:16.6%;background:#00a865"></div><span class="ef-bar-val">-2.6</span></div><div class="ef-bar-cell" title="科创50ETF -0.08亿元"><div class="ef-bar" style="height:4.0%;background:#00a865"></div><span class="ef-bar-val">-0.1</span></div><div class="ef-bar-cell" title="沪深300ETF -15.47亿元"><div class="ef-bar" style="height:100.0%;background:#00a865"></div><span class="ef-bar-val">-15.5</span></div></div></div></div><div class="ef-legend"><span class="ef-leg-dot ef-in"></span>净流入&nbsp;&nbsp;<span class="ef-leg-dot ef-out"></span>净流出&nbsp;&nbsp;|&nbsp;&nbsp;芯片ETF · 半导体设备ETF国泰 · 科创50ETF · 沪深300ETF</div></div>
+
+
+</div>
+
+<div class="card" id="sec-weibo">
+<h2>七、微博舆情解构（唐史主任司马迁 · 实时）</h2>
+
+    <div class="cc-view">
+      <div class="cc-head">大V共识解构</div>
+      <div class="cc-body"><div style="margin-bottom:8px"><span class="badge b-green" style="font-size:13px">偏空</span> <b>大V整体共识</b> <span class="muted" style="font-size:12px">（仅当日更新，T1权重1.5）</span></div><div class="cc-body" style="margin-bottom:8px">当日唯一 T1 大V（唐史主任司马迁）四条观点（含 9/29 08:27 盘前新帖）方向高度一致：纠偏「量化管控后影响力下降」（实际低成交下杀伤更强）、「不稳定时有非托底性流动性输入」（实际没有）、「节前有行情」（实际趋于清淡），并明确指出机构减仓、节前大钱净卖出。今早以「多看少动，没看到确定性，就不动」收口。应对上仅保留一条前瞻线索——面向节后三季报的确定</div><table class="vs-src-table"><thead><tr><th>大V</th><th>等级 · 角色</th><th>当日观点</th></tr></thead><tbody><tr><td><b>唐史主任司马迁</b></td><td class="muted">T1 · 大局方向掌控者</td><td><span class="badge b-green">偏空</span> <span class="muted">4条 · 深度解构见下</span></td></tr></tbody></table></div>
+      
+      <div class="cc-head">唐史主任深度解构（T1 · 研读近3日观点链）</div>
+      <div class="cc-body deep-card">
+        <div class="deep-grid">
+          <div class="deep-row"><span class="deep-k">方向</span><span class="badge b-green">偏空</span><span class="muted" style="font-size:11px">置信度 0.7</span></div>
+          <div class="deep-row"><span class="deep-k">主线</span><span>节前交易清淡 + 机构减仓、大钱净卖出，承接力弱、量化在低成交环境下对做多动能形成更强杀伤、面向节后与三季报：确定性标的跌多了可低吸</span></div>
+          <div class="deep-row"><span class="deep-k">回避</span><span>图形陡峭、偏叙事性的交易结构（节后未必能持续）、指望非常规流动性输入或托底力量、低成交环境下的短线接力与追高博弈</span></div>
+        </div>
+        <div class="alert-blue" style="margin:8px 0"><b>核心逻辑：</b>唐史 9/28–9/29 四条（含 9/29 08:27 盘前新帖）观点高度一致，核心是三点纠偏 + 一个应对：①<b>纠偏量化认知</b>——市场以为「高频量化被管控后其掌控市场的力度会减弱」，实际并沒有，反而「在低成交环境下，量化对做多动能的杀伤作用更强」；②<b>纠偏流动性认知</b>——市场以为「不稳定时会有不以拉升股指为目的的流动性输入」，观察下来「也没有多少」，「考量一些机构减仓，节前大钱多是净卖出」；③<b>纠偏节前行情预期</b>——「节前还有三个交易日，整体交易会趋于清淡」，出金部分上周已走得差不多，很多人已进入休假模式。应对上他明确「这三个交易日我个人更多是面向节后面向三季报去看，有一些确定性标的如果因为节假因素跌多了的话，就低吸些」，并警告「图形陡峭的交易结构节后也未必能持续，尤其是偏叙事性的」。今早 08:27 的极简表态「多看少动，没看到确定性，就不动」是对上述判断的收口——在缺乏确定性的窗口里，主动不作为就是最优解。另</div>
+        <div class="alert-orange" style="margin:8px 0"><b>操作含义：</b>多看少动，没看到确定性就不动；节前三个交易日不参与博弈，把注意力转向节后三季报的确定性标的，等因节假因素超跌再低吸</div>
+        <div class="alert-red"><b>风险点：</b>量化在低成交环境下放大波动、压制做多动能，短线结构被反复收割；节前机构减仓、大钱净卖出，市场承接力薄弱，反弹缺乏资金支撑；陡峭交易结构与偏叙事性标的节后可能无法延续，存在补跌风险</div>
+      </div>
+      <div class="cc-head">大盘研判（解构信号 → 指数确认）</div>
+      <div class="cc-body">指数待开盘（以上一交易日收盘为基准），大V共识 <b class='b-green'>偏空</b> —— 盘前研判以舆情/隔夜信息与技术面为主，开盘后由当日行情验证。</div>
+      <div class="cc-head">自选股解构（大V提及与多空倾向）</div>
+      <div class="cc-body cc-stocks"><div style="margin:5px 0"><span class="badge b-blue">富创精密 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">汇成真空 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">京东方A · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">卧龙电驱 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">欧莱新材 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">先导基电 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的；该标的近三日极端上涨属杠杆资金驱动，与其「避陡峭交易结构」的表述方向相悖，但原文未涉及</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">鼎通科技 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">烽火通信 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的；光通信板块受美国采购禁令提案冲击，但原文未涉及</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">长鑫科技 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div><div style="margin:5px 0"><span class="badge b-blue">意华股份 · 中性</span> <span style="font-size:12.5px;color:#444">唐史四条原文均未点名该标的</span> <span class="muted" style="font-size:11px">置信度 0.4</span></div></div>
+      <div class="cc-head">关键论点（来自实时大V观点，已解构）</div>
+      <div class="kp-card"><div class="kp-head"><span class="badge b-green">偏空</span> <b>唐史主任司马迁</b> <span class="muted" style="font-weight:400;font-size:11px">1-5日 · 置信度 0.75</span></div><div class="kp-fact"><b>事实：</b>9/29 08:27：多看少动，没看到确定性，就不动。没其他好说的。</div><div class="kp-inf"><b>推断：</b>以最简表述收口全部判断——在缺乏确定性的窗口内，主动不作为即最优策略，属明确的偏空观望表态。</div></div><div class="kp-card"><div class="kp-head"><span class="badge b-green">偏空</span> <b>唐史主任司马迁</b> <span class="muted" style="font-weight:400;font-size:11px">1-5日 · 置信度 0.72</span></div><div class="kp-fact"><b>事实：</b>9/28 11:59：两个错误：1、认为高频量化被管控后，量化掌控市场的力度会减弱，然而并没有，甚至在低成交环境下，量化对做多动能的杀伤作用更强。2、认为在市场不稳定时，会有不以拉升股指为目的的流动性输入，观察下来，也没有多少。考量一些机构减仓，节前大钱多是净卖出。</div><div class="kp-inf"><b>推断：</b>纠偏两个市场普遍误判：量化压制在低成交下反而更强；非常规流动性输入实际缺位。叠加机构减仓与节前净卖出，指向反弹缺乏资金支撑。</div></div><div class="kp-card"><div class="kp-head"><span class="badge b-blue">中性</span> <b>唐史主任司马迁</b> <span class="muted" style="font-weight:400;font-size:11px">1-5日 · 置信度 0.68</span></div><div class="kp-fact"><b>事实：</b>9/28 08:09：节前还有三个交易日，按以往经验，整体交易会趋于清淡。节前出金的部分，上周起始也走差不多了，周边很多人上周也开始休假模式。这三个交易日我个人更多是面向节后面向三季报去看，有一些确定性标的如果因为节假因素跌多了的话，就低吸些。图形陡峭的交易结构节后也未必能持续，</div><div class="kp-inf"><b>推断：</b>给出唯一前瞻性机会：节前清淡→重点转向节后三季报的确定性标的，超跌才低吸；同时明确回避陡峭与叙事性交易结构。</div></div><div class="kp-card"><div class="kp-head"><span class="badge b-green">偏空</span> <b>唐史主任司马迁</b> <span class="muted" style="font-weight:400;font-size:11px">1-5日 · 置信度 0.55</span></div><div class="kp-fact"><b>事实：</b>9/28 15:17：一级的朋友们，很快轮到你们了。二级只要放弃「回本」的想法，当场解脱。一级想走，可没那么容易。</div><div class="kp-inf"><b>推断：</b>对一级市场流动性退出困境的隐喻，间接反映其对整体资产端流动性的悲观，对二级风险偏好构成压制。</div></div>
+      <div class="cc-head">风险预警（实时因子解构）</div>
+      <div class="risk-row"><span class="badge b-red">高风险</span>量化在低成交环境下对做多动能杀伤更强，短线交易结构易被反复收割，追涨与接力风险显著 <span class="muted" style="font-size:11px">1-5日</span></div><div class="risk-row"><span class="badge b-red">高风险</span>节前机构减仓、大钱净卖出，叠加非常规流动性输入缺位，市场承接力薄弱，反弹缺乏资金支撑 <span class="muted" style="font-size:11px">1-5日</span></div><div class="risk-row"><span class="badge b-blue">中风险</span>图形陡峭与偏叙事性标的的交易结构节后未必能持续，存在集中补跌风险 <span class="muted" style="font-size:11px">1-5日</span></div><div class="risk-row"><span class="badge b-blue">低风险</span>原文多为微博摘要（末尾带「…全文」标记）而非全文，个别论据可能缺失 <span class="muted" style="font-size:11px">1-5日</span></div>
+    </div>
+    
+</div>
+
+<div class="card" id="sec-resonance">
+<h2>八、共振信号（多源交叉·实时）</h2>
+<table><thead><tr><th>方向</th><th>共振</th><th>来源交叉（实时）</th></tr></thead><tbody><tr><td><b>板块共振</b></td><td><span class="badge b-red">实时</span></td><td>存储、AI</td></tr><tr><td><b>美股映射</b></td><td><span class="badge b-red">实时</span></td><td>英伟达、希捷科技、应用材料</td></tr><tr><td><b>风险项</b></td><td><span class="badge b-green">实时</span></td><td>日本传导链 29 条信号（详见传导链章节）</td></tr><tr><td><b>技术</b></td><td><span class="badge b-blue">实时</span></td><td>12 个标的量价信号</td></tr><tr><td><b>历史胜率</b></td><td><span class="badge b-blue">43%</span></td><td>历史方向命中率：看多 28%（命中 24 / 共 86 条） · 看空 49%（命中 106 / 共 217 条）——共 303 条已兑现判断（真实收盘验证）</td></tr></tbody></table>
+</div>
+
+<div class="card" id="sec-watchlist">
+<h2>九、10只自选股操作指引（实时诊断）</h2>
+
+
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">富创精密 <span class="muted">688409</span>　<span class="tag">半导体设备零部件</span></div>
+        <span class="badge b-green">回避</span>
+      </div>
+      <div class="stock-price">收盘 <b>176.80</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">半导体设备零部件；诊断：高危·下跌趋势。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#c0392b;background:#c0392b14;border-color:#c0392b55;">背离 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#c0392b14;color:#c0392b;border-color:#c0392b55;"><b>近期天量</b><span class="sig-desc">5天前出现天量</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>MACD红柱大幅缩短</b><span class="sig-desc">缩短69%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从4.2%降至-2.5%</span><span class="sig-score">+3.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 8项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">深度跌破，跌11.8%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">深度跌破，跌5.0%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD零轴下</b><span class="sig-desc">中期趋势走弱</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌6.3%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌5.8%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">通道下半部，位置23%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ死叉中</b><span class="sig-desc">短期偏弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>黄金分割0.382</b><span class="sig-desc">从高点下跌40.1%</span><span class="sig-score">-2.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 21.00 | 高危 | 下跌趋势</p>
+      <p class="stock-meta">参考仓位 0-20%（市场偏空 + 诊断修正）｜ 止损位 <b>180.42</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">汇成真空 <span class="muted">301392</span>　<span class="tag">PVD设备</span></div>
+        <span class="badge b-green">回避</span>
+      </div>
+      <div class="stock-price">收盘 <b>157.65</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">PVD设备；诊断：高危·下跌趋势。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#e67e22;background:#e67e2214;border-color:#e67e2255;">成交 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#e67e2214;color:#e67e22;border-color:#e67e2255;"><b>成交量偏热</b><span class="sig-desc">20日分位60%</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>RSI顶背离</b><span class="sig-desc">价新高RSI未新高</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从2.9%降至-2.7%</span><span class="sig-score">+3.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 12项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>均线空头排列</b><span class="sig-desc">5日<10日<20日，下跌趋势确认</span><span class="sig-score">+10.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">深度跌破，跌12.0%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">接近下轨，位置3%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">深度跌破，跌8.1%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD刚死叉</b><span class="sig-desc">趋势确认反转</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD零轴下</b><span class="sig-desc">中期趋势走弱</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌6.7%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌7.2%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ刚死叉</b><span class="sig-desc">短期回调开始</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>大跌</b><span class="sig-desc">跌-7.0%</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>WR超卖</b><span class="sig-desc">WR14=81.1</span><span class="sig-score">-2.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>黄金分割0.382</b><span class="sig-desc">从高点下跌46.6%</span><span class="sig-score">-2.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 30.00 | 高危 | 下跌趋势</p>
+      <p class="stock-meta">参考仓位 0-20%（市场偏空 + 诊断修正）｜ 止损位 <b>162.78</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">京东方A <span class="muted">000725</span>　<span class="tag">面板+AI封装</span></div>
+        <span class="badge b-red">持有/加仓</span>
+      </div>
+      <div class="stock-price">收盘 <b>5.80</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">面板+AI封装；诊断：安全·见顶确认。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#e67e22;background:#e67e2214;border-color:#e67e2255;">成交 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#e67e2214;color:#e67e22;border-color:#e67e2255;"><b>成交量偏高</b><span class="sig-desc">20日分位70%</span><span class="sig-score">+3.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从3.3%降至-0.1%</span><span class="sig-score">+3.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 5项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ刚死叉</b><span class="sig-desc">短期回调开始</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">明显跌破，跌2.5%</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">明显跌破，跌3.7%</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>布林位置下移</b><span class="sig-desc">接近中轨</span><span class="sig-score">+1.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 12.60 | 安全 | 见顶确认</p>
+      <p class="stock-meta">参考仓位 20-40%（市场偏空 + 诊断修正）｜ 止损位 <b>5.54</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">卧龙电驱 <span class="muted">600580</span>　<span class="tag">机器人电机</span></div>
+        <span class="badge b-blue">谨慎</span>
+      </div>
+      <div class="stock-price">收盘 <b>26.26</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">机器人电机；诊断：黄色预警·下跌趋势。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>ADX高位拐头</b><span class="sig-desc">ADX=55.9开始下降</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率下降</b><span class="sig-desc">上涨动能减弱</span><span class="sig-score">+1.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 9项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">深度跌破，跌15.0%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">接近下轨，位置14%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">深度跌破，跌5.3%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD零轴下</b><span class="sig-desc">中期趋势走弱</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ刚死叉</b><span class="sig-desc">短期回调开始</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">明显跌破，跌2.8%</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">明显跌破，跌2.5%</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 3项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>RSI超卖</b><span class="sig-desc">RSI6=22.9</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>WR极度超卖</b><span class="sig-desc">WR14=90.9</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>MACD底背离</b><span class="sig-desc">收盘价新低DIF未新低</span><span class="sig-score">-3.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 22.20 | 黄色预警 | 下跌趋势</p>
+      <p class="stock-meta">参考仓位 10-30%（市场偏空 + 诊断修正）｜ 止损位 <b>25.96</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">欧莱新材 <span class="muted">688530</span>　<span class="tag">靶材</span></div>
+        <span class="badge b-green">回避</span>
+      </div>
+      <div class="stock-price">收盘 <b>57.45</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">靶材；诊断：高危·下跌趋势。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">超买 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MFI偏热</b><span class="sig-desc">MFI=60.6</span><span class="sig-score">+1.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>MACD红柱大幅缩短</b><span class="sig-desc">缩短87%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从5.1%降至-1.9%</span><span class="sig-score">+3.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 9项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌6.9%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌7.6%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">有效跌破，跌3.3%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">有效跌破，跌5.2%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">通道下半部，位置36%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ刚死叉</b><span class="sig-desc">短期回调开始</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>大跌</b><span class="sig-desc">跌-6.9%</span><span class="sig-score">+2.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 27.87 | 高危 | 下跌趋势</p>
+      <p class="stock-meta">参考仓位 0-20%（市场偏空 + 诊断修正）｜ 止损位 <b>57.83</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">先导基电 <span class="muted">600641</span>　<span class="tag">离子注入机</span></div>
+        <span class="badge b-blue">谨慎</span>
+      </div>
+      <div class="stock-price">收盘 <b>49.21</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">离子注入机；诊断：蓝色预警·加速冲顶。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">超买 · 7项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI6超买</b><span class="sig-desc">RSI6=79.8</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>5日涨幅过大</b><span class="sig-desc">5天涨31.9%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ严重超买</b><span class="sig-desc">J值=96.6</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>WR极度超买</b><span class="sig-desc">WR14=13.8</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MFI极度超买</b><span class="sig-desc">MFI=81.7</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>10日涨幅过大</b><span class="sig-desc">10天涨67.9%</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>CCI偏热</b><span class="sig-desc">CCI14=132.4</span><span class="sig-score">+1.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#e67e22;background:#e67e2214;border-color:#e67e2255;">成交 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#e67e2214;color:#e67e22;border-color:#e67e2255;"><b>成交量很高</b><span class="sig-desc">20日分位85%</span><span class="sig-score">+4.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#c0392b;background:#c0392b14;border-color:#c0392b55;">背离 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#c0392b14;color:#c0392b;border-color:#c0392b55;"><b>黄金分割0.618背离</b><span class="sig-desc">从60日低点涨120.2%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#c0392b14;color:#c0392b;border-color:#c0392b55;"><b>近期天量</b><span class="sig-desc">2天前出现天量</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 3项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>均线多头排列</b><span class="sig-desc">RSI=79.8偏高，减分打5折</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>MACD零轴上</b><span class="sig-desc">中期趋势健康</span><span class="sig-score">-1.5</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>站稳所有均线</b><span class="sig-desc">股价在5/10/20日线上方</span><span class="sig-score">-1.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 36.00 | 蓝色预警 | 加速冲顶</p>
+      <p class="stock-meta">参考仓位 10-30%（市场偏空 + 诊断修正）｜ 止损位 <b>33.99</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">鼎通科技 <span class="muted">688668</span>　<span class="tag">连接器+液冷</span></div>
+        <span class="badge b-blue">谨慎</span>
+      </div>
+      <div class="stock-price">收盘 <b>213.04</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">连接器+液冷；诊断：黄色预警·底部区域。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#e67e22;background:#e67e2214;border-color:#e67e2255;">成交 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#e67e2214;color:#e67e22;border-color:#e67e2255;"><b>成交量极高</b><span class="sig-desc">20日分位90%</span><span class="sig-score">+5.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从2.1%降至-6.6%</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>BIAS偏大</b><span class="sig-desc">BIAS6=-13.6%</span><span class="sig-score">+1.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 11项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">深度跌破，跌16.9%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">接近下轨，位置-25%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">深度跌破，跌16.2%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD零轴下</b><span class="sig-desc">中期趋势走弱</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌12.0%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌14.7%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD死叉中</b><span class="sig-desc">空头趋势</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ死叉中</b><span class="sig-desc">短期偏弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>大跌</b><span class="sig-desc">跌-8.2%</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 5项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>RSI严重超卖</b><span class="sig-desc">RSI6=18.3</span><span class="sig-score">-5.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>KDJ极度超卖</b><span class="sig-desc">J值=-7.5</span><span class="sig-score">-5.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>WR极度超卖</b><span class="sig-desc">WR14=93.6</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>黄金分割0.382</b><span class="sig-desc">从高点下跌41.8%</span><span class="sig-score">-2.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>BIAS负乖离偏大</b><span class="sig-desc">BIAS6=-13.6%</span><span class="sig-score">-1.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 17.15 | 黄色预警 | 底部区域</p>
+      <p class="stock-meta">参考仓位 10-30%（市场偏空 + 诊断修正）｜ 止损位 <b>225.04</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">烽火通信 <span class="muted">600498</span>　<span class="tag">光通信</span></div>
+        <span class="badge b-blue">谨慎</span>
+      </div>
+      <div class="stock-price">收盘 <b>36.97</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">光通信；诊断：黄色预警·底部区域。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从3.2%降至-4.3%</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>BIAS偏大</b><span class="sig-desc">BIAS6=-12.1%</span><span class="sig-score">+1.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 10项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">深度跌破，跌10.4%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">接近下轨，位置-2%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">深度跌破，跌9.9%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD刚死叉</b><span class="sig-desc">趋势确认反转</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌11.2%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌11.7%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ死叉中</b><span class="sig-desc">短期偏弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>大跌</b><span class="sig-desc">跌-10.0%</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 6项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>MACD底背离</b><span class="sig-desc">价新低DIF未新低</span><span class="sig-score">-4.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>RSI超卖</b><span class="sig-desc">RSI6=20.9</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>KDJ严重超卖</b><span class="sig-desc">J值=2.4</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>WR极度超卖</b><span class="sig-desc">WR14=100.0</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>黄金分割0.382</b><span class="sig-desc">从高点下跌41.3%</span><span class="sig-score">-2.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>BIAS负乖离偏大</b><span class="sig-desc">BIAS6=-12.1%</span><span class="sig-score">-1.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 12.15 | 黄色预警 | 底部区域</p>
+      <p class="stock-meta">参考仓位 10-30%（市场偏空 + 诊断修正）｜ 止损位 <b>39.83</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">长鑫科技 <span class="muted">688825</span>　<span class="tag">DRAM存储芯片</span></div>
+        <span class="badge b-green">回避</span>
+      </div>
+      <div class="stock-price">收盘 <b>53.80</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">DRAM存储芯片；诊断：高危·下跌趋势。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#e67e22;background:#e67e2214;border-color:#e67e2255;">成交 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#e67e2214;color:#e67e22;border-color:#e67e2255;"><b>成交量偏热</b><span class="sig-desc">20日分位60%</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 8项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">接近下轨，位置14%</span><span class="sig-score">+6.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌5.1%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌3.3%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">有效跌破，跌4.2%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ刚死叉</b><span class="sig-desc">短期回调开始</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD死叉中</b><span class="sig-desc">空头趋势</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 1项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>WR极度超卖</b><span class="sig-desc">WR14=92.8</span><span class="sig-score">-3.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 22.00 | 高危 | 下跌趋势</p>
+      <p class="stock-meta">参考仓位 0-20%（市场偏空 + 诊断修正）｜ 止损位 <b>52.55</b>元</p>
+    </div>
+    <div class="stock-card">
+      <div class="stock-title">
+        <div class="name">意华股份 <span class="muted">002897</span>　<span class="tag">高速连接器+光伏支架</span></div>
+        <span class="badge b-red">持有/加仓</span>
+      </div>
+      <div class="stock-price">收盘 <b>59.14</b> 元　<span class="up"></span></div>
+      <p class="stock-logic">高速连接器+光伏支架；诊断：安全·下跌趋势。</p>
+      <div class="sig-block"><div class="sig-group"><span class="sig-label" style="color:#8e44ad;background:#8e44ad14;border-color:#8e44ad55;">衰竭 · 2项</span><div class="sig-chips"><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>5日线斜率骤降</b><span class="sig-desc">从3.3%降至-4.2%</span><span class="sig-score">+3.0</span></span><span class="sig-chip" style="background:#8e44ad14;color:#8e44ad;border-color:#8e44ad55;"><b>BIAS偏大</b><span class="sig-desc">BIAS6=-11.9%</span><span class="sig-score">+1.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#d63031;background:#d6303114;border-color:#d6303155;">破位 · 10项</span><div class="sig-chips"><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破20日线</b><span class="sig-desc">深度跌破，跌9.0%</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>MACD刚死叉</b><span class="sig-desc">趋势确认反转</span><span class="sig-score">+5.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破5日线</b><span class="sig-desc">有效跌破，跌11.1%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破10日线</b><span class="sig-desc">有效跌破，跌14.3%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破60日线</b><span class="sig-desc">有效跌破，跌6.6%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破布林中轨</b><span class="sig-desc">通道下半部，位置23%</span><span class="sig-score">+4.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>KDJ死叉中</b><span class="sig-desc">短期偏弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>RSI死叉</b><span class="sig-desc">动量转弱</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>跌破SAR</b><span class="sig-desc">抛物线转空</span><span class="sig-score">+2.0</span></span><span class="sig-chip" style="background:#d6303114;color:#d63031;border-color:#d6303155;"><b>大跌</b><span class="sig-desc">跌-10.0%</span><span class="sig-score">+2.0</span></span></div></div><div class="sig-group"><span class="sig-label" style="color:#00a865;background:#00a86514;border-color:#00a86555;">见底 · 4项</span><div class="sig-chips"><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>KDJ极度超卖</b><span class="sig-desc">J值=-5.2</span><span class="sig-score">-5.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>RSI超卖</b><span class="sig-desc">RSI6=23.5</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>WR极度超卖</b><span class="sig-desc">WR14=100.0</span><span class="sig-score">-3.0</span></span><span class="sig-chip" style="background:#00a86514;color:#00a865;border-color:#00a86555;"><b>BIAS负乖离偏大</b><span class="sig-desc">BIAS6=-11.9%</span><span class="sig-score">-1.0</span></span></div></div></div>
+      <p class="stock-meta">见顶诊断：评分 16.02 | 安全 | 下跌趋势</p>
+      <p class="stock-meta">参考仓位 20-40%（市场偏空 + 诊断修正）｜ 止损位 <b>62.91</b>元</p>
+    </div>
+</div>
+
+<div class="card" id="sec-focus"><h2>限时关注的重点数据解析（实时）</h2>
+  <p style="font-size:13px;color:#636e72;margin:0 0 10px;">
+    本模块专攻日本央行加息「程度」研判：抓取各大所（顶级投行 / 研究机构）英文研报与观点，解析正文后输出合理观点并合成一致预期。已抓取各大所日银加息研报并解析，观点与一致预期见下。
+  </p>
+  
+    <div style="margin:12px 0;padding:12px 14px;border-radius:8px;background:#d630311a;color:#d63031;font-size:14px;line-height:1.6;border:1px solid #d6303155;">
+      <b>加息程度研判：激进（偏鹰）</b>
+      <div style="margin-top:6px;"><span style="background:#eef4ff;color:#1967d2;padding:3px 9px;border-radius:6px;font-size:12px;">单次加息区间 中位数 25bp（样本范围 25–25bp）</span></div>
+      <div style="margin-top:8px;color:#2d3436;font-size:13.5px;line-height:1.7;">共检索到 9 家大所有效观点：偏鹰 5 / 偏鸽 0 / 中性 4。日银单次加息预期 中位数 25bp（样本范围 25–25bp）。机构口径整体偏鹰，需警惕日银加息节奏快于市场预期。加息程度直接强化宏观传导链「央行加息」节点，抬升套息交易平仓概率，是 A 股外部风险的关键变量。</div>
+    </div>
+  <div style="font-size:15px;font-weight:700;color:#2d3436;margin:14px 0 6px;">各大所观点</div>
+  <div style="display:flex;flex-wrap:wrap;">
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #d63031;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#d63031;">高盛
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Goldman Sachs</span></div>
+        <span style="background:#d63031;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">偏鹰</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">高盛（Goldman Sachs）：偏鹰。理由：日元疲弱、汇率压力。外网语境偏鹰，倾向日银更快/更大幅度加息，未提取到明确数字预期。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #d63031;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#d63031;">摩根大通
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">JPMorgan</span></div>
+        <span style="background:#d63031;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">偏鹰</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">摩根大通（JPMorgan）：偏鹰。理由：通胀粘性。外网语境偏鹰，倾向日银更快/更大幅度加息，未提取到明确数字预期。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #e17055;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#e17055;">摩根士丹利
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Morgan Stanley</span></div>
+        <span style="background:#e17055;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">中性</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">摩根士丹利（Morgan Stanley）：中性。时点指向 July。理由：日元疲弱、套息平仓风险。对日银加息幅度立场中性或未明，外网未给出明确方向。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #d63031;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#d63031;">瑞银
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">UBS</span></div>
+        <span style="background:#d63031;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">偏鹰</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">瑞银（UBS）：偏鹰。时点指向 August。理由：经济韧性。外网语境偏鹰，倾向日银更快/更大幅度加息，未提取到明确数字预期。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #e17055;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#e17055;">野村
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Nomura</span></div>
+        <span style="background:#e17055;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">中性</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">野村（Nomura）：中性。理由：经济韧性。对日银加息幅度立场中性或未明，外网未给出明确方向。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #e17055;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#e17055;">三菱日联
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">MUFG</span></div>
+        <span style="background:#e17055;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">中性</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">三菱日联（MUFG）：中性。时点指向 June。理由：日元疲弱。对日银加息幅度立场中性或未明，外网未给出明确方向。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #e17055;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#e17055;">瑞穗
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Mizuho</span></div>
+        <span style="background:#e17055;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">中性</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">瑞穗（Mizuho）：中性。时点指向 June。理由：日元疲弱。对日银加息幅度立场中性或未明，外网未给出明确方向。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #636e72;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#636e72;">大和
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Daiwa</span></div>
+        <span style="background:#dfe6e9;color:#636e72;padding:2px 8px;border-radius:6px;font-size:12px;">观点缺失</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">大和（Daiwa）：观点缺失（外网未解析到其日银加息研报）。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #d63031;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#d63031;">巴克莱
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Barclays</span></div>
+        <span style="background:#d63031;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">偏鹰</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">巴克莱（Barclays）：偏鹰。预计日银单次加息 25bp。时点指向 October。理由：通胀粘性、经济韧性。</div>
+    </div>
+    <div style="flex:1;min-width:300px;border:1px solid #e5e8ec;border-radius:10px;padding:13px;margin:6px;
+                border-top:4px solid #d63031;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#d63031;">美银
+          <span style="font-size:11px;color:#b2bec3;font-weight:400;">Bank of America</span></div>
+        <span style="background:#d63031;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">偏鹰</span>
+      </div>
+      <div style="font-size:13px;color:#2d3436;margin:8px 0 0;line-height:1.6;">美银（Bank of America）：偏鹰。时点指向 September。理由：日元疲弱、汇率压力、经济韧性、汇率干预。外网语境偏鹰，倾向日银更快/更大幅度加息，未提取到明确数字预期。</div>
+    </div></div>
+  
+  <div style="font-size:15px;font-weight:700;color:#2d3436;margin:12px 0 4px;">传导链定位</div>
+  <div style="font-size:13px;color:#2d3436;line-height:1.6;padding:10px 12px;background:#fafbfc;border-radius:6px;">原油(上游触发) → 日本输入型通胀 → <b>央行加息</b> ←(本次研判焦点：幅度/节奏/终点) → 抛美债压力 → FIMA工具(缓冲) → 日元/套息平仓 → A股。本模块专攻「央行加息」这一节点的<b>程度</b>：加息越激进，套息平仓与流动性收紧压力越大。</div>
+  <div style="font-size:15px;font-weight:700;color:#2d3436;margin:12px 0 4px;">对 A 股影响推演</div>
+  <div style="font-size:13px;color:#2d3436;line-height:1.6;padding:10px 12px;background:#fafbfc;border-radius:6px;">机构判断日银加息偏激进（单次或达 50bp+、终点利率上修），将显著强化套息交易平仓逻辑，借入日元套利的国际资金回流，全球风险资产（含 A 股北向资金）面临波动与流出压力；美债收益率上行亦压制成长股估值。属「预警/关注」级别，需提高风险意识。</div>
+  <div style="font-size:15px;font-weight:700;color:#d63031;margin:12px 0 4px;">后续升级观察点</div>
+  <div style="font-size:13px;color:#2d3436;padding:10px 12px;background:#fafbfc;border-radius:6px;">
+    <ul style="margin:0;padding-left:18px;"><li style="font-size:12px;color:#2d3436;margin:3px 0;">▸ 各大所是否将日银单次加息预期上调至 50bp 及以上（激进信号）</li><li style="font-size:12px;color:#2d3436;margin:3px 0;">▸ 日银终点利率预期是否上修至 1.25% 以上</li><li style="font-size:12px;color:#2d3436;margin:3px 0;">▸ 美元/日元汇率是否跌破关键位触发程序化套息平仓</li><li style="font-size:12px;color:#2d3436;margin:3px 0;">▸ 日本实际减持美债 / FIMA 工具是否被启用（传导链末端确认）</li></ul>
+  </div></div>
+
+<div class="disclaimer">
+<strong>免责声明</strong>：以上内容基于公开数据、大V观点及量化规则自动生成，仅供参考，不构成投资建议。市场有风险，投资需谨慎。任何投资决策应结合个人风险承受能力独立判断，必要时咨询持牌专业机构。过往表现不预示未来收益。
+</div>
+
+</div>
+</body>
+</html>
