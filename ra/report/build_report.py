@@ -1445,6 +1445,15 @@ def _adl_line_chart(points):
             f'{segs}{dots}{labels}</svg>')
 
 
+def _nv(v):
+    """数据缺失显示占位：None → 「—」，区别于真实的 0。
+
+    妙想兜底不提供涨停/跌停家数（置 None），此前渲染层用 `or 0` 会显示成「涨停 0」——
+    那是伪值，违反「绝不造假」。
+    """
+    return "—" if v is None else v
+
+
 def market_width_section():
     """市场宽度与腾落指数（ADL）：沪深主板 + 创业板双独立口径。
 
@@ -1461,20 +1470,20 @@ def market_width_section():
     up = market_width.get("up") or 0
     down = market_width.get("down") or 0
     flat = market_width.get("flat") or 0
-    zt = market_width.get("zt") or 0
-    dt = market_width.get("dt") or 0
+    zt = market_width.get("zt")                # None = 数据源不提供（妙想兜底），显示为「—」
+    dt = market_width.get("dt")
     # 沪深主板（独立口径）
     main_up = market_width.get("main_up")
     main_down = market_width.get("main_down")
     main_flat = market_width.get("main_flat") or 0
-    main_zt = market_width.get("main_zt") or 0
-    main_dt = market_width.get("main_dt") or 0
+    main_zt = market_width.get("main_zt")      # None = 数据源不提供（妙想兜底），显示为「—」
+    main_dt = market_width.get("main_dt")
     # 创业板（独立口径）
     cyb_up = market_width.get("cyb_up")
     cyb_down = market_width.get("cyb_down")
     cyb_flat = market_width.get("cyb_flat") or 0
-    cyb_zt = market_width.get("cyb_zt") or 0
-    cyb_dt = market_width.get("cyb_dt") or 0
+    cyb_zt = market_width.get("cyb_zt")        # None = 数据源不提供（妙想兜底），显示为「—」
+    cyb_dt = market_width.get("cyb_dt")
     # ADL 历史（DB 积累：主板与创业板各自独立累计，起点均为 9/4）
     main_hist, cyb_hist = [], []
     main_adl = cyb_adl = 0
@@ -1504,24 +1513,24 @@ def market_width_section():
                     up = _last.get("up") or 0
                     down = _last.get("down") or 0
                     flat = _last.get("flat") or 0
-                    zt = _last.get("zt") or 0
-                    dt = _last.get("dt") or 0
+                    zt = _last.get("zt")
+                    dt = _last.get("dt")
                 if main_up is None:
                     main_up = _last.get("main_up")
                 if main_down is None:
                     main_down = _last.get("main_down")
                 if main_up is not None:
                     main_flat = _last.get("main_flat") or 0
-                    main_zt = _last.get("main_zt") or 0
-                    main_dt = _last.get("main_dt") or 0
+                    main_zt = _last.get("main_zt")
+                    main_dt = _last.get("main_dt")
                 if cyb_up is None:
                     cyb_up = _last.get("cyb_up")
                 if cyb_down is None:
                     cyb_down = _last.get("cyb_down")
                 if cyb_up is not None:
                     cyb_flat = _last.get("cyb_flat") or 0
-                    cyb_zt = _last.get("cyb_zt") or 0
-                    cyb_dt = _last.get("cyb_dt") or 0
+                    cyb_zt = _last.get("cyb_zt")
+                    cyb_dt = _last.get("cyb_dt")
         for r in hist:
             if r.get("main_up") is None:
                 continue
@@ -1557,7 +1566,7 @@ def market_width_section():
         main_block = (f'<p style="font-size:12.5px;margin:5px 0 2px">'
                       f'<b style="font-size:13px">沪深主板</b> 上涨 <b class="up">{main_up}</b>'
                       f' / 下跌 <b class="down">{main_down}</b> / 平 {main_flat} 家'
-                      f' ｜ 涨停 {main_zt} / 跌停 {main_dt} ｜ 上涨占比 {main_ratio:.0f}%'
+                      f' ｜ 涨停 {_nv(main_zt)} / 跌停 {_nv(main_dt)} ｜ 上涨占比 {main_ratio:.0f}%'
                       f' <span class="badge {bcls}">{badge}</span></p>'
                       f'<p style="font-size:12px;margin:2px 0 4px">主板腾落(ADL)'
                       f' <b style="color:{acolor}">{adl_txt}</b>'
@@ -1578,7 +1587,7 @@ def market_width_section():
         cyb_block = (f'<p style="font-size:12.5px;margin:5px 0 2px">'
                       f'<b style="font-size:13px">创业板</b> 上涨 <b class="up">{cyb_up}</b>'
                       f' / 下跌 <b class="down">{cyb_down}</b> / 平 {cyb_flat} 家'
-                      f' ｜ 涨停 {cyb_zt} / 跌停 {cyb_dt} ｜ 上涨占比 {cyb_ratio:.0f}%'
+                      f' ｜ 涨停 {_nv(cyb_zt)} / 跌停 {_nv(cyb_dt)} ｜ 上涨占比 {cyb_ratio:.0f}%'
                       f' <span class="badge {cyb_cls}">{cyb_badge}</span></p>'
                       f'<p style="font-size:12px;margin:2px 0 4px">创业板腾落(ADL)'
                       f' <b style="color:{cyb_color}">{cyb_txt}</b>'
@@ -1600,7 +1609,7 @@ def market_width_section():
             f'{_fb_note}'
             f'<p class="muted" style="font-size:11.5px;margin:3px 0">'
             f'全市场（含创业板/科创板）涨 <b>{up}</b> / 跌 <b>{down}</b> / 平 {flat}'
-            f' · 涨停 {zt} / 跌停 {dt}（仅参考；主板与创业板分列如下）</p>'
+            f' · 涨停 {_nv(zt)} / 跌停 {_nv(dt)}（仅参考；主板与创业板分列如下）</p>'
             f'{main_block}'
             f'{cyb_block}'
             f'{charts}'

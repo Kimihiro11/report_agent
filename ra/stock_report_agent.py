@@ -886,14 +886,83 @@ def _fetch_board_width(fs_raw, label, zt_th):
         return None
 
 
+def _mx_width_query(plate):
+    """妙想（东财）查某板块上涨/下跌/平盘家数，返回 {'up','down','flat'} 或 None。
+
+    背景（2026-09-29）：东财 `clist/get` 长期不稳定（主板/创业板宽度自 9/23 起断断续续缺失）。
+    按用户决策「谁有数据用谁的」加妙想兜底。⚠️ 妙想口径与东财**不同**（已实测差异），
+    仅在东财失败时启用，日志显式标注，切换时 ADL 序列会有一处水平位移。
+    """
+    import re as _re
+    try:
+        d8 = ""
+        try:
+            if _view:
+                d8 = str((_view.build_snapshot_meta() or {}).get("data_date") or "")
+        except Exception:
+            d8 = ""
+        ds = ""
+        if len(d8) >= 10:
+            ds = f"{d8[:4]}年{int(d8[5:7])}月{int(d8[8:10])}日"
+        q = f"查询{plate}{ds}的上涨家数、下跌家数、平盘家数"
+        md = _run_mx_skill(q, "涨跌家数", timeout=90)
+        if not md:
+            return None
+        out = {}
+        for key, label in (("up", "上涨家数"), ("down", "下跌家数"), ("flat", "平盘家数")):
+            m = _re.search(rf"{label}\s*\|\s*(\d+)", md)
+            if m:
+                out[key] = int(m.group(1))
+        if out.get("up") is None or out.get("down") is None:
+            return None
+        return out
+    except Exception as e:
+        print(f"  [宽度] 妙想 {plate} 兜底失败: {e}")
+        return None
+
+
+def _mx_board_flat(plate, label):
+    """妙想兜底：单板块 → 与 _fetch_board_width 同构 dict（zt/dt 无法提供，置 None）。"""
+    c = _mx_width_query(plate)
+    if not c:
+        return None
+    print(f"  [宽度] {label} 妙想兜底: 涨{c['up']} 跌{c['down']} 平{c.get('flat', '-')}（口径与东财不同）")
+    return {"up": c["up"], "down": c["down"], "flat": c.get("flat"), "zt": None, "dt": None}
+
+
+def _mx_main_width():
+    """妙想兜底：主板 = 沪深A股 − 创业板 − 科创板（妙想无直接「沪深主板」口径）。"""
+    a = _mx_width_query("沪深A股")
+    cyb = _mx_width_query("创业板")
+    kcb = _mx_width_query("科创板")
+    if not (a and cyb and kcb):
+        return None
+    up = a["up"] - cyb["up"] - kcb["up"]
+    down = a["down"] - cyb["down"] - kcb["down"]
+    flat = None
+    if None not in (a.get("flat"), cyb.get("flat"), kcb.get("flat")):
+        flat = a["flat"] - cyb["flat"] - kcb["flat"]
+    if up < 0 or down < 0:
+        print(f"  [宽度] 主板 妙想推算结果异常(涨{up}/跌{down})，放弃")
+        return None
+    print(f"  [宽度] 主板 妙想兜底(推算 沪深A股−创业板−科创板): 涨{up} 跌{down} 平{flat if flat is not None else '-'}")
+    return {"up": up, "down": down, "flat": flat, "zt": None, "dt": None}
+
+
 def fetch_cyb_width():
-    """抓取创业板当日涨跌家数（东财 clist fs=m:0+t:80；20cm 口径，涨跌停按 ±19.9% 近似）。"""
-    return _fetch_board_width("m:0+t:80", "创业板", 19.9)
+    """创业板涨跌家数：东财 clist（fs=m:0+t:80；20cm，涨跌停按 ±19.9%）→ 妙想兜底。"""
+    b = _fetch_board_width("m:0+t:80", "创业板", 19.9)
+    if b:
+        return b
+    return _mx_board_flat("创业板", "创业板")
 
 
 def fetch_main_width():
-    """抓取沪深主板当日涨跌家数（fs=深主板 m:0+t:6 + 沪主板 m:1+t:2；10cm 口径，涨跌停按 ±9.9% 近似）。"""
-    return _fetch_board_width("m:0+t:6,m:1+t:2", "主板", 9.9)
+    """沪深主板涨跌家数：东财 clist（深主板 m:0+t:6 + 沪主板 m:1+t:2；10cm，±9.9%）→ 妙想推算兜底。"""
+    b = _fetch_board_width("m:0+t:6,m:1+t:2", "主板", 9.9)
+    if b:
+        return b
+    return _mx_main_width()
 
 
 def fetch_market_width():
@@ -929,7 +998,20 @@ def fetch_market_width():
         zt = sum(v for k, v in pairs if k >= 10)
         dt = sum(v for k, v in pairs if k <= -10)
         if not qdate or (up + down + flat) == 0:
-            return None
+            # 东财全市场分布异常 → 妙想「沪深A股」兜底（口径与东财全市场不同，仅作参考）
+            c = _mx_width_query("沪深A股")
+            if not c:
+                return None
+            print(f"  [宽度] 全市场 妙想兜底: 涨{c['up']} 跌{c['down']} 平{c.get('flat', '-')}（口径为妙想沪深A股）")
+            _d = ""
+            try:
+                if _view:
+                    _d = str((_view.build_snapshot_meta() or {}).get("data_date") or "")
+            except Exception:
+                _d = ""
+            qdate = _d.replace("-", "") or datetime.now().strftime("%Y%m%d")
+            up, down, flat = c["up"], c["down"], c.get("flat") or 0
+            zt = dt = None
         out = {"date": qdate, "up": up, "down": down, "flat": flat, "zt": zt, "dt": dt}
         # 沪深主板 / 创业板独立口径（失败置 None，绝不伪造）
         for prefix, fn in (("main", fetch_main_width), ("cyb", fetch_cyb_width)):
