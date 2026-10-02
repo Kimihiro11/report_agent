@@ -160,6 +160,22 @@ class TestViewState(unittest.TestCase):
         self.assertEqual(date(2026, 9, 11), self.view.prev_trading_day(date(2026, 9, 14)))
         self.assertEqual(date(2026, 9, 11), self.view.recent_trading_day(date(2026, 9, 13)))
 
+    def test_holiday_calendar_skips_non_trading_days(self):
+        """节假日（非周末）也必须回落，不得把休市日当成交易日。
+
+        2026-10-02 回归：国庆 10/1–10/7 休市，此前只跳周末 → 假期采集的 data_date
+        落到假期当日，会把 9/30 行情按 10/2 入库（幽灵行），
+        并让 _mx_width_query 拼出「查询…2026年10月2日…」的错误问句。
+        """
+        self.assertTrue(self.view._holidays(), "休市日历缺失：data/state/trade_calendar.json")
+        meta = self.view.build_snapshot_meta(datetime(2026, 10, 2, 12, 0))
+        self.assertEqual("2026-09-30", meta["data_date"])   # 回落到节前最后交易日
+        self.assertEqual("2026-09-30", self.view.recent_trading_day(date(2026, 10, 7)).isoformat())
+        self.assertEqual("2026-09-30", self.view.prev_trading_day(date(2026, 10, 8)).isoformat())
+        for s in ("2026-10-01", "2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07"):
+            self.assertFalse(self.view.is_trading_day(date.fromisoformat(s)), f"{s} 应休市")
+        self.assertTrue(self.view.is_trading_day(date(2026, 10, 8)))
+
 
 class TestEtfGuard(unittest.TestCase):
     """盘前 ETF 假 0 值不得入库（9/11 产生过脏行）。"""

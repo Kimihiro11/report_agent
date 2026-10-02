@@ -35,15 +35,54 @@ MARKET_OPEN_HHMM = 930
 MARKET_CLOSE_HHMM = 1500
 
 
+# ── A 股休市日历（2026-10-02 新增）─────────────────────────────────────
+# 背景：原实现只跳周末、**不含节假日**，于是假期（如国庆 10/1–10/7）会把
+# 「无交易日」当成交易日：
+#   ① `build_snapshot_meta` 的 data_date 落到假期当日 → 假期采集把上一交易日
+#      行情按当日入库（index_quotes 幽灵行），违反「绝不造假」；
+#   ② `_mx_width_query` 据 data_date 拼问句 → 会向妙想查「10月2日」的涨跌家数。
+# 日历落盘 seeds/trade_calendar.json（人工维护、随年份更新，属入库范围；只列
+# 「工作日但休市」的日期，周末由 weekday 判断）。
+# ⚠️ 文件缺失时退化为「仅跳周末」——与历史行为完全一致，向后兼容。
+_HOLIDAY_CACHE: Optional[set] = None
+
+
+def _holidays() -> set:
+    """休市日集合（"YYYY-MM-DD"）。首次调用读盘，之后走模块级缓存。"""
+    global _HOLIDAY_CACHE
+    if _HOLIDAY_CACHE is None:
+        try:
+            import json as _json
+            from ra.paths import SEEDS
+            _HOLIDAY_CACHE = set(
+                _json.loads((SEEDS / "trade_calendar.json").read_text(encoding="utf-8"))
+                .get("holidays") or []
+            )
+        except Exception:
+            _HOLIDAY_CACHE = set()
+    return _HOLIDAY_CACHE
+
+
+def reload_calendar() -> None:
+    """清空日历缓存（测试用，或日历文件更新后调用）。"""
+    global _HOLIDAY_CACHE
+    _HOLIDAY_CACHE = None
+
+
+def is_trading_day(d: datetime.date) -> bool:
+    """是否 A 股交易日：非周末，且不在休市日历内。"""
+    return d.weekday() < 5 and d.isoformat() not in _holidays()
+
+
 def recent_trading_day(d: datetime.date) -> datetime.date:
-    """最近交易日（含当日；跳过周末，不含节假日日历）。"""
-    while d.weekday() >= 5:
+    """最近交易日（含当日；跳过周末与节假日）。"""
+    while not is_trading_day(d):
         d -= datetime.timedelta(days=1)
     return d
 
 
 def prev_trading_day(d: datetime.date) -> datetime.date:
-    """上一交易日（严格早于 d；跳过周末，不含节假日日历）。"""
+    """上一交易日（严格早于 d；跳过周末与节假日）。"""
     return recent_trading_day(d - datetime.timedelta(days=1))
 
 
