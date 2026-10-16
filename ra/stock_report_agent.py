@@ -43,6 +43,7 @@ except Exception:
     _view = None
 
 from ra.paths import ROOT as OUTPUT_DIR  # 包化后统一根路径
+from ra.infra import net as _net  # 代理感知 HTTP 层（国内直连 / 境外走本地代理）
 CONFIG_PATH = OUTPUT_DIR / "config.json"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 
@@ -68,7 +69,7 @@ def fetch_url(url, headers=None, timeout=10, quiet=False, encoding="utf-8"):
         for k, v in headers.items():
             req.add_header(k, v)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _net.urlopen(req, timeout=timeout, url=url) as resp:
             data = resp.read()
             # 自动解压 gzip
             if resp.headers.get("Content-Encoding") == "gzip":
@@ -281,7 +282,7 @@ def _kline_tencent(code):
         req = urllib.request.Request(f"http://qt.gtimg.cn/q={prefix}{code}",
                                      headers={"User-Agent": "Mozilla/5.0",
                                               "Referer": "https://gu.qq.com/"})
-        raw = urllib.request.urlopen(req, timeout=8).read().decode("gbk", errors="replace")
+        raw = _net.urlopen(req, timeout=8, url=req.full_url).read().decode("gbk", errors="replace")
         f = raw.split('"')[1].split("~")
         if len(f) < 35:
             return []
@@ -456,7 +457,7 @@ def _westock_mcp_call(params, token, url, timeout=30):
         if session_id[0]:
             req.add_header("Mcp-Session-Id", session_id[0])
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with _net.urlopen(req, timeout=timeout, url=url) as resp:
                 sid = resp.headers.get("Mcp-Session-Id")
                 if sid:
                     session_id[0] = sid
@@ -801,7 +802,7 @@ def _http_json(url, retry=3, timeout=12):
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Referer": "https://quote.eastmoney.com/",
                 "Accept": "*/*"})
-            return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+            return json.loads(_net.urlopen(req, timeout=timeout, url=url).read())
         except Exception:
             if i == retry - 1:
                 return None
@@ -980,7 +981,7 @@ def fetch_market_width():
              "&Pageindex=0&pagesize=500&sort=fbt%3Aasc")
         req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0",
                                                  "Referer": "https://quote.eastmoney.com/"})
-        d = json.loads(urllib.request.urlopen(req, timeout=12).read())
+        d = json.loads(_net.urlopen(req, timeout=12, url=u).read())
         data = d.get("data") or {}
         qdate = str(data.get("qdate") or "")
         fb = data.get("fenbu") or []
@@ -1356,7 +1357,7 @@ def fetch_us_yield():
                f"field_tdr_date_value={year}&page&_format=csv")
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=20) as r:
+            with _net.urlopen(req, timeout=20, url=url) as r:
                 text = r.read().decode("utf-8-sig", "replace")
             rows = list(csv.DictReader(io.StringIO(text)))
             for row in rows:  # 官方 CSV 按日期倒序；取首个 10Y/2Y 均有效的交易日
@@ -1382,7 +1383,7 @@ def fetch_us_yield():
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=12) as r:
+            with _net.urlopen(req, timeout=12, url=url) as r:
                 data = json.loads(r.read().decode("utf-8", "replace"))
             meta = data["chart"]["result"][0]["meta"]
             return meta.get("regularMarketPrice"), meta.get("regularMarketTime")

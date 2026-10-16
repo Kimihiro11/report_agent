@@ -17,6 +17,7 @@
 """
 import copy
 import json
+import os
 import re
 import sys
 import tempfile
@@ -118,6 +119,44 @@ class TestSnapshotContract(unittest.TestCase):
         if not meta or not meta.get("as_of"):
             self.skipTest("无 meta.as_of")
         datetime.strptime(meta["as_of"], "%Y-%m-%d %H:%M:%S")
+
+
+class TestNetLayer(unittest.TestCase):
+    """代理感知 HTTP 层契约（2026-10-16）。
+
+    背景：TUN 已接管默认路由但 DNS 未接管 → 境外域名被解析到污染 IP。
+    唯一可靠路径是显式本地代理；国内源必须绕开，否则被环境变量 HTTP_PROXY 劫持。
+    """
+
+    def setUp(self):
+        from ra.infra import net
+        self.net = net
+
+    def test_domestic_sources_bypass_proxy(self):
+        for u in ("https://finance.sina.com.cn/x", "https://push2.eastmoney.com/api",
+                  "https://m.weibo.cn/api/container/getIndex", "https://qt.gtimg.cn/q="):
+            self.assertTrue(self.net.is_direct(u), "国内源应直连: %s" % u)
+
+    def test_overseas_sources_use_proxy(self):
+        for u in ("https://www.google.com/", "https://news.google.com/rss",
+                  "https://home.treasury.gov/", "https://www.bing.com/news"):
+            self.assertFalse(self.net.is_direct(u), "境外源应走代理: %s" % u)
+
+    def test_workbuddy_internal_proxy_excluded(self):
+        """WorkBuddy 宿主注入的 *_PROXY_URL 是内部 hooks 端口，绝不能被当成网络代理。"""
+        injected = os.environ.get("CODEBUDDY_SERVICE_PROXY_URL")
+        if not injected:
+            self.skipTest("无 WorkBuddy 内部代理注入")
+        self.assertIn(injected, self.net._BLOCKED_PROXIES)
+
+    def test_detect_proxy_returns_valid_form(self):
+        px = self.net.detect_proxy()
+        if px is None:
+            self.skipTest("未探测到本地代理")
+        self.assertTrue(px.startswith("http://"))
+        if px not in self.net._BLOCKED_PROXIES:
+            host, port = px.rsplit("/", 1)[-1].split(":")
+            self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
 class TestViewState(unittest.TestCase):

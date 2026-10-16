@@ -24,6 +24,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
+from ra.infra import net as _net  # 代理感知 HTTP 层（新浪/东财为国内源，直连绕过代理）
 WINDOWS = [1, 3, 5]  # 回测窗口（交易日）
 JUDG_FILE = BASE_DIR / "seeds" / "judgments.json"      # 个股判断本地存储（DB 不可用时的兜底）
 RES_FILE = BASE_DIR / "seeds" / "backtest_results.json"  # 回测结果本地存储
@@ -351,7 +352,7 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
             time.sleep(0.25 * attempt)
             req = urllib.request.Request(sina, headers={
                 "User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"})
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with _net.urlopen(req, timeout=10, url=sina) as r:
                 raw = json.loads(r.read().decode("utf-8"))
             out = [{"date": k["day"], "open": float(k["open"]), "close": float(k["close"]),
                     "high": float(k["high"]), "low": float(k["low"])} for k in raw]
@@ -371,7 +372,7 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
             time.sleep(0.4 * attempt)
             req = urllib.request.Request(em, headers={
                 "User-Agent": "Mozilla/5.0", "Referer": "https://finance.eastmoney.com/"})
-            with urllib.request.urlopen(req, timeout=8) as r:
+            with _net.urlopen(req, timeout=8, url=em) as r:
                 d = json.loads(r.read().decode("utf-8"))
             raw = (d.get("data") or {}).get("klines") or []
             out = []

@@ -30,6 +30,7 @@ import urllib.request
 from datetime import datetime
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
+from ra.infra import net as _net  # 代理感知 HTTP 层
 OUT_DIR = BASE_DIR / "data" / "daily" / "oil"
 NEWS_DIR = BASE_DIR / "data" / "daily" / "news_intel"
 
@@ -64,7 +65,7 @@ _BULLISH_KW = [
 
 def _get(url: str, encoding: str = "utf-8", timeout: int = 15) -> str:
     req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with _net.urlopen(req, timeout=timeout, url=url) as r:
         return r.read().decode(encoding, errors="replace")
 
 

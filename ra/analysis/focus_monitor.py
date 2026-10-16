@@ -44,6 +44,7 @@ from email.utils import parsedate_to_datetime
 from templates.prompts import FocusMonitorPrompts
 
 from ra.paths import ROOT as OUTPUT_DIR  # 包化后统一根路径
+from ra.infra import net as _net  # 代理感知 HTTP 层
 CONFIG_PATH = OUTPUT_DIR / "config.json"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
@@ -118,13 +119,16 @@ _BOJ_CTX = ["bank of japan", "boj", "japan rate", "japanese rate", "japan's rate
 # 代理感知的抓取
 # ----------------------------------------------------------------------------
 def _build_opener(proxy=None):
-    """构造 urllib opener；若显式 proxy 或环境变量 HTTPS_PROXY/HTTP_PROXY 存在则走代理。"""
-    px = proxy or os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") \
-        or os.environ.get("http_proxy")
+    """构造 urllib opener；优先用 config.proxy，其次统一走 ra.infra.net（本地代理探测 + 国内直连）。
+
+    ⚠️ 不再直接信任环境变量 HTTPS_PROXY/HTTP_PROXY —— WorkBuddy 宿主会注入内部
+    服务代理端口，那不是网络代理，复用会把境外抓取打到错误端口上。
+    """
+    px = proxy or _net.detect_proxy()
     if px:
         handler = urllib.request.ProxyHandler({"http": px, "https": px})
         return urllib.request.build_opener(handler), px
-    return urllib.request.build_opener(), None
+    return urllib.request.build_opener(urllib.request.ProxyHandler({})), None
 
 
 def _fetch(url, opener, timeout=10, quiet=False):

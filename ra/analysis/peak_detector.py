@@ -30,6 +30,9 @@ import numpy as np
 from datetime import datetime
 import sys
 
+# 腾讯行情为国内源：显式禁用代理，避免被环境变量 HTTP_PROXY 劫持
+_NO_PROXY = {"http": None, "https": None}
+
 
 # ============================================================
 # 第一部分：数据获取
@@ -53,7 +56,7 @@ def get_kline(code, days=120):
     }
     
     try:
-        resp = requests.get(url, params=params, timeout=15)
+        resp = requests.get(url, params=params, timeout=15, proxies=_NO_PROXY)
         data = resp.json()
         
         if data.get('data'):
@@ -248,7 +251,7 @@ def get_realtime_quote(code, adjust_for_intraday=True):
     url = f'https://qt.gtimg.cn/q={symbol}'
     
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, timeout=10, proxies=_NO_PROXY)
         data = resp.text
         
         if '=' in data and '~' in data:
@@ -317,7 +320,7 @@ def get_sector_kline(sector_code, days=120):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=10, proxies=_NO_PROXY)
         if response.status_code != 200:
             return None
         

@@ -27,6 +27,7 @@ import urllib.parse
 import urllib.request
 
 from ra import stock_report_agent as agent
+from ra.infra import net as _net  # 代理感知 HTTP 层
 from ra.infra.llm_client import call_json
 from templates.prompts import NewsIntelPrompts
 
@@ -197,7 +198,7 @@ def _fetch_article_text(url, max_chars=1600):
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml",
         })
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with _net.urlopen(req, timeout=12, url=url) as resp:
             raw = resp.read()
             enc = resp.headers.get_content_charset() or "utf-8"
             h = raw.decode(enc, errors="replace")

@@ -61,6 +61,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     # ---- 基础设施自检 ----
     "charts":      ("ra/infra/charts.py",           "通用图表组件自检（渲染 demo SVG）"),
     "db":          ("ra/infra/db.py",               "数据库连通性与建表自检"),
+    "net":         ("ra/infra/net.py",              "网络链路体检：代理探测 + 内外网源连通性"),
     # ---- 运维 ----
     "watchlist":   ("tools/add_watchlist.py",       "自选股新增/体检：<code> <name> <sector> 或 --check"),
     "upload":      ("tools/upload_report.py",       "上传报告到资料库（同名 UPDATE 覆盖；token 走 stdin）"),
@@ -109,7 +110,7 @@ def _print_list() -> None:
         ("数据源", ["news", "oil", "momentum"]),
         ("分析", ["focus", "chan", "peak", "weibo"]),
         ("报告/专题", ["chan-report", "arr"]),
-        ("自检", ["charts", "db"]),
+        ("自检", ["charts", "db", "net"]),
         ("运维", ["watchlist", "upload", "archive-dups", "inject-weibo",
                   "inject-news", "close-snapshot", "cookies",
                   "ingest-reports", "verify-ingest"]),

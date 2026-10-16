@@ -27,6 +27,7 @@ import urllib.request
 from datetime import datetime
 
 from ra.paths import ROOT as BASE  # 包化后统一根路径
+from ra.infra import net as _net  # 代理感知 HTTP 层
 OUT_DIR = BASE / "data" / "daily" / "momentum"
 
 UA = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"}
@@ -51,7 +52,7 @@ CN_TARGETS = [
 
 def _get(url: str, encoding: str = "utf-8", timeout: int = 12) -> str:
     req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with _net.urlopen(req, timeout=timeout, url=url) as r:
         return r.read().decode(encoding, errors="replace")
 
 

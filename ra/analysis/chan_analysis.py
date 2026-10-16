@@ -24,6 +24,7 @@ import urllib.request
 import datetime
 
 from ra.paths import ROOT as BASE_DIR  # 包化后统一根路径
+from ra.infra import net as _net  # 代理感知 HTTP 层（东财/新浪为国内源，直连绕过代理）
 # 东财指数 secid：上证 1.000001 / 深证 0.399001 / 创业板 0.399006 / 科创50 1.000688
 INDEX_SECID = {"000001": "1.000001", "399001": "0.399001", "399006": "0.399006", "000688": "1.000688"}
 
@@ -64,7 +65,7 @@ def fetch_min_kline(secid="1.000001", klt=5, lmt=600):
         try:
             req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0",
                                                      "Referer": "https://quote.eastmoney.com/"})
-            d = json.loads(urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "ignore"))
+            d = json.loads(_net.urlopen(req, timeout=15, url=u).read().decode("utf-8", "ignore"))
             klines = (d.get("data") or {}).get("klines") or []
             if not klines:
                 last_err = "东财空"
@@ -88,7 +89,7 @@ def fetch_min_kline(secid="1.000001", klt=5, lmt=600):
     try:
         req = urllib.request.Request(u2, headers={"User-Agent": "Mozilla/5.0",
                                                   "Referer": "https://finance.sina.com.cn/"})
-        raw = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "ignore")
+        raw = _net.urlopen(req, timeout=15, url=u2).read().decode("utf-8", "ignore")
         s = raw[raw.find("["):raw.rfind("]") + 1]
         kl = json.loads(s)
         if not kl:
