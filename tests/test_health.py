@@ -171,6 +171,34 @@ class TestViewState(unittest.TestCase):
         self.assertEqual("pre_market", meta["basis"])
         self.assertEqual("2026-09-11", meta["data_date"])  # 上一交易日=周五
 
+    def test_collection_start_anchored_across_open(self):
+        """⭐ 采集跨开盘点时，口径必须锚定「开始时刻」而非写快照的瞬间。
+
+        2026-10-16 实测踩坑：09:28 起跑、09:30:06 才写快照，按瞬间判定得到
+        basis=intraday / data_date=当日，但抓到的其实是开盘前的上一交易日收盘价
+        → 口径与数据自相矛盾（早报失真 + 按当日入库成幽灵行）。
+        """
+        from ra.infra import view
+        start = datetime(2026, 10, 16, 9, 28, 0)
+        try:
+            view.pin_collection_start(start)
+            meta = view.build_snapshot_meta()
+            self.assertEqual(meta["basis"], "pre_market")
+            self.assertEqual(meta["data_date"], "2026-10-15")
+            self.assertEqual(meta["as_of"], "2026-10-16 09:28:00")
+            # 显式传 now 仍可覆盖（盘中补跑场景）
+            later = view.build_snapshot_meta(now=datetime(2026, 10, 16, 9, 32, 0))
+            self.assertEqual(later["basis"], "intraday")
+        finally:
+            view.release_collection_start()
+
+    def test_unpinned_falls_back_to_now(self):
+        from ra.infra import view
+        view.release_collection_start()
+        meta = view.build_snapshot_meta(now=datetime(2026, 10, 16, 14, 0, 0))
+        self.assertEqual(meta["basis"], "intraday")
+        self.assertEqual(meta["data_date"], "2026-10-16")
+
     def test_close_after_market(self):
         meta = self.view.build_snapshot_meta(datetime(2026, 9, 14, 15, 30))
         self.assertEqual("close", meta["basis"])

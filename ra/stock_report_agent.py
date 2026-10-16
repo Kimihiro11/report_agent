@@ -1716,6 +1716,17 @@ def main():
     print("A股舆情操作指引 Agent")
     print("=" * 50)
 
+    # ⭐ 口径锚定「采集开始时刻」而非结束时刻（2026-10-16 修）。
+    # 采集常耗时 1~3 分钟：09:28 起跑、09:30:06 才写快照，若按结束时刻判口径，
+    # 会被判成 intraday → data_date 落到当日，但抓到的其实是开盘前的上一交易日收盘价，
+    # 口径与数据自相矛盾（早报失真 + 宽度/指数按当日入库成幽灵行）。
+    # 快照文件名沿用结束时刻（便于排序），但 basis/data_date 以开始时刻为准。
+    COLLECT_STARTED_AT = datetime.now()
+    if _view:
+        _view.pin_collection_start(COLLECT_STARTED_AT)
+    print(f"[数据引擎] 采集开始时刻已锚定: {COLLECT_STARTED_AT:%Y-%m-%d %H:%M:%S}"
+          f"（口径按此判定，不随跨开盘漂移）")
+
     config = load_config()
     no_fetch = "--no-fetch" in sys.argv
     print(f"配置加载完成: {len(config.get('weibo_sources', []))} 个微博源, {len(config.get('watchlist_stocks', []))} 只自选股")
@@ -1873,7 +1884,7 @@ def main():
     ts = datetime.now().strftime("%H%M%S")
     snap_path = snap_dir / f"fetched_{today}_{ts}.json"
     # 统一口径：盘前采集到的行情属于上一交易日，data_date 由口径层判定（根治历史错位）
-    meta = _view.build_snapshot_meta() if _view else {}
+    meta = _view.build_snapshot_meta(now=COLLECT_STARTED_AT) if _view else {}
     if _weibo_failed:
         meta["weibo_fetch_failed"] = list(_weibo_failed)
     snapshot = {

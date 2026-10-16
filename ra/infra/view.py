@@ -86,6 +86,26 @@ def prev_trading_day(d: datetime.date) -> datetime.date:
     return recent_trading_day(d - datetime.timedelta(days=1))
 
 
+# 采集开始时刻锚点（单元素列表做可变闭包；None = 未固定）
+_COLL_START = [None]
+
+
+def pin_collection_start(now: Optional[datetime.datetime] = None) -> datetime.datetime:
+    """固定「采集开始时刻」，供 build_snapshot_meta 兜底。
+
+    采集全程（指数→美股→ETF→宽度→舆情）应在同一口径下完成；跨开盘点运行时
+    若每次都取瞬间，会出现早盘判pre_market、晚些判 intraday 的分裂快照。
+    调用一次即可，不影响其他链路。
+    """
+    _COLL_START[0] = now or datetime.datetime.now()
+    return _COLL_START[0]
+
+
+def release_collection_start() -> None:
+    """清除锚点（进程内长驻场景或测试用）。"""
+    _COLL_START[0] = None
+
+
 def infer_basis_by_time(now: datetime.datetime) -> str:
     """按采集时刻判定口径（采集端使用，不依赖报告类型）。
 
@@ -193,8 +213,13 @@ def build_snapshot_meta(now: Optional[datetime.datetime] = None) -> dict:
     采集脚本本身不区分报告类型，一律按当日行情时刻判定：
       盘前采集 → data_date 落到上一交易日（根治「盘前快照的指数被标成当日」的历史错位）；
       盘中 / 收盘 / 周末采集 → data_date 为当日或最近交易日。
+
+    ⚠️ `now` 缺省时优先用 `pin_collection_start()` 固定的「采集开始时刻」，
+    而不是调用瞬间——采集常耗时 1~3 分钟，09:28 起跑、09:30:06 写快照时若按
+    瞬间判定会把盘前快照误判成 intraday（data_date 落到当日，但数据其实是
+    上一交易日收盘价），口径与数据自相矛盾。调用方也可显式传 now 覆盖。
     """
-    now = now or datetime.datetime.now()
+    now = now or _COLL_START[0] or datetime.datetime.now()
     basis = infer_basis_by_time(now)
     if basis == BASIS_PRE:
         data_date = prev_trading_day(now.date())
