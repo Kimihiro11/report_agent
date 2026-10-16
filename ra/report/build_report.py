@@ -1172,6 +1172,8 @@ def oil_section():
     zh = ('<div class="point" style="margin-top:12px;"><div class="pt-title">原油舆情小结</div>'
           '<div class="pt-body">' + _esc(summary_zh) + '</div></div>') if summary_zh else ""
 
+    freight_html = _freight_block()
+
     errs = data.get("errors") or []
     foot = ('<p class="muted" style="font-size:11px;margin-top:8px;">'
             '口径：WTI=纽约轻质原油（新浪外盘期货 hf_CL），Brent=布伦特（hf_OIL）；'
@@ -1183,9 +1185,100 @@ def oil_section():
             '原油价格跟踪（双口径）</div>'
             + '<table><thead>' + head + '</thead><tbody>' + (rows or empty) + '</tbody></table>'
             + chart
+            + freight_html
             + ('<div style="font-size:13px;font-weight:700;color:#3C3489;margin:18px 0 4px;">'
                '原油舆情跟踪</div>' + sent_html if sent_html else "")
             + zh + foot)
+
+
+def _freight_block():
+    """原油海运运费（VLCC 中东湾→宁波）模块。数据缺失时静默跳过，不影响原油其他内容。"""
+    try:
+        from ra.sources import freight as _fr
+        from ra.infra import charts as _ch2
+    except Exception:
+        return ""
+    snap = _fr.snapshot(TODAY)
+    c, b = (snap or {}).get("ctfi"), (snap or {}).get("bdti")
+    if not c:
+        return ""
+
+    def _f(v, unit="", digits=2):
+        if v is None:
+            return '<span class="muted">—</span>'
+        return f"{v:,.{digits}f}" + (f'<span class="muted" style="font-size:11px;"> {unit}</span>')
+
+    def _sgn(v, digits=2):
+        if v is None:
+            return '<span class="muted">—</span>'
+        cls = "up" if v > 0 else ("down" if v < 0 else "muted")
+        return f'<span class="{cls}">{v:+.{digits}f}%</span>'
+
+    # 概览徽章：最新值 + 年内涨幅（运费涨=红，利成本升）
+    badges = [f'<span class="badge b-red">CTFI {_f(c["last"]["value"], "WS", 0)}'
+              f'（年内 {_sgn(c["ytd_pct"], 1)}）</span>']
+    if b:
+        badges.append(f'<span class="badge b-red">BDTI {_f(b["last"]["value"], "", 0)}'
+                      f'（年内 {_sgn(b["ytd_pct"], 1)}）</span>')
+    off = c.get("off_peak_pct")
+    badges.append(f'<span class="badge {"b-green" if (off or 0) < 0 else "b-red"}">'
+                  f'CTFI 距年内高 {_sgn(off)}</span>')
+    summary = '<div class="us-sum">' + "".join(badges) + '</div>'
+
+    # 拐点表（年内关键时点，只列 seed 里真实存在的日期）
+    rows = ""
+    for d, st in (c.get("stages") or {}).items():
+        cls = "up" if (st["value"] or 0) >= 0 else "down"
+        rows += (f'<tr><td style="font-size:12px;">{_esc(d)}</td>'
+                 f'<td style="font-size:12px;">{_esc(st["label"])}</td>'
+                 f'<td><b class="{cls}">{st["value"]:,.0f}</b></td></tr>')
+    stage_tbl = ""
+    if rows:
+        stage_tbl = ('<table><thead><tr><th>日期</th><th>阶段</th>'
+                     f'<th>CTFI（WS 点）</th></tr></thead><tbody>{rows}</tbody></table>')
+
+    # 走势图：CTFI 全年 + BDTI 同期（同期起始 9/01，避免右侧空白误导）
+    chart = ""
+    cs = snap.get("ctfi_series") or []
+    bs = {r["date"]: r["bdti"] for r in (snap.get("bdti_series") or [])}
+    if len(cs) >= 2:
+        dates = [r["date"] for r in cs]
+        lines = [{"name": "CTFI 中东→宁波（VLCC）", "values": [r["ctfi"] for r in cs]}]
+        bdates = [d for d in dates if d in bs]
+        if len(bdates) >= 2:
+            lines.append({"name": "BDTI 原油运输指数", "values": [bs[d] for d in bdates]})
+        # 双序列量级差异大（1271 vs 7727），BDTI 只画自己有值的日期会错位，
+        # 故用 None 占位让折线自然断开
+        if len(bdates) >= 2:
+            lines[1]["values"] = [bs.get(d) for d in dates]
+        chart = _ch2.line_chart({
+            "dates": dates, "lines": lines,
+            "title": f'2026 年 VLCC 中东→宁波海运运费走势（CTFI，WS 点）',
+            "y_unit": "", "legend_cols": 2, "plot_h": 200,
+            "note": (f'CTFI 截至 {c["last"]["date"]}；BDTI 为全部油轮航线广度对照，'
+                     f'仅覆盖 {bdates[0]} 起'),
+        })
+
+    # 交叉信号：双指数是否同步离顶
+    cross = ""
+    dv = snap.get("divergence")
+    if dv:
+        same = dv["same_direction"]
+        cross = ('<p class="muted" style="font-size:11.5px;margin:6px 0 0;">'
+                 f'交叉信号：CTFI 距年内高 {_sgn(dv["ctfi_off"])}、BDTI 距年内高 {_sgn(dv["bdti_off"])} '
+                 f'—— {"<b>两者同步离顶，运费见顶信号增强</b>" if same else "<b>两者背离，广度未同步回落，需继续观察</b>"}'
+                 '</p>')
+
+    return ('<div style="font-size:13px;font-weight:700;color:#3C3489;margin:18px 0 4px;">'
+            '原油海运运费（VLCC 中东湾→中国宁波）</div>'
+            + summary
+            + (stage_tbl or '')
+            + chart + cross
+            + '<p class="muted" style="font-size:11px;margin:6px 0 0;">'
+            '口径：CTFI=中东湾拉斯坦努拉—中国宁波（VLCC／27 万吨），单位 <b>WS 点</b>'
+            '（Worldscale，<b>非美元/桶</b>）；BDTI=原油运输指数，覆盖全部油轮航线。'
+            '两者均为上海航运交易所发布，运费为<b>滞后指标</b>，'
+            '走高反映此前到港成本上升、对油价为支撑而非即时定价。</p>')
 
 
 def us_section():

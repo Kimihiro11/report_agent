@@ -49,6 +49,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     # ---- 数据源 ----
     "news":        ("ra/sources/news_intel.py",     "外网资讯抓取+正文解析 --date YYYY-MM-DD"),
     "oil":         ("ra/sources/oil.py",            "原油 WTI/Brent 价格与舆情 --date [--show]"),
+    "freight":     ("ra/sources/freight.py",        "原油海运运费 VLCC 中东→宁波（CTFI/BDTI）--date [--show]"),
     "momentum":    ("ra/sources/momentum.py",       "中美动量对照（MTUM × 中国科技）--date [--show]"),
     # ---- 分析 ----
     "focus":       ("ra/analysis/focus_monitor.py", "限时关注：日银加息程度研判 [--no-fetch]"),
@@ -107,7 +108,7 @@ def _print_list() -> None:
     width = max(len(k) for k in COMMANDS)
     groups = [
         ("主流程", ["collect", "report", "backtest"]),
-        ("数据源", ["news", "oil", "momentum"]),
+        ("数据源", ["news", "oil", "freight", "momentum"]),
         ("分析", ["focus", "chan", "peak", "weibo"]),
         ("报告/专题", ["chan-report", "arr"]),
         ("自检", ["charts", "db", "net"]),

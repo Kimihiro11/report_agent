@@ -159,6 +159,51 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestFreight(unittest.TestCase):
+    """原油海运运费模块（VLCC 中东湾→宁波，CTFI/BDTI）。"""
+
+    def setUp(self):
+        from ra.sources import freight
+        self.freight = freight
+
+    def test_metrics_from_seed(self):
+        s = self.freight.snapshot()
+        self.assertIsNotNone(s, "seeds/oil_freight.json 应存在")
+        c = s["ctfi"]
+        self.assertIsNotNone(c)
+        self.assertEqual(c["last"]["date"], "2026-10-15")
+        self.assertAlmostEqual(c["last"]["value"], 1271.0, places=2)
+        self.assertGreater(c["ytd_pct"], 1000, "CTFI 年内应大幅上涨")
+
+    def test_series_sorted_and_date_aligned(self):
+        """序列必须升序，且 BDTI 与 CTFI 日期对齐（画图靠索引对齐，错位会画出假背离）。"""
+        s = self.freight.snapshot()
+        for key in ("ctfi_series", "bdti_series"):
+            ds = [r["date"] for r in s[key]]
+            self.assertEqual(ds, sorted(ds), f"{key} 必须升序")
+        self.assertLessEqual(len(s["bdti_series"]), len(s["ctfi_series"]))
+
+    def test_cut_by_report_date(self):
+        """--date 必须真截断（早报锚定日期早于 seed 最新时不能取到未来值）。"""
+        s = self.freight.snapshot("2026-09-01")
+        self.assertEqual(s["ctfi_series"][-1]["date"], "2026-09-01")
+        self.assertEqual(s["ctfi"]["last"]["value"], 614.1)
+
+    def test_official_unit_is_ws_not_usd_per_barrel(self):
+        """⚠️ CTFI 官方单位是 WS 点，不是美元/桶 —— 图上常见误标，报告必须写清。"""
+        s = self.freight.snapshot()
+        self.assertIn("WS", s["ctfi_meta"])
+        self.assertIn("非美元/桶", s["unit_warning"])
+        self.assertNotIn("美元/桶", s["ctfi_meta"].split("单位")[-1].replace("非美元/桶", ""))
+
+    def test_stages_only_exist_in_series(self):
+        """阶段拐点必须来自真实序列，不得凭印象写入。"""
+        s = self.freight.snapshot()
+        have = {r["date"] for r in s["ctfi_series"]}
+        for d in (self.freight.snapshot()["ctfi"]["stages"] or {}):
+            self.assertIn(d, have, f"拐点 {d} 不在序列内")
+
+
 class TestViewState(unittest.TestCase):
     """口径层自身的行为契约。"""
 
