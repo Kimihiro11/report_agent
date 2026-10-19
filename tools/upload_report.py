@@ -61,7 +61,13 @@ def find_python():
 
 
 def list_nodes(space_id, token, python, skill):
-    """返回空间顶层节点列表；失败抛异常。"""
+    """返回空间顶层节点列表；失败抛异常。
+
+    ⚠️ 2026-10-19 修：接口对**token 过期**返回的是
+    `{"error": "code=10034; msg=token 在生产与 staging 环境均鉴权失败…"}`，
+    原实现直接取 `["data"]["nodes"]` →抛 `KeyError: 'data'`，
+    只报「空间查询失败，中止」，完全看不出是 token 问题。
+    """
     r = subprocess.run(
         [python, str(skill / "space_api.py"), "space.workspace.list-node",
          "--token-stdin", "--stdin"],
@@ -72,7 +78,17 @@ def list_nodes(space_id, token, python, skill):
     m = re.search(r"\{.*\}", out, re.S)
     if not m:
         raise RuntimeError(f"list-node 无有效返回: {out[-300:]}")
-    return json.loads(m.group(0))["data"]["nodes"]
+    payload = json.loads(m.group(0))
+    if "error" in payload:
+        err = str(payload.get("error"))
+        if "10034" in err or "鉴权失败" in err or "token" in err.lower():
+            raise RuntimeError(
+                "token 已失效或鉴权失败（多半是过期，有效期约 30 分钟）→ "
+                f"需重新获取 token 再传 stdin。原始错误: {err[:200]}")
+        raise RuntimeError(f"list-node 返回错误: {err[:300]}")
+    if "data" not in payload:
+        raise RuntimeError(f"list-node 返回无 data 字段: {m.group(0)[:300]}")
+    return payload["data"]["nodes"]
 
 
 def import_html(python, skill, space_id, token, html_path, node_block_id=None):
