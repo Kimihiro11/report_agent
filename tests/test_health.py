@@ -159,6 +159,70 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestNewsIntelConsistency(unittest.TestCase):
+    """news_intel 注入摘要与快照实际数据的一致性（2026-10-22 修）。
+
+    ⭐ 实测踩坑：把资讯里的**周度回顾**标题（「纳指**单周**跌 4.5%」）
+    当成了隔夜单日行情，据此写出「外盘助力转为反向压力」的结论，
+    而快照里隔夜纳指实际 **+1.05%**、费半 +1.97% —— **方向完全反了**。
+    根因：RSS 搜索结果里周报稿与日报稿混在一起，仅看标题无法区分口径。
+    """
+
+    def _today_files(self):
+        import glob
+        from pathlib import Path
+        return sorted(glob.glob(str(Path("data/snapshots/fetched_*.json"))))
+
+    def test_us_market_summary_matches_snapshot(self):
+        """注入的 us_market 摘要方向，必须与快照里隔夜美股实际涨跌一致。"""
+        import json
+        import glob
+        import re
+        from pathlib import Path
+
+        snaps = sorted(glob.glob(str(Path("data/snapshots/fetched_*.json"))))
+        if not snaps:
+            self.skipTest("无快照")
+        # 只校验最新一期（有 news_intel 与其同日）
+        latest = snaps[-1]
+        snap = json.loads(Path(latest).read_text(encoding="utf-8"))
+        um = snap.get("us_market") or []
+        if not um:
+            self.skipTest("快照无美股数据")
+        m = dict((row[0], row[1]) for row in um if isinstance(row, list) and len(row) >= 2)
+        for name in ("纳斯达克", "道琼斯", "标普500"):
+            if name in m:
+                break
+        else:
+            self.skipTest("快照美股字段名不匹配")
+        up = sum(1 for v in m.values() if isinstance(v, (int, float)) and v > 0)
+        down = sum(1 for v in m.values() if isinstance(v, (int, float)) and v < 0)
+
+        d8 = str(snap.get("meta", {}).get("data_date", "")).replace("-", "")
+        if not d8:
+            d8 = re.search(r"fetched(\d{8})", latest).group(1)
+        npath = Path(f"data/daily/news_intel/news_intel_{d8}.json")
+        if not npath.exists():
+            # 回退：取最近一份 news_intel
+            cands = sorted(Path("data/daily/news_intel").glob("news_intel_*.json"))
+            if not cands:
+                self.skipTest("无 news_intel")
+            npath = cands[-1]
+        payload = json.loads(npath.read_text(encoding="utf-8"))
+        topic = (payload.get("topics") or {}).get("us_market") or {}
+        direction = (topic.get("summary_structured") or {}).get("direction")
+        if not direction:
+            self.skipTest("us_market 未注入方向")
+
+        # 判据：快照整体倾向与注入方向不得相反
+        majority_up = up > down
+        if majority_up and direction == "偏空":
+            self.fail("快照美股以上涨为主（涨%d/跌%d），但 us_market 摘要判为「偏空」—— "
+                       "很可能把周度回顾误当隔夜行情" % (up, down))
+        if (not majority_up) and down > 0 and direction == "偏多":
+            self.fail("快照美股以下跌为主（涨%d/跌%d），但 us_market 摘要判为「偏多」" % (up, down))
+
+
 class TestFreight(unittest.TestCase):
     """原油海运运费模块（VLCC 中东湾→宁波，CTFI/BDTI）。"""
 
