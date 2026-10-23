@@ -180,11 +180,19 @@ class TestNewsIntelConsistency(unittest.TestCase):
         import re
         from pathlib import Path
 
+        # ⚠️ 快照与 news_intel 必须**按同一报告日配对**：取「有对应 news_intel 的
+        # 最新那个快照」，而非单纯取最新快照 —— 否则会拿今天的快照配昨天的
+        # news_intel（或反之），比对结果失真。
+        ni_dir = Path("data/daily/news_intel")
         snaps = sorted(glob.glob(str(Path("data/snapshots/fetched_*.json"))))
-        if not snaps:
-            self.skipTest("无快照")
-        # 只校验最新一期（有 news_intel 与其同日）
-        latest = snaps[-1]
+        pairs = []
+        for sp in snaps:
+            m = re.search(r"fetched(\d{8})", sp)
+            if m and (ni_dir / f"news_intel_{m.group(1)}.json").exists():
+                pairs.append(sp)
+        if not pairs:
+            self.skipTest("无快照与 news_intel 配对")
+        latest = pairs[-1]
         snap = json.loads(Path(latest).read_text(encoding="utf-8"))
         um = snap.get("us_market") or []
         if not um:
@@ -198,12 +206,14 @@ class TestNewsIntelConsistency(unittest.TestCase):
         up = sum(1 for v in m.values() if isinstance(v, (int, float)) and v > 0)
         down = sum(1 for v in m.values() if isinstance(v, (int, float)) and v < 0)
 
-        d8 = str(snap.get("meta", {}).get("data_date", "")).replace("-", "")
-        if not d8:
-            d8 = re.search(r"fetched(\d{8})", latest).group(1)
-        npath = Path(f"data/daily/news_intel/news_intel_{d8}.json")
+        # ⚠️ news_intel 文件名是**报告日**（快照文件名里的日期），
+        # 不是 meta.data_date（盘前时 data_date 是上一交易日）——
+        # 用 data_date 去找会拿到前一天的 news_intel，误判为方向不一致。
+        m2 = re.search(r"fetched(\d{8})", latest)
+        if not m2:
+            self.skipTest("快照文件名无日期")
+        npath = Path(f"data/daily/news_intel/news_intel_{m2.group(1)}.json")
         if not npath.exists():
-            # 回退：取最近一份 news_intel
             cands = sorted(Path("data/daily/news_intel").glob("news_intel_*.json"))
             if not cands:
                 self.skipTest("无 news_intel")
