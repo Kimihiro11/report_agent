@@ -60,6 +60,43 @@ def find_python():
     return sys.executable
 
 
+def _run_space_api(python, skill, api, payload: dict, token: str | None = None):
+    """调用 space_api.py。
+
+    ⚠️ 2026-10-26 新版 library 技能**取消了 `--token-stdin`**：
+    鉴权改走 workbuddy_ipc（客户端内通道）/太湖（内网 OA），token 由环境注入。
+    payload 用 **flag 传参**（`--space-id=xxx`），`--stdin` 仍是「整个 stdin 当 JSON 解析」。
+
+    为兼容新旧版：**优先用 flag 传参**（新旧都支持），失败再退回 `--stdin` + token。
+    """
+    args = [python, str(skill / "space_api.py"), api]
+    flags = []
+    for k, v in (payload or {}).items():
+        if v is None:
+            continue
+        flags.append(f"--{k}={v}")
+    if flags:
+        r = subprocess.run(args + flags, capture_output=True, text=True, cwd=str(skill))
+        out = ((r.stdout or "") + (r.stderr or "")).strip()
+        m = re.search(r"\{.*\}", out, re.S)
+        if m:
+            return json.loads(m.group(0))
+    # 回退：stdin 传 payload（新版会把整个 stdin 当 JSON，token 行会解析失败）
+    if token:
+        r = subprocess.run(
+            args + ["--stdin"],
+            input=token + "\n" + json.dumps(payload or {}),
+            capture_output=True, text=True, cwd=str(skill))
+    else:
+        r = subprocess.run(args + ["--stdin"], input=json.dumps(payload or {}),
+                           capture_output=True, text=True, cwd=str(skill))
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    m = re.search(r"\{.*\}", out, re.S)
+    if not m:
+        raise RuntimeError(f"{api} 无有效返回: {out[-300:]}")
+    return json.loads(m.group(0))
+
+
 def list_nodes(space_id, token, python, skill):
     """返回空间顶层节点列表；失败抛异常。
 
@@ -67,37 +104,45 @@ def list_nodes(space_id, token, python, skill):
     `{"error": "code=10034; msg=token 在生产与 staging 环境均鉴权失败…"}`，
     原实现直接取 `["data"]["nodes"]` →抛 `KeyError: 'data'`，
     只报「空间查询失败，中止」，完全看不出是 token 问题。
+
+    ⚠️ 2026-10-26 修：library 技能升级后
+      ① API 名由 `space.workspace.list-node`（单数）改为 **`list-nodes`（复数）**；
+      ② **不再需要 token**（鉴权走 workbuddy_ipc / 太湖）；
+      ③ **默认 limit=50 会截断**（空间有 62 个节点）→ 必须显式传 limit；
+      ④ 节点 id 字段为 **`id`**（旧文档写 `nodeId`）。
     """
-    r = subprocess.run(
-        [python, str(skill / "space_api.py"), "space.workspace.list-node",
-         "--token-stdin", "--stdin"],
-        input=token + "\n" + json.dumps({"spaceId": space_id}),
-        capture_output=True, text=True, cwd=str(skill),
-    )
-    out = (r.stdout or "") + (r.stderr or "")
-    m = re.search(r"\{.*\}", out, re.S)
-    if not m:
-        raise RuntimeError(f"list-node 无有效返回: {out[-300:]}")
-    payload = json.loads(m.group(0))
-    if "error" in payload:
-        err = str(payload.get("error"))
-        if "10034" in err or "鉴权失败" in err or "token" in err.lower():
-            raise RuntimeError(
-                "token 已失效或鉴权失败（多半是过期，有效期约 30 分钟）→ "
-                f"需重新获取 token 再传 stdin。原始错误: {err[:200]}")
-        raise RuntimeError(f"list-node 返回错误: {err[:300]}")
-    if "data" not in payload:
-        raise RuntimeError(f"list-node 返回无 data 字段: {m.group(0)[:300]}")
-    return payload["data"]["nodes"]
+    last = ""
+    for api in ("space.workspace.list-nodes", "space.workspace.list-node"):
+        try:
+            payload = _run_space_api(python, skill, api,
+                                     {"space-id": space_id, "limit": 500}, token)
+        except Exception as e:
+            last = f"{api} 调用异常: {e}"
+            continue
+        if "error" in payload:
+            err = str(payload.get("error"))
+            if "10034" in err or "鉴权失败" in err:
+                raise RuntimeError(
+                    "token 已失效或鉴权失败（多半是过期，有效期约 30 分钟）→ "
+                    f"需重新获取 token 再传 stdin。原始错误: {err[:200]}")
+            last = f"{api} 返回错误: {err[:300]}"
+            continue
+        if "data" not in payload:
+            last = f"{api} 返回无 data 字段: {str(payload)[:300]}"
+            continue
+        return payload["data"].get("nodes") or []
+    raise RuntimeError(f"空间节点查询失败（已尝试新旧 API 名）: {last}")
 
 
 def import_html(python, skill, space_id, token, html_path, node_block_id=None):
+    """导入 HTML 到空间；node_block_id 非空则覆盖该节点。"""
     args = [python, str(skill / "page" / "import_html.py"),
-            "--token-stdin", "--space-id", space_id]
+            "--space-id", space_id]
     if node_block_id:
         args += ["--node-block-id", node_block_id]
     args.append(str(html_path))
-    r = subprocess.run(args, input=token, capture_output=True, text=True, cwd=str(skill))
+    # ⚠️ 新版 import_html.py 不再接受 --token-stdin（鉴权走 IPC/太湖）
+    r = subprocess.run(args, input=token or "", capture_output=True, text=True, cwd=str(skill))
     out = ((r.stdout or "") + (r.stderr or "")).strip()
     if "KS_IMPORT_OK" not in out:
         raise RuntimeError(f"import_html 失败: {out[-800:]}")
@@ -126,10 +171,16 @@ def main():
                     help="不剥离回写的 data-page-node-id（默认剥离）")
     args = ap.parse_args()
 
-    token = sys.stdin.readline().strip()
-    if not token:
-        print("[上传] 缺少 token（需从 stdin 首行传入）")
-        return 1
+    # ⚠️ 2026-10-26：新版 library 技能**不再需要 token**（鉴权走 workbuddy_ipc/太湖），
+    # 但旧版仍需。故 token 改为**可选** —— 有就读 stdin 首行，没有也继续。
+    token = ""
+    try:
+        if not sys.stdin.isatty():
+            token = sys.stdin.readline().strip()
+    except Exception:
+        token = ""
+    if token and not token.startswith("op_"):
+        token = ""   # 误喂了非token 内容，忽略
 
     skill, python = find_skill(), find_python()
     if skill is None:
