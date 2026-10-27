@@ -2470,8 +2470,13 @@ def vs_summary():
     deep_html = ""
     if tangshi_deep and (updated_any or (llm and llm.get("tangshi_deep"))):
         dv = tangshi_deep
-        mainline = "、".join(dv.get("mainline", []))
-        avoid = "、".join(dv.get("avoid", []))
+        # ⚠️ 2026-10-27 修：必须**逐条** _esc 再拼接。
+        #   原来先 "、".join(所有条目) 再整体 _esc，而 _esc 的粗体正则是
+        #   非贪婪 `\*\*(.+?)\*\*` —— 当某条以孤立 `**` 结尾、下一条以 `**` 开头时，
+        #   会**跨条目配对**，把中间整段吞进 <b>，导致标签错位、内容错乱
+        #   （实测：「海外供应链毛利下行<b>：「做</b>海外供应链」）。
+        mainline = "、".join(_esc(x) for x in dv.get("mainline", []))
+        avoid = "、".join(_esc(x) for x in dv.get("avoid", []))
         conf = dv.get("confidence")
         deep_html = f'''
       <div class="cc-head">唐史主任深度解构（T1 · 研读近3日观点链）</div>

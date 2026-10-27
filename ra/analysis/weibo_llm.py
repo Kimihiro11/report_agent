@@ -22,6 +22,24 @@ def _clip(value, limit):
     return str(value or "").strip()[:limit]
 
 
+def _clip_md(value, limit):
+    """截断**且不切断 `**` 加粗配对**。
+
+    ⚠️ 2026-10-27 修：原用 `_clip` 硬切，会把 `**强调**` 切成落单标记，
+    渲染层 `_esc` 只能清掉孤立 `**`，导致该段整体丢失加粗语义；
+    且配合「多条目 join 后整体转义」会造成**跨条目配对**（见 build_report 修复）。
+    这里保证截断后 `**` 必成对：若个数为奇数，则最后一个标记必为「开」，
+    删掉它后剩余部分即完整配对。
+    """
+    s = str(value or "").strip()
+    if len(s) <= limit:
+        return s
+    cut = s[:limit]
+    if cut.count("**") % 2 == 1:
+        cut = cut[:cut.rfind("**")]
+    return cut.strip()
+
+
 def _confidence(value, default=0.5):
     try:
         return round(max(0.0, min(1.0, float(value))), 2)
@@ -41,7 +59,7 @@ def _stance(value):
 def _list_text(value, max_items=3, max_len=80):
     if not isinstance(value, list):
         return []
-    return [_clip(v, max_len) for v in value[:max_items] if _clip(v, max_len)]
+    return [_clip_md(v, max_len) for v in value[:max_items] if _clip_md(v, max_len)]
 
 
 def _input_payload(weibo_data, watchlist, date_str):
@@ -78,15 +96,19 @@ def normalize_llm(obj, watchlist=None, date8=""):
     td = obj.get("tangshi_deep") or {}
     if isinstance(td, dict) and td:
         direction = _stance(td.get("direction"))
+        # ⚠️ 2026-10-27 调大容量：原 3 条×50 字 / core_logic 420 字，
+        # 只能承载「一句结论」，装不下「机制 + 引文 + 推论」的高密度解构
+        # （实测：写「海外链毛利下行」那条 50 字处被切断，结论整段丢失）。
+        # 现容量见 MODULES.md「注入字段容量」表。
         out["tangshi_deep"] = {
-            "core_logic": _clip(td.get("core_logic"), 420),
+            "core_logic": _clip_md(td.get("core_logic"), 900),
             "direction": direction,
             "direction_cls": _DIRECTIONS[direction],
-            "mainline": _list_text(td.get("mainline"), 3, 50),
-            "avoid": _list_text(td.get("avoid"), 3, 50),
-            "action": _clip(td.get("action"), 100),
-            "risks": _list_text(td.get("risks"), 3, 70),
-            "summary": _clip(td.get("summary"), 180),
+            "mainline": _list_text(td.get("mainline"), 6, 130),
+            "avoid": _list_text(td.get("avoid"), 5, 110),
+            "action": _clip_md(td.get("action"), 420),
+            "risks": _list_text(td.get("risks"), 5, 130),
+            "summary": _clip_md(td.get("summary"), 420),
             "confidence": _confidence(td.get("confidence"), 0.6),
         }
     else:

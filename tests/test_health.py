@@ -159,6 +159,67 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestWeiboLLMCapacity(unittest.TestCase):
+    """微博解构注入容量与 Markdown 配对（2026-10-27 修）。
+
+    ⭐ 实测踩坑（两个叠加的 bug）：
+      ① `normalize_llm` 的容量曾为 mainline 3条×50字 / core_logic 420字，
+         装不下高密度解构 —— 写「海外链毛利下行」那条在 50 字处被切断，
+         **整句结论在报告里直接消失**。
+      ② 渲染层先把多条目 `"、".join()` 再整体 `_esc()`，而 `_esc` 的粗体正则
+         非贪婪 `\\*\\*(.+?)\\*\\*` 会**跨条目配对**，把中间内容吞进 <b>，
+         产生 `<b>：「做</b>海外供应链` 这类标签错位。
+    """
+
+    def test_clip_md_keeps_bold_pairs_balanced(self):
+        from ra.analysis.weibo_llm import _clip_md
+        for text in ("**加粗**后面还有内容", "**开头加粗很长很长很长很长**尾巴",
+                     "**A**、**B**、**C**", "普通文本没有加粗"):
+            cut = _clip_md(text, 12)
+            self.assertEqual(cut.count("**") % 2, 0,
+                             f"截断后 ** 必须成对: {cut!r}")
+
+    def test_clip_md_never_exceeds_limit(self):
+        from ra.analysis.weibo_llm import _clip_md
+        cut = _clip_md("**很长的加粗内容**" * 20, 50)
+        self.assertLessEqual(len(cut), 50)
+
+    def test_normalize_capacity_enough_for_dense_analysis(self):
+        """容量下限：mainline 至少 6 条、每条 ≥100 字；core_logic ≥800。"""
+        from ra.analysis.weibo_llm import normalize_llm
+        payload = {
+            "date": "20260101",
+            "tangshi_deep": {
+                "direction": "偏空",
+                "core_logic": "核心逻辑" * 300,        # 900 字
+                "mainline": [f"第{i}条主线内容" + "细节" * 60 for i in range(1, 7)],
+                "avoid": [f"第{i}条回避" + "说明" * 40 for i in range(1, 6)],
+                "action": "操作含义" * 200,              # 400 字
+                "risks": [f"第{i}条风险" + "论证" * 40 for i in range(1, 6)],
+                "summary": "小结" * 200,
+                "confidence": 0.8,
+            },
+        }
+        td = normalize_llm(payload, {}, "20260101")["tangshi_deep"]
+        self.assertEqual(len(td["mainline"]), 6, "mainline 应保留 6 条")
+        self.assertEqual(len(td["avoid"]), 5)
+        self.assertEqual(len(td["risks"]), 5)
+        self.assertGreaterEqual(len(td["mainline"][0]), 100,
+                                "mainline 每条容量应 ≥100 字")
+        self.assertGreaterEqual(len(td["core_logic"]), 800)
+        self.assertGreaterEqual(len(td["action"]), 400)
+
+    def test_render_escapes_each_item_separately(self):
+        """渲染层必须逐条转义（防止跨条目配对吞内容）。"""
+        import inspect
+        from ra.report import build_report
+        src = inspect.getsource(build_report)
+        self.assertIn('"、".join(_esc(x) for x in dv.get("mainline", []))', src,
+                      "mainline 必须逐条 _esc 再拼接")
+        self.assertNotIn('"、".join(dv.get("mainline", []))', src,
+                         "禁止先整体 join 再 _esc（会跨条目配对）")
+
+
 class TestNewsIntelConsistency(unittest.TestCase):
     """news_intel 注入摘要与快照实际数据的一致性（2026-10-22 修）。
 

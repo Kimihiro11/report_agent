@@ -1,0 +1,93 @@
+{
+ "_source": "Citi《临近拐点》中国宏观展望研报，2026-10-07 发布；中文版于 10-14 至 10-17 经财新/同花顺/新浪财经转载整理",
+ "_title_en": "China Near the Inflection Point",
+ "_published": "2026-10-07",
+ "_note": "⚠️ 本 seed 为**中期结构性判断**（年度/多年维度），与日报的日度实时数据不同源。渲染时须显式标注研报发布日与预测年份，不可与实时行情混读。",
+ "gdp": {
+  "2026": 4.6,
+  "2027": 4.1,
+  "official_target_2026": "4.5-5%",
+  "q3_2026_forecast": 4.5,
+  "q2_2026_actual": 4.3,
+  "net_export_contribution_pct": {"2026": 1.1, "2027": 0.5},
+  "note": "2027 为被动『保四』；中国很少连续两年下调增长目标 0.5pct，上次可追溯至疫情时期"
+ },
+ "ppi": {
+  "2026": 2.8,
+  "2027": 0.4,
+  "note": "2027 下半年通缩压力再度浮现；花旗机制判断：『一旦油价正常化，通缩亦将重现』"
+ },
+ "domestic_demand_index": {
+  "composition": "社零 + 一般公共预算支出 + 政府性基金支出 + 商品房销售 + 制造业固投",
+  "status_2026_08": "已跌破 2020年7月疫情最严重时期低点，亦低于 2023年2月底部",
+  "note": "花旗自制指标。剔除出口后，中国内需状态比疫情封控期更冷；本轮下滑中地产销售与制造业投资拖累深度超以往任何一轮"
+ },
+ "headwinds": [
+  {
+   "no": 1,
+   "name": "出口引擎降温",
+   "ai_export_ytd_yoy_pct": 50.9,
+   "ai_export_share_pct": 27.4,
+   "global_ai_capex_growth_pct": {"2026": 106, "2027": 56},
+   "goods_surplus_usd_trn": 1.2,
+   "goods_surplus_share_global_pct": 40,
+   "to_us_export_rebound_pct": 24.1,
+   "rebound_window": "2026年5-8月",
+   "rebound_caveat": "关税冲击消退后的修复，非新故事",
+   "cut": "2027 净出口对 GDP 拉动从 1.1pct 回落至 0.5pct",
+   "citi_quote": "56% 依然是很高的增速，但对中国出口而言，『加速度下降』本身就是利空"
+  },
+  {
+   "no": 2,
+   "name": "现房销售改革，地产拖累加深",
+   "new_home_sales_starts_drop_pct": 30,
+   "dev_cycle_months": {"before": "6-10", "after": "1.5-2.5年"},
+   "property_investment_ytd_pct": -19.9,
+   "land_sales_revenue_ytd_pct": -28.6,
+   "extra_land_revenue_loss_rmb_trn": 1.0,
+   "note": "土地财政缺口进一步放大 → 传导至基建与民生支出"
+  },
+  {
+   "no": 3,
+   "name": "信心固化，居民企业双向加速去杠杆",
+   "household_net_loan_repayment_rmb_trn": 1.0,
+   "savings_rate_pct": {"2026H1": 40.0, "2019H1": 36.4},
+   "private_fai_ytd_pct": -10.1,
+   "non_private_fai_ytd_pct": -3.8,
+   "corp_long_term_borrowing": "创五年新低",
+   "marriage_registrations_cagr_pct": -5.8,
+   "marriage_peak_mn": 13.3,
+   "marriage_now_mn": 6.3,
+   "births_peak_mn": 17.9,
+   "births_now_mn": 7.9,
+   "citi_quote": "企业不扩、居民不买、政府没钱，这正是『K型增长』的底仓"
+  }
+ ],
+ "employment": {
+  "cumulative_job_loss_since_2014_mn": 53.6,
+  "flexible_employment_mn": 240,
+  "youth_unemployment_pct": 20,
+  "civil_service_applications_mn": 3.7,
+  "postgrad_applications_mn": 3.4,
+  "note": "2014年以来累计岗位流失（含自然减员）；考公报名首次超过考研"
+ },
+ "policy_outlook_2027": {
+  "pivot": "类似『9.24』式的重大政策转向在 2027 年不可避免，甚至更早",
+  "fiscal_deficit_increase_rmb_trn": 2.0,
+  "fiscal_recommendation": "应加大对家庭的直接转移支付",
+  "policy_rate": "2026 按兵不动；2027 下调两次，各 10bp",
+  "rmb": "2027 管理式升值至约 6.5",
+  "equity_structure": "外资对 A 股持仓较预期稳定，K 型股市格局或持续"
+ },
+ "structural_theme": {
+  "mainline_shift": "中国投资主线已由消费升级转向科技升级",
+  "new_quality_productive_forces": "『新质生产力』将标志下一阶段升级",
+  "ai_economy": "中国有潜力成为涵盖模型与硬件的全球『AI+经济』重要中心"
+ },
+ "cross_check": {
+  "note": "与本项目唐史（唐史主任司马迁）判断的交叉验证",
+  "citi_vs_tangshi_2027_pivot": "花旗从宏观四要素（增长下行/失业上升/财政缺口扩大/通缩再现）推出政策转向『不可避免』；唐史从市场微观（筹码结构失灵、扶老太太下楼梯、想阻断需要更多的诚意）推出『有效阻断』尚未确认。二者不矛盾：花旗讲方向与必然性，唐史讲力度与充分性。",
+  "ai_capex": "花旗给出 AI 资本开支 2026 见顶 106%→2027 回落 56% 的时间维度；唐史给出现实的『光方向减仓明显、机构调向 PCB』与『算卡仍然非常缺』，并强调工信 9.7 文与训练卡到位→推理需求增多的传导。两者对『短期科技仍强、中期加速度下降』的判断一致。",
+  "oil_deflation": "唐史/本项目的『油价约束可逆』判断与花旗『一旦油价正常化，通缩亦将重现』形成闭环 —— 当前油价破 110 暂时压住了 PPI 向下，油价回落将同时带来输入型通胀缓解与内需通缩回归。"
+ }
+}
