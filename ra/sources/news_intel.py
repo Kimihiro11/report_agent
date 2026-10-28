@@ -38,6 +38,40 @@ OUTPUT_DIR = BASE_DIR / "data" / "daily" / "news_intel"
 GOOGLE_EN = "https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
 BING_EN = "https://www.bing.com/news/search?q={q}&format=rss&setlang=en-us&cc=US"
 
+# ⚠️ 2026-10-28 新增：**可直连**的通用财经 feed（代理失效时的救命源）。
+#   背景：代理进程挂掉时 Bing/Google/WSJ 全部 SSL EOF，而**国内直连反而通**
+#   （实测 news.google.com 直连超时、www.bing.com 直连 200）。
+#   这些 feed 是分类通用流，需按**主题关键词**过滤，否则混进词典/无关内容。
+#   ⚠️ Bing 的 `/news/search?...&format=rss` 参数**无效**（返回首页）；
+#      有效路径是 `/search?...&format=rss`，但其结果是**网页搜索**（大量词典/百科），
+#      质量远低于新闻源，故**不作为主源**，仅保留原路径待代理恢复后使用。
+CNBC_FEEDS = [
+    ("CNBC-Markets", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ("CNBC-Economy", "https://www.cnbc.com/id/20910258/device/rss/rss.html"),
+    ("CNBC-Tech", "https://www.cnbc.com/id/19854910/device/rss/rss.html"),
+]
+WSJ_FEEDS = [
+    ("WSJ-Markets", "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"),
+    ("WSJ-World", "https://feeds.a.dj.com/rss/RSSWorldNews.xml"),
+]
+
+# 主题关键词过滤（用于通用 feed）：命中任一即视为该主题相关
+TOPIC_KEYWORDS = {
+    "us_market": ["stock", "stocks", "equity", "equities", "nasdaq", "s&p", "dow",
+                  "wall street", "shares", "market", "earnings", "investor",
+                  "rallies", "falls", "slips", "jumps", "tumbled", "close"],
+    "macro": ["inflation", "cpi", "ppi", "fed", "federal reserve", "rate",
+              "rates", "interest", "central bank", "gdp", "jobs", "payroll",
+              "unemployment", "recession", "treasury", "yield", "economy"],
+    "geopolitics": ["iran", "israel", "houthi", "gulf", "hormuz", "middle east",
+                    "opec", "saudi", "war", "strike", "attack", "missile",
+                    "tariff", "sanction", "ceasefire", "nuclear", "geopolitic"],
+    "japan": ["japan", "boj", "bank of japan", "yen", "carry trade", "japanese",
+              "tokyo", "nikkei", "mufg", "mizuho", "daiwa", "nomura", "jgb"],
+    "oil": ["oil", "crude", "brent", "wti", "opec", "refinery", "petroleum",
+            "barrel", "diesel", "tanker", "lng", "drilling", "shale"],
+}
+
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
@@ -151,8 +185,12 @@ def _search_rss_en(query, max_items=_RSS_PER_QUERY):
     q = urllib.parse.quote(query)
     sources = [
         ("BingEN", BING_EN.format(q=q)),
+        # ⚠️ Google 必须走代理（国内直连被墙/超时）；代理已判定失效时**直接跳过**，
+        #    否则每个 query 白等一次 15s 超时（15 个 query ≈ 4 分钟纯浪费）。
         ("GoogleEN", GOOGLE_EN.format(q=q)),
     ]
+    if not _net.proxy_alive():
+        sources = [s for s in sources if s[0] != "GoogleEN"]
     for name, url in sources:
         text = agent.fetch_url(url, quiet=(name == "GoogleEN"))
         if not text:
@@ -181,6 +219,63 @@ def _search_rss_en(query, max_items=_RSS_PER_QUERY):
         if out:
             return out
     return []
+
+
+def _parse_rss_items(text, name, max_items=_RSS_PER_QUERY):
+    """从一段 RSS/Atom 文本里抽 items（复用搜索源的解析逻辑）。"""
+    items = re.findall(r"<item>(.*?)</item>", text, re.S)
+    out = []
+    for it in items[:max_items]:
+        tm = re.search(r"<title>(.*?)</title>", it, re.S)
+        lm = re.search(r"<link>(.*?)</link>", it, re.S)
+        dm = re.search(r"<description>(.*?)</description>", it, re.S)
+        pm = re.search(r"<pubDate>(.*?)</pubDate>", it, re.S)
+        sm = re.search(r"<source[^>]*>(.*?)</source>", it, re.S)
+        title = _clean(re.sub(r"<!\[CDATA\[|\]\]>", "", tm.group(1)).strip()) if tm else ""
+        raw_link = re.sub(r"<!\[CDATA\[|\]\]>", "", lm.group(1)).strip() if lm else ""
+        desc = _clean(re.sub(r"<!\[CDATA\[|\]\]>", "", dm.group(1)).strip()) if dm else ""
+        published = re.sub(r"<!\[CDATA\[|\]\]>", "", pm.group(1)).strip() if pm else ""
+        source = _clean(re.sub(r"<!\[CDATA\[|\]\]>", "", sm.group(1)).strip()) if sm else name
+        if title and len(title) > 8:
+            out.append({
+                "title_en": title,
+                "link": _resolve_link(raw_link),
+                "desc": desc,
+                "source": source,
+                "published": published,
+            })
+    return out
+
+
+def _fetch_direct_feeds(topic_key, max_items=12):
+    """从可直连的通用财经 feed 取该主题相关内容（代理失效时的兜底）。
+
+    走 CNBC/WSJ 的分类 feed，按 `TOPIC_KEYWORDS` 过滤标题+摘要。
+    这些源**国内直连即可达**，不依赖代理。
+    """
+    kws = [k.lower() for k in TOPIC_KEYWORDS.get(topic_key, [])]
+    if not kws:
+        return []
+    got, seen = [], set()
+    for name, url in CNBC_FEEDS + WSJ_FEEDS:
+        try:
+            text = agent.fetch_url(url, quiet=True)
+        except Exception:
+            continue
+        if not text:
+            continue
+        for item in _parse_rss_items(text, name, max_items=40):
+            blob = (item["title_en"] + " " + item.get("desc", "")).lower()
+            if not any(k in blob for k in kws):
+                continue
+            key = item["title_en"][:60]
+            if key in seen:
+                continue
+            seen.add(key)
+            got.append(item)
+            if len(got) >= max_items:
+                return got
+    return got
 
 
 def _fetch_article_text(url, max_chars=1600):
@@ -216,7 +311,12 @@ def _fetch_article_text(url, max_chars=1600):
 
 
 def _collect_topic(topic_key):
-    """对一个主题：英文 query 抓取 RSS → 去重 → 对前 N 条解析正文。"""
+    """对一个主题：英文 query 抓取 RSS → 去重 → 对前 N 条解析正文。
+
+    ⚠️ 2026-10-28：主源（Bing/Google News）全挂时（代理进程失效），
+    **自动降级到可直连的 CNBC/WSJ 分类 feed**（按主题关键词过滤），
+    避免整个主题 0 条。
+    """
     cfg = TOPICS[topic_key]
     seen, merged = set(), []
     for q in cfg["queries_en"]:
@@ -226,6 +326,15 @@ def _collect_topic(topic_key):
                 continue
             seen.add(key)
             merged.append(it)
+    if not merged:
+        for it in _fetch_direct_feeds(topic_key):
+            key = it["title_en"][:60].lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(it)
+        if merged:
+            print(f"  [兜底] {topic_key} 走可直连源（CNBC/WSJ），命中 {len(merged)} 条")
     merged = merged[: _RSS_PER_QUERY + 2]
     for it in merged[:_FETCH_PER_TOPIC]:
         body = _fetch_article_text(it.get("link"))

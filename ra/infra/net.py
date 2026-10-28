@@ -20,6 +20,7 @@
 """
 import os
 import socket
+import time
 import urllib.request
 
 # 本地代理候选端口（按实测命中率排序；17890 为当前客户端实际监听端口）
@@ -127,6 +128,8 @@ def _proxy_bypass(host):
 
 _OPENER_DIRECT = None
 _OPENER_PROXY = {}
+# 代理失效冷却截止时间戳（见 build_opener / mark_proxy_dead）
+_proxy_dead_until = 0.0
 
 
 def _direct_opener():
@@ -140,6 +143,10 @@ def build_opener(url=None):
     """按目标 URL 返回合适的 opener：国内直连 / 境外走代理。
 
     未探测到代理时统一返回直连 opener（与改造前行为完全一致，不引入回归）。
+
+    ⚠️ 2026-10-28 加**代理健康记忆**：代理进程挂掉时，端口仍 OPEN 但转发报
+    SSL EOF。若每个请求都先试一次代理再降级，15 个 query 的资讯抓取会
+    多耗数分钟。现记录「代理失效时间戳」，冷却期内**直接走直连**。
     """
     if url is not None and is_direct(url):
         return _direct_opener()
@@ -148,6 +155,9 @@ def build_opener(url=None):
     if not px:
         return _direct_opener()
 
+    if _proxy_dead_until and time.time() < _proxy_dead_until:
+        return _direct_opener()   # 代理冷却中，直接直连
+
     if px not in _OPENER_PROXY:
         _OPENER_PROXY[px] = urllib.request.build_opener(
             urllib.request.ProxyHandler({"http": px, "https": px})
@@ -155,10 +165,136 @@ def build_opener(url=None):
     return _OPENER_PROXY[px]
 
 
+def mark_proxy_dead(seconds=60):
+    """标记代理失效，冷却期内不再尝试（避免每个请求都白等一次失败）。"""
+    global _proxy_dead_until
+    _proxy_dead_until = time.time() + seconds
+    return _proxy_dead_until
+
+
+def proxy_alive():
+    """代理当前是否可用（冷却期未过即视为不可用）。"""
+    if _proxy_dead_until and time.time() < _proxy_dead_until:
+        return False
+    return bool(detect_proxy())
+
+
+def _proxy_failure(exc) -> bool:
+    """判断异常是否像「代理转发失败」而非「目标本身不可达」。
+
+    代理进程挂掉时的典型表现：端口仍 OPEN，但转发时报
+    `SSL: UNEXPECTED_EOF_WHILE_READING` / `ConnectionResetError` /
+    `RemoteDisconnected`，而**同一主机直连是通的**。
+    """
+    import socket
+    import ssl
+    name = type(exc).__name__
+    if isinstance(exc, ssl.SSLError):
+        return True
+    if isinstance(exc, (socket.timeout, TimeoutError, ConnectionResetError)):
+        return True
+    msg = str(exc)
+    for hint in ("UNEXPECTED_EOF", "EOF occurred", "Connection reset",
+                 "Connection aborted", "RemoteDisconnected", "BadStatusLine"):
+        if hint in msg:
+            return True
+    if name == "URLError":
+        reason = getattr(exc, "reason", None)
+        if reason is not None and not isinstance(reason, socket.timeout):
+            rname = type(reason).__name__
+            if rname in ("SSLError", "ConnectionResetError", "RemoteDisconnected"):
+                return True
+    return False
+
+
+class _ProxyFallbackResponse:
+    """代理路径失败时**自动降级直连**的响应包装。
+
+    ⚠️ 2026-10-28 关键修正：SSL EOF（`UNEXPECTED_EOF_WHILE_READING`）通常发生在
+    **body 读取阶段**，而不是 `opener.open()` 阶段 —— 也就是说 open() 成功、read() 抛错。
+    所以降级**不能**只包住 open()，必须包住 read()，否则永远触发不了。
+    （实测：代理进程挂掉 → open 成功 → read 抛 SSL EOF → 旧实现直接失败，
+      而同一主机直连完全正常。）
+
+    用法与原 urllib 响应一致：支持 `with`、`.read()`、`.headers`、
+    以及 `getattr` 透传（getcode/info/geturl 等）。
+    """
+
+    def __init__(self, req, timeout, target):
+        self._req = req
+        self._timeout = timeout
+        self._target = target
+        self._resp = None
+        self._used_direct = False
+        # 降级重开必须用**全新 Request 对象**：
+        # 实测同一个 Request 在一次失败后再次 open() 仍报同样的 SSL EOF
+        # （urllib 会把代理握手状态写进 Request），而新建对象直连完全正常。
+        try:
+            self._url = target or req.get_full_url()
+            self._headers = dict(req.header_items())
+        except Exception:
+            self._url = target or getattr(req, "full_url", "")
+            self._headers = {}
+
+    def _fresh_req(self):
+        return urllib.request.Request(self._url, headers=dict(self._headers))
+
+    def _open(self, direct):
+        opener = _direct_opener() if direct else build_opener(self._target)
+        return opener.open(self._fresh_req(), timeout=self._timeout)
+
+    def _ensure(self):
+        if self._resp is None:
+            self._resp = self._open(self._used_direct)
+        return self._resp
+
+    @property
+    def headers(self):
+        return self._ensure().headers
+
+    def read(self, *a, **k):
+        try:
+            return self._ensure().read(*a, **k)
+        except Exception as exc:
+            if self._used_direct:
+                raise
+            if not ((not is_direct(self._target)) and detect_proxy()
+                    and _proxy_failure(exc)):
+                raise
+            # 代理确认失效 → 标记冷却，后续请求直接直连（省掉每次白等一次失败）
+            mark_proxy_dead()
+            self._used_direct = True
+            self._resp = self._open(True)
+            return self._resp.read(*a, **k)
+
+    def close(self):
+        if self._resp is not None:
+            try:
+                self._resp.close()
+            except Exception:
+                pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self._ensure(), name)
+
+
 def urlopen(req, timeout=10, url=None):
-    """代理感知的 urlopen 包装：url 参数用于决定直连/代理，缺省从 req.full_url 取。"""
+    """代理感知的 urlopen 包装：url 参数用于决定直连/代理，缺省从 req.full_url 取。
+
+    ⚠️ 2026-10-28 加**代理失效自动降级**：代理进程挂掉时端口仍 OPEN 但转发报
+    `SSL: UNEXPECTED_EOF_WHILE_READING`，且**同一主机直连是通的**。
+    原实现把异常直接抛给调用方 → 全部境外源一起失效（实测 Bing/Google/WSJ 全挂，
+    news_intel 五个主题 0 条）。现由 `_ProxyFallbackResponse` 在**读取阶段**降级。
+    """
     target = url or getattr(req, "full_url", None) or getattr(req, "get_full_url", lambda: "")()
-    return build_opener(target).open(req, timeout=timeout)
+    return _ProxyFallbackResponse(req, timeout, target)
 
 
 def status():

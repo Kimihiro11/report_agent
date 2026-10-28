@@ -159,6 +159,51 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestNetProxyFallback(unittest.TestCase):
+    """代理失效自动降级（2026-10-28 修）。
+
+    ⭐ 实测踩坑：代理进程挂掉时端口仍 OPEN 但转发报
+    `SSL: UNEXPECTED_EOF_WHILE_READING`，**且直连完全正常**。
+    两个叠加的坑：
+      ① SSL EOF 发生在**读取阶段**，不是 open() 阶段 → 降级必须包住 read()；
+      ② 同一个 Request 对象在一次失败后再次 open() **仍报同样错误**
+         （urllib 把代理握手状态写进了 Request），降级必须**新建 Request**。
+    """
+
+    def test_proxy_failure_detects_ssl_eof(self):
+        import ssl
+        from urllib.error import URLError
+        from ra.infra import net
+        exc = URLError(ssl.SSLEOFError("EOF occurred in violation of protocol"))
+        self.assertTrue(net._proxy_failure(exc))
+        self.assertFalse(net._proxy_failure(ValueError("普通错误")))
+
+    def test_fresh_req_on_direct_retry(self):
+        """降级重开必须用**全新 Request**（复用会继续失败）。"""
+        import inspect
+        from ra.infra import net
+        src = inspect.getsource(net._ProxyFallbackResponse)
+        self.assertIn("_fresh_req", src, "降级重开必须新建 Request")
+        self.assertIn("build_opener", src)
+
+    def test_mark_proxy_dead_short_circuits(self):
+        """代理标记失效后应短路直连，避免每个请求都白等一次失败。"""
+        from ra.infra import net
+        net.mark_proxy_dead(60)
+        try:
+            self.assertFalse(net.proxy_alive())
+        finally:
+            net._proxy_dead_until = 0.0
+
+    def test_news_direct_feeds_exist_and_filterable(self):
+        """兜底源必须存在，且每个主题都有关键词（否则抓回来全是无关内容）。"""
+        from ra.sources import news_intel as ni
+        self.assertGreaterEqual(len(ni.CNBC_FEEDS) + len(ni.WSJ_FEEDS), 3)
+        for topic in ("us_market", "macro", "geopolitics", "japan", "oil"):
+            self.assertIn(topic, ni.TOPIC_KEYWORDS)
+            self.assertTrue(ni.TOPIC_KEYWORDS[topic], f"{topic} 关键词不能为空")
+
+
 class TestWeiboLLMCapacity(unittest.TestCase):
     """微博解构注入容量与 Markdown 配对（2026-10-27 修）。
 
