@@ -159,6 +159,41 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestBackfillChgLimit(unittest.TestCase):
+    """补数涨跌校验阈值必须按板块涨跌幅限制（2026-10-30 修）。
+
+    ⭐ 实测踩坑：阈值固定 11%（主板口径）→ **688668 鼎通 2026-10-29 跌 -18.71%
+    （科创板 ±20%，合法）被判「越界」拒绝** → 科创板/创业板合法大涨大跌被系统性误杀，
+    日K 序列缺天（技术指标与回测随之失真）。
+    """
+
+    def test_limit_by_board(self):
+        import importlib.util
+        import pathlib
+        p = pathlib.Path("tools/backfill_day.py")
+        spec = importlib.util.spec_from_file_location("bf", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        f = mod._max_chg_for
+        self.assertEqual(f("688668"), 21.0)   # 科创板 ±20%
+        self.assertEqual(f("300502"), 21.0)   # 创业板 ±20%
+        self.assertEqual(f("301392"), 21.0)
+        self.assertEqual(f("600580"), 11.0)   # 主板 ±10%
+        self.assertEqual(f("000725"), 11.0)
+        self.assertEqual(f("688409"), 21.0)
+
+    def test_kcb_move_not_rejected(self):
+        """科创板 -18.71% 这类合法大跌必须通过校验。"""
+        import importlib.util
+        import pathlib
+        p = pathlib.Path("tools/backfill_day.py")
+        spec = importlib.util.spec_from_file_location("bf", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertGreater(abs(-18.71), 11.0)          # 旧阈值会拒
+        self.assertLessEqual(abs(-18.71), mod._max_chg_for("688668"))  # 新阈值放行
+
+
 class TestNetProxyFallback(unittest.TestCase):
     """代理失效自动降级（2026-10-28 修）。
 

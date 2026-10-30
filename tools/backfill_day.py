@@ -40,6 +40,20 @@ IDX = {
     "sh000001": "上证指数", "sz399001": "深证成指", "sz399006": "创业板指",
     "sh000688": "科创50", "sh000300": "沪深300",
 }
+# 涨跌校验阈值（按板块涨跌幅限制）
+# ⚠️ 2026-10-30 修：原为固定 11%（主板 ±10% + 余量），**把科创板/创业板的合法大跌误杀了**
+#   实测：688668 鼎通 2026-10-29 跌 -18.71%（科创板 ±20%，合法）被拒 → 日K 序列缺一天。
+#   板块限制：主板 ±10% / 科创板(688)·创业板(30) ±20% / 北交所(8·4) ±30%。
+#   阈值 = 板块限制 + 1pct 余量。
+def _max_chg_for(code):
+    c = str(code)
+    if c.startswith(("688", "689", "300", "301", "302")):
+        return 21.0      # 科创板 / 创业板 ±20%
+    if c.startswith(("8", "4", "92")):
+        return 31.0      # 北交所 ±30%
+    return 11.0          # 主板 ±10%
+
+
 MAX_CHG = 11.0
 
 
@@ -101,8 +115,9 @@ def backfill_klines(db, target, codes):
             r = cur.fetchone()
         if r and r[0]:
             chg = (c / float(r[0]) - 1) * 100
-            if abs(chg) > MAX_CHG:
-                bad.append(f"{code} 涨跌 {chg:+.2f}% 越界")
+            limit = _max_chg_for(code)
+            if abs(chg) > limit:
+                bad.append(f"{code} 涨跌 {chg:+.2f}% 越界（阈值 {limit}%）")
                 continue
             prev_note = f"{chg:+.2f}%"
         else:
