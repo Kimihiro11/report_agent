@@ -265,13 +265,13 @@ class TestWeiboLLMCapacity(unittest.TestCase):
         self.assertLessEqual(len(cut), 50)
 
     def test_normalize_capacity_enough_for_dense_analysis(self):
-        """容量下限：mainline 至少 6 条、每条 ≥100 字；core_logic ≥800。"""
+        """容量下限：mainline 至少 6 条、每条 ≥100 字；core_logic ≥1500。"""
         from ra.analysis.weibo_llm import normalize_llm
         payload = {
             "date": "20260101",
             "tangshi_deep": {
                 "direction": "偏空",
-                "core_logic": "核心逻辑" * 300,        # 900 字
+                "core_logic": "核心逻辑" * 500,        # 2000 字，测 1600 上限
                 "mainline": [f"第{i}条主线内容" + "细节" * 60 for i in range(1, 7)],
                 "avoid": [f"第{i}条回避" + "说明" * 40 for i in range(1, 6)],
                 "action": "操作含义" * 200,              # 400 字
@@ -286,7 +286,10 @@ class TestWeiboLLMCapacity(unittest.TestCase):
         self.assertEqual(len(td["risks"]), 5)
         self.assertGreaterEqual(len(td["mainline"][0]), 100,
                                 "mainline 每条容量应 ≥100 字")
-        self.assertGreaterEqual(len(td["core_logic"]), 800)
+        # 2026-11-02 由 900 上调至 1600：唐史单次连发 5 条时 900 字装不下
+        # （实测被截 719 字，托市动作/债市反馈/一级市场三块全丢）
+        self.assertGreaterEqual(len(td["core_logic"]), 1500,
+                                "core_logic 容量应 ≥1500 字")
         self.assertGreaterEqual(len(td["action"]), 400)
 
     def test_render_escapes_each_item_separately(self):

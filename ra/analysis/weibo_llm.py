@@ -100,8 +100,11 @@ def normalize_llm(obj, watchlist=None, date8=""):
         # 只能承载「一句结论」，装不下「机制 + 引文 + 推论」的高密度解构
         # （实测：写「海外链毛利下行」那条 50 字处被切断，结论整段丢失）。
         # 现容量见 MODULES.md「注入字段容量」表。
+        # ⚠️ 2026-11-02 再调大 core_logic（900→1600）：唐史单次连发 5 条、
+        # 含机制解释+逐路点名+跟踪框架+四句结论时，900 字装不下（实测被截 719 字，
+        # ⑥⑦⑧ 三块全丢）。core_logic 是「核心逻辑」正文块，可承载长段落。
         out["tangshi_deep"] = {
-            "core_logic": _clip_md(td.get("core_logic"), 900),
+            "core_logic": _clip_md(td.get("core_logic"), 1600),
             "direction": direction,
             "direction_cls": _DIRECTIONS[direction],
             "mainline": _list_text(td.get("mainline"), 6, 130),
