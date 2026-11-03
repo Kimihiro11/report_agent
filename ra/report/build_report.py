@@ -1739,6 +1739,11 @@ def _intel_structured_html(ss, summary):
     parts.append(head)
     # 核心结论
     parts.append(f'<div class="in-core">{_esc(core)}</div>')
+    # 已解析事实（注入层 _LIST_FIELDS 上限 3 条；此前只写不渲染，事实全被丢弃）
+    facts = [str(x).strip() for x in (ss.get("facts") or []) if str(x).strip()]
+    if facts:
+        lis = "".join(f"<li>{_esc(f[:220])}</li>" for f in facts[:3])
+        parts.append(f'<div class="in-sec"><span class="in-k">事实</span><ul>{lis}</ul></div>')
     # 传导路径
     trans = [str(x).strip() for x in (ss.get("transmission") or []) if str(x).strip()]
     if trans:

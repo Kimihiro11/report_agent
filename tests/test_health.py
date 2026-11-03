@@ -303,6 +303,38 @@ class TestWeiboLLMCapacity(unittest.TestCase):
                          "禁止先整体 join 再 _esc（会跨条目配对）")
 
 
+class TestIntelFactsRendered(unittest.TestCase):
+    """注入层的 `facts` 必须真的渲染出来（2026-11-03 修）。
+
+    ⭐ 实测踩坑：`tools/inject_news_intel.py` 的 `_LIST_FIELDS` 上限写了
+    `facts: 3`、注入时也逐条校验「facts 为空」告警，但 `_intel_structured_html()`
+    **从未渲染 facts** → 每次精心写的 3 条解析事实**全部被静默丢弃**，
+    报告里只有 `core_conclusion` 一句话。字段有契约、渲染没实现 = 白写。
+    """
+
+    def test_facts_rendered_before_transmission(self):
+        from ra.report.build_report import _intel_structured_html
+        html = _intel_structured_html(
+            {"direction": "偏多", "confidence": 0.8, "facts": ["事实甲", "事实乙"],
+             "core_conclusion": "核心结论", "transmission": ["传导一"]}, "")
+        self.assertIn("事实甲", html, "facts 必须渲染")
+        self.assertIn("事实乙", html)
+        self.assertLess(html.index("事实甲"), html.index("传导一"),
+                        "facts 应排在核心结论之后、传导之前")
+
+    def test_facts_capped_and_escaped(self):
+        from ra.report.build_report import _intel_structured_html
+        html = _intel_structured_html(
+            {"core_conclusion": "结论", "facts": ["甲", "乙", "丙", "丁"]}, "")
+        self.assertNotIn("丁", html, "facts 上限 3 条")
+        self.assertIn("甲", html)
+        # 注入文本里的 HTML 必须转义，不得原样注入
+        html2 = _intel_structured_html(
+            {"core_conclusion": "结论", "facts": ["<script>x</script>"]}, "")
+        self.assertNotIn("<script>", html2)
+        self.assertIn("&lt;script&gt;", html2)
+
+
 class TestNewsIntelConsistency(unittest.TestCase):
     """news_intel 注入摘要与快照实际数据的一致性（2026-10-22 修）。
 
