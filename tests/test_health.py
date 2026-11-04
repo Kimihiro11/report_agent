@@ -159,6 +159,48 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestStockVolumeLine(unittest.TestCase):
+    """自选股卡片必须有量能行 + 涨跌幅兜底（2026-11-04 新增）。
+
+    ⭐ 加 volume 列之前，卡片只有收盘价、**涨跌幅是空的**（诊断缓存 `quote` 为 None），
+    量能更是完全不可见 —— 于是「缩量阴跌」和「放量出清」在报告里长得一模一样。
+    """
+
+    def setUp(self):
+        self.src = (BASE / "ra" / "report" / "build_report.py").read_text(encoding="utf-8")
+
+    def test_volume_profile_exists(self):
+        self.assertIn("def volume_profile(", self.src)
+        self.assertIn("daily_klines", self.src)
+        # 口径：必须锚定报告日之前，不能用实时价
+        self.assertIn("trade_date <= %s", self.src)
+
+    def test_card_renders_volume_and_fallback_chg(self):
+        self.assertIn("vol_html", self.src)
+        self.assertIn("量能：量比", self.src)
+        self.assertIn("缩量阴跌·无承接", self.src)
+        self.assertIn('vp.get("chg_pct")', self.src,
+                      "涨跌幅须在诊断 quote 缺失时用日K兜底")
+
+    def test_thresholds(self):
+        self.assertIn("ratio >= 1.5", self.src)
+        self.assertIn("ratio >= 0.8", self.src)
+
+    def test_volume_profile_returns_ratio(self):
+        """有 volume 数据时应返回 ratio/state/chg_pct（库不可用则跳过）。"""
+        try:
+            from ra.report.build_report import volume_profile
+            vp = volume_profile("688409")
+        except Exception as exc:  # noqa: BLE001
+            self.skipTest(f"DB 不可用: {exc}")
+        if not vp:
+            self.skipTest("无数据（DB 未起或该票无 volume）")
+        if vp.get("ratio") is not None:
+            self.assertGreater(vp["ratio"], 0)
+            self.assertIn(vp["state"], ("放量", "平量", "缩量"))
+            self.assertIn("chg_pct", vp)
+
+
 class TestWeiboFullText(unittest.TestCase):
     """微博长文必须全量入库（2026-11-04 修）。
 

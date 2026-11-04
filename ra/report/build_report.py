@@ -753,9 +753,57 @@ def agg_block(d):
     </div>'''
 
 
+_VOL_CACHE = {}
+
+
+def volume_profile(code):
+    """当日量 ÷ 前 5 日均量（口径：DB `daily_klines`，锚定报告日之前）。
+
+    ⚠️ 不用诊断里的实时量：诊断走 `peak_detector.get_kline`（实时接口），
+    盘前会带当日盘中量，与报告的 `pre_market` 口径冲突。这里只读已入库日K。
+    2026-11-04 起 `daily_klines` 才有 volume 列，之前该函数只能返回空。
+    """
+    if code in _VOL_CACHE:
+        return _VOL_CACHE[code]
+    out = {}
+    try:
+        from ra.infra.db import StockAgentDB
+        cfg = agent.load_config()
+        db = StockAgentDB(password=((cfg.get("database") or {}).get("password") or ""))
+        with db._cursor() as cur:
+            cur.execute(
+                "SELECT trade_date, close, volume FROM daily_klines "
+                "WHERE stock_code = %s AND trade_date <= %s "
+                "ORDER BY trade_date DESC LIMIT 6",
+                (code, TODAY),
+            )
+            rows = cur.fetchall()
+        if rows and len(rows) >= 6 and rows[0][2]:
+            last = float(rows[0][2])
+            prev5 = sum(float(r[2]) for r in rows[1:6]) / 5
+            if prev5 > 0:
+                ratio = last / prev5
+                state = "放量" if ratio >= 1.5 else ("平量" if ratio >= 0.8 else "缩量")
+                # 涨跌幅：诊断缓存里 quote 常为 None（老缓存没存），用日K收盘补
+                chg_pct = None
+                if rows[0][1] and rows[1][1]:
+                    c0, c1 = float(rows[0][1]), float(rows[1][1])
+                    if c1:
+                        chg_pct = round((c0 / c1 - 1) * 100, 2)
+                out = {"ratio": round(ratio, 2), "state": state, "chg_pct": chg_pct,
+                       "last": last, "prev5": prev5, "date": rows[0][0]}
+        elif rows:
+            out = {"partial": True, "n": len(rows)}
+    except Exception:
+        out = {}
+    _VOL_CACHE[code] = out
+    return out
+
+
 def stock_card(code):
     sector = _load_sector(code)
     d = diag_for(code)
+    vp = volume_profile(code)   # 量能 + 涨跌幅兜底（日K口径，与报告锚定日一致）
     if d:
         score = fmt(d.get("total_score", "—"))
         level = d.get("level", "—")
@@ -772,6 +820,8 @@ def stock_card(code):
         # 当日收盘/最新价 + 涨跌幅（涨红跌绿）
         price = d.get("latest_price")
         chg = (d.get("quote") or {}).get("change_pct")
+        if not isinstance(chg, (int, float)):
+            chg = vp.get("chg_pct")   # 诊断缓存缺 quote 时用日K补，避免只显示价格不显示涨跌
         chg = chg if isinstance(chg, (int, float)) else None
         if price is not None:
             chg_disp = f"{'+' if chg >= 0 else ''}{chg:.2f}%" if chg is not None else ""
@@ -794,6 +844,26 @@ def stock_card(code):
         if sl:
             stop_txt = f"｜ 止损位 <b>{sl}</b>元"
     pos_html = f'<p class="stock-meta">参考仓位 {pos_txt}（市场{ {"bullish":"偏多","neutral":"震荡","bearish":"偏空"}.get(market_state,"震荡") } + 诊断修正）{stop_txt}</p>' if pos_txt else ""
+    # 量能（2026-11-04 新增）：量比 + 放量/平量/缩量，量价必须一起读
+    vol_html = ""
+    if vp.get("ratio") is not None:
+        v_state = vp["state"]
+        v_cls = "up" if v_state == "放量" else ("down" if v_state == "缩量" else "")
+        chg_v = vp.get("chg_pct")   # 与价格行同源（日K兜底后），避免解读缺失
+        # 量价组合解读：放量涨=资金进；放量跌=出清；缩量涨=反弹弱；缩量跌=无承接
+        if isinstance(chg_v, (int, float)):
+            combo = {("放量", True): "放量上涨·资金进场", ("放量", False): "放量下跌·恐慌出清",
+                     ("缩量", True): "缩量反弹·质量差", ("缩量", False): "缩量阴跌·无承接",
+                     ("平量", True): "平量上涨·温和", ("平量", False): "平量下跌·观望"}.get(
+                        (v_state, chg_v >= 0), "")
+        else:
+            combo = ""
+        vol_html = (f'<p class="stock-meta">量能：量比 <b>{vp["ratio"]}</b>'
+                    f'（<span class="{v_cls}">{v_state}</span>）'
+                    f'｜前5日均量 {vp["prev5"] / 1e4:.0f} 万股'
+                    + (f'｜{combo}' if combo else '') + '</p>')
+    elif vp.get("partial"):
+        vol_html = '<p class="stock-meta">量能：数据不足（入库仅 %d 日）</p>' % vp.get("n", 0)
     return f'''
     <div class="stock-card">
       <div class="stock-title">
@@ -805,6 +875,7 @@ def stock_card(code):
       {sig_html}
       <p class="stock-meta">见顶诊断：评分 {score} | {level} | {trend}</p>
       {pos_html}
+      {vol_html}
     </div>'''
 
 
