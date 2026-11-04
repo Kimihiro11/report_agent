@@ -74,7 +74,16 @@ def detect_proxy(force=False):
     ⚠️ 必须 **优先本地端口探测**，不能直接信任环境变量：
     WorkBuddy 宿主会注入 HTTP_PROXY/HTTPS_PROXY=127.0.0.1:<内部服务端口>，
     那是内部 hooks 通道，直接复用会把业务流量打到非代理端口上。
+
+    ⭐ `RA_FORCE_DIRECT=1` → 跳过代理、全部直连。用于**代理客户端挂了但端口还 OPEN**
+    的情形（2026-11-04 实测：转发全 ERR，直连 CNBC/WSJ/财政部反而通）。
+    此时逐请求「先失败一次再降级」会白等大量超时（news 抓取 10 分钟无结果），
+    必须整体关掉代理；`mark_proxy_dead()` 的冷却只在**进程内**有效，救不了新进程。
     """
+    if os.environ.get("RA_FORCE_DIRECT", "").strip() in ("1", "true", "yes"):
+        _state["proxy"] = None
+        _state["probed"] = True
+        return None
     if _state["probed"] and not force:
         return _state["proxy"]
 

@@ -16,6 +16,7 @@ import 本模块无副作用（不解析 argv / 不联网 / 不写盘）；执�
 """
 import json
 import argparse
+import os
 import re
 from datetime import datetime
 from html import escape as _html_escape
@@ -2018,8 +2019,30 @@ def focus_section():
             except Exception:
                 state = None
         if state is None and TODAY == datetime.now().strftime("%Y-%m-%d"):
+            # ⚠️ 2026-11-04：实时抓取必须带**超时保护**。
+            # 网络坏时（代理客户端挂了但端口仍 OPEN / Google 直连不通）逐个研究所
+            # 在 urllib 层无限等超时，实测 report 直接挂死 10 分钟以上、被 timeout 杀掉，
+            # 一份报告都出不来。降级策略：超过 FOCUS_TIMEOUT 秒就放弃实时抓取，
+            # 走下面的「实时数据缺失」占位（宁缺不假）。
+            FOCUS_TIMEOUT = int(os.environ.get("RA_FOCUS_TIMEOUT", "90"))
             try:
-                state = fm.run_focus_monitor(no_fetch=False)
+                import threading
+                _box = {}
+
+                def _run():
+                    try:
+                        _box["state"] = fm.run_focus_monitor(no_fetch=False)
+                    except Exception as exc:  # noqa: BLE001
+                        _box["err"] = exc
+
+                th = threading.Thread(target=_run, daemon=True)
+                th.start()
+                th.join(FOCUS_TIMEOUT)
+                if th.is_alive():
+                    print(f"[焦点监控] 抓取超时（>{FOCUS_TIMEOUT}s），降级为「实时数据缺失」")
+                    state = None
+                else:
+                    state = _box.get("state")
             except Exception:
                 state = None
         if state is None:
