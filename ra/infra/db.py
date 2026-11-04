@@ -159,6 +159,7 @@ class StockAgentDB:
                 high NUMERIC(12,2),
                 low NUMERIC(12,2),
                 close NUMERIC(12,2),
+                volume BIGINT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(stock_code, trade_date)
             )""",
@@ -508,9 +509,13 @@ class StockAgentDB:
                     high NUMERIC(12,2),
                     low NUMERIC(12,2),
                     close NUMERIC(12,2),
+                    volume BIGINT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(stock_code, trade_date)
                 )""")
+            # 2026-11-04：daily_klines 原本没有成交量列（只有 OHLC），
+            # 导致任何量能判断（放量/缩量、量价背离）都无法做。老库靠 ALTER 自愈。
+            cur.execute("ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS volume BIGINT")
             for col in ["status VARCHAR(10)", "price_source VARCHAR(10)", "note TEXT"]:
                 cur.execute(f"ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS {col}")
 
@@ -547,11 +552,14 @@ class StockAgentDB:
         with self._cursor() as cur:
             for k in klines:
                 cur.execute(
-                    """INSERT INTO daily_klines (stock_code, trade_date, open, high, low, close)
-                    VALUES (%s,%s,%s,%s,%s,%s)
+                    """INSERT INTO daily_klines (stock_code, trade_date, open, high, low, close, volume)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (stock_code, trade_date) DO UPDATE SET
-                        open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low, close=EXCLUDED.close""",
-                    (stock_code, k["date"], k.get("open"), k.get("high"), k.get("low"), k.get("close")),
+                        open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low,
+                        close=EXCLUDED.close,
+                        volume=COALESCE(EXCLUDED.volume, daily_klines.volume)""",
+                    (stock_code, k["date"], k.get("open"), k.get("high"), k.get("low"),
+                     k.get("close"), k.get("volume")),
                 )
                 n += 1
         print(f"[DB] 日K线入库: {stock_code} {n} 根")

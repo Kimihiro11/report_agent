@@ -1,0 +1,111 @@
+{
+  "view": "看跌",
+  "special_notes": [],
+  "data_ok": true,
+  "short_term": {
+    "range_chg": -28.14,
+    "days": 10,
+    "hl_pattern": "下移",
+    "state": "下降趋势"
+  },
+  "breakout": {
+    "resistance": 181.08,
+    "status": "未突破",
+    "above_pct": null,
+    "volume": "N/A",
+    "break_day": null
+  },
+  "momentum": {
+    "last3": -8.54,
+    "prev3": -11.74,
+    "judge": "加速"
+  },
+  "ma": {
+    "ma5": 108.14,
+    "ma10": 118.31,
+    "ma20": 134.72,
+    "arrange": "空头排列",
+    "above": [
+      "均未站上"
+    ],
+    "ma20_dev": -25.03,
+    "overheat": false,
+    "cross": "未金叉",
+    "strength": "无（三条均线均未站上）"
+  },
+  "macd": {
+    "dif": -19.15,
+    "dea": -16.8,
+    "hist": -4.72,
+    "cross": "未金叉",
+    "zero": "零轴下方",
+    "pattern": "连续3日放大"
+  },
+  "rsi": {
+    "val": 24.6,
+    "zone": "弱势(<30)",
+    "above50_days": 0,
+    "overbought_note": ""
+  },
+  "kdj": {
+    "k": 7.8,
+    "d": 9.5,
+    "j": 4.6,
+    "cross": "死叉",
+    "j_note": ""
+  },
+  "view_score": -4,
+  "targets": [],
+  "targets_note": "看跌观点下不设上行目标；反弹至关键阻力位附近减仓（见关键价位）。",
+  "trade": {
+    "entry": "N/A",
+    "entry_note": "",
+    "add": "N/A",
+    "add_note": ""
+  },
+  "risk": {
+    "price": 96.97,
+    "rel_pct": -3.99,
+    "rule": "min(MA20, 近5日低点) × 0.97（下方 3% 缓冲）"
+  },
+  "key_levels": {
+    "strong_support": 99.97,
+    "support_note": "近 5 日最低点",
+    "breakout_confirm": 181.99,
+    "target_resistance": 333.33
+  },
+  "exposure": {
+    "pct": 8,
+    "conditions_met": [
+      "MACD 柱持续放大"
+    ],
+    "rule": "满足至少 2 条上调条件才上调敞口（4 条全满 = 20% 上限）",
+    "cap_note": ""
+  },
+  "checks": [
+    "全部数值来自 calc_indicators 真实日K/实时行情，缺口已标 N/A",
+    "风险控制参考位已给出",
+    "无空指标名判断：每个信号均附具体数值",
+    "术语全篇统一（看跌）"
+  ],
+  "_tech": {
+    "close": 101.0,
+    "ma5": 108.14,
+    "ma10": 118.31,
+    "ma20": 134.72,
+    "ma60": 174.56,
+    "rsi6": 24.17,
+    "rsi14": null,
+    "k": 7.85,
+    "d": 9.46,
+    "j": 4.62,
+    "vol_ratio": null
+  },
+  "_meta": {
+    "code": "688409",
+    "name": "富创精密",
+    "bars": 137,
+    "last_trade_date": "2026-11-03",
+    "source": "daily_klines（真实日K，未含实时价）"
+  }
+}

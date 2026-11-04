@@ -714,6 +714,36 @@ def _parse_weibo_time(created_at):
         return None
 
 
+def _fetch_long_text(mid, cookie, user_id):
+    """取微博长文全文（longTextContent）。
+
+    ⚠️ 2026-11-04：`container/getIndex` 返回的 `text` 对长文只给**前 ~148 字 + 「…全文」**，
+    此前采集直接 `clean[:500]` 落盘 → 报告与解构拿到的都是残篇（实测唐史 461 字长文只剩 148）。
+    必须用 `statuses/extend?id=<mid>` 取全文，**且不能再截断**。
+    mid 只能从 container 接口拿（extend 不接受其它 id）。
+    """
+    if not mid:
+        return ""
+    url = f"https://m.weibo.cn/statuses/extend?id={mid}"
+    headers = {
+        "Referer": f"https://m.weibo.cn/detail/{mid}",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "Cookie": cookie,
+    }
+    raw = fetch_url(url, headers)
+    if not raw:
+        return ""
+    try:
+        d = json.loads(raw)
+        if d.get("ok") != 1:
+            return ""
+        body = (d.get("data") or {}).get("longTextContent") or ""
+        return re.sub(r"<[^>]+>", "", body).strip()
+    except Exception:
+        return ""
+
+
 def fetch_weibo(user_id, name, cookie="", only_today=True, lookback_days=1):
     """抓取微博用户最新内容（m.weibo.cn API），需在config.json配置weibo_cookie。
 
@@ -754,13 +784,18 @@ def fetch_weibo(user_id, name, cookie="", only_today=True, lookback_days=1):
                 continue
             raw_text = mblog.get("text", "")
             clean = re.sub(r"<[^>]+>", "", raw_text).strip()
+            # 长文（isLongText 或带「…全文」）必须补全文，否则只有前 ~148 字
+            if mblog.get("isLongText") or ("全文" in raw_text):
+                full = _fetch_long_text(mblog.get("mid"), cookie, user_id)
+                if full and len(full) > len(clean):
+                    clean = full
             created = mblog.get("created_at", "")
             if only_today:
                 dt = _parse_weibo_time(created)
                 if dt is None or (datetime.now().date() - dt.date()).days >= lookback_days:
                     continue  # 超出回溯窗口，跳过
             if clean and len(clean) > 10:
-                posts.append({"text": clean[:500], "time": created})
+                posts.append({"text": clean, "time": created})  # 全量，不截断
         print(f"  获取 {len(posts)} 条微博（回溯 {lookback_days} 天）")
         return posts[:10]
     except Exception as e:

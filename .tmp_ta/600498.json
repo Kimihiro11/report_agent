@@ -1,0 +1,109 @@
+{
+  "view": "看跌",
+  "special_notes": [],
+  "data_ok": true,
+  "short_term": {
+    "range_chg": -16.52,
+    "days": 10,
+    "hl_pattern": "下移",
+    "state": "下降趋势"
+  },
+  "breakout": {
+    "resistance": 36.8,
+    "status": "未突破",
+    "above_pct": null,
+    "volume": "N/A",
+    "break_day": null
+  },
+  "momentum": {
+    "last3": -8.14,
+    "prev3": -3.63,
+    "judge": "减速"
+  },
+  "ma": {
+    "ma5": 27.12,
+    "ma10": 28.38,
+    "ma20": 30.11,
+    "arrange": "空头排列",
+    "above": [
+      "均未站上"
+    ],
+    "ma20_dev": -14.9,
+    "overheat": false,
+    "cross": "未金叉",
+    "strength": "无（三条均线均未站上）"
+  },
+  "macd": {
+    "dif": -3.01,
+    "dea": -2.84,
+    "hist": -0.33,
+    "cross": "未金叉",
+    "zero": "零轴下方",
+    "pattern": "连续2日缩小"
+  },
+  "rsi": {
+    "val": 27.3,
+    "zone": "弱势(<30)",
+    "above50_days": 0,
+    "overbought_note": ""
+  },
+  "kdj": {
+    "k": 10.0,
+    "d": 15.6,
+    "j": -1.2,
+    "cross": "死叉",
+    "j_note": ""
+  },
+  "view_score": -6,
+  "targets": [],
+  "targets_note": "看跌观点下不设上行目标；反弹至关键阻力位附近减仓（见关键价位）。",
+  "trade": {
+    "entry": "N/A",
+    "entry_note": "",
+    "add": "N/A",
+    "add_note": ""
+  },
+  "risk": {
+    "price": 24.76,
+    "rel_pct": -3.36,
+    "rule": "min(MA20, 近5日低点) × 0.97（下方 3% 缓冲）"
+  },
+  "key_levels": {
+    "strong_support": 25.53,
+    "support_note": "近 5 日最低点",
+    "breakout_confirm": 36.98,
+    "target_resistance": 87.58
+  },
+  "exposure": {
+    "pct": 8,
+    "conditions_met": [],
+    "rule": "满足至少 2 条上调条件才上调敞口（4 条全满 = 20% 上限）",
+    "cap_note": ""
+  },
+  "checks": [
+    "全部数值来自 calc_indicators 真实日K/实时行情，缺口已标 N/A",
+    "风险控制参考位已给出",
+    "无空指标名判断：每个信号均附具体数值",
+    "术语全篇统一（看跌）"
+  ],
+  "_tech": {
+    "close": 25.62,
+    "ma5": 27.12,
+    "ma10": 28.38,
+    "ma20": 30.11,
+    "ma60": 36.76,
+    "rsi6": 23.67,
+    "rsi14": null,
+    "k": 9.99,
+    "d": 15.57,
+    "j": -1.17,
+    "vol_ratio": null
+  },
+  "_meta": {
+    "code": "600498",
+    "name": "烽火通信",
+    "bars": 137,
+    "last_trade_date": "2026-11-03",
+    "source": "daily_klines（真实日K，未含实时价）"
+  }
+}

@@ -159,6 +159,65 @@ class TestNetLayer(unittest.TestCase):
             self.assertTrue(self.net._port_alive(host, port), "探测到的代理端口应存活")
 
 
+class TestWeiboFullText(unittest.TestCase):
+    """微博长文必须全量入库（2026-11-04 修）。
+
+    ⭐ 实测踩坑：`container/getIndex` 对长文只返回**前 ~148 字 + 「…全文」**，
+    而采集层写的是 `clean[:500]` 且**从未调用 `statuses/extend`** ——
+    结果报告与解构拿到的全是残篇（唐史 461 字长文只剩 148 字），
+    关键结论（"etf 持续买入 + 权重定点拉升"那段）整段丢失。
+    """
+
+    def setUp(self):
+        self.src = (BASE / "ra" / "stock_report_agent.py").read_text(encoding="utf-8")
+
+    def test_has_extend_call(self):
+        self.assertIn("statuses/extend?id=", self.src,
+                      "必须调用 statuses/extend 取长文全文")
+        self.assertIn("_fetch_long_text", self.src)
+
+    def test_no_hard_truncation(self):
+        # 落盘不得再截断：禁止 text[:N] 这类硬切
+        import re
+        m = re.search(r'posts\.append\(\{"text":\s*clean\s*\[\s*:\s*\d+\s*\]', self.src)
+        self.assertIsNone(m, "微博正文禁止硬截断（曾写 clean[:500]，长文全丢）")
+
+    def test_long_text_trigger(self):
+        self.assertIn("isLongText", self.src,
+                      "长文判定应看 isLongText 或文本内含「全文」标记")
+
+
+class TestKlineVolume(unittest.TestCase):
+    """daily_klines 必须有成交量列（2026-11-04 新增）。
+
+    ⭐ 实测踩坑：表里只有 OHLC，**没有 volume** → 放量/缩量、量价背离、
+    右侧买点的「放量站回 MA5」全部无法判定，脚本按 volume 取数直接报错。
+    """
+
+    def setUp(self):
+        self.db_src = (BASE / "ra" / "infra" / "db.py").read_text(encoding="utf-8")
+        self.bt_src = (BASE / "ra" / "analysis" / "backtest.py").read_text(encoding="utf-8")
+
+    def test_table_has_volume(self):
+        self.assertIn("volume BIGINT", self.db_src, "建表必须含 volume")
+        self.assertIn("ADD COLUMN IF NOT EXISTS volume", self.db_src,
+                      "老库需 ALTER 自愈")
+
+    def test_save_klines_writes_volume(self):
+        self.assertIn("close, volume)", self.db_src)
+        self.assertIn("k.get(\"volume\")", self.db_src)
+
+    def test_sources_carry_volume(self):
+        self.assertIn('"volume": float(k["volume"])', self.bt_src,
+                      "新浪主源解析必须带 volume")
+        self.assertIn("float(p[5]) * 100", self.bt_src,
+                      "东财兜底 f56 是「手」，须 ×100 统一为股")
+
+    def test_backfill_passes_volume(self):
+        bk = (BASE / "tools" / "backfill_day.py").read_text(encoding="utf-8")
+        self.assertIn('row.get("volume")', bk, "补数必须传 volume")
+
+
 class TestBackfillChgLimit(unittest.TestCase):
     """补数涨跌校验阈值必须按板块涨跌幅限制（2026-10-30 修）。
 

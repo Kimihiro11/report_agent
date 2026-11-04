@@ -122,7 +122,8 @@ def backfill_klines(db, target, codes):
             prev_note = f"{chg:+.2f}%"
         else:
             prev_note = "无prev"
-        db.save_klines(code, [{"date": target, "open": o, "high": h, "low": l, "close": c}])
+        db.save_klines(code, [{"date": target, "open": o, "high": h, "low": l, "close": c,
+                                  "volume": row.get("volume")}])
         ok += 1
         print(f"    {code} close={c} ({prev_note})")
     if bad:

@@ -355,7 +355,9 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
             with _net.urlopen(req, timeout=10, url=sina) as r:
                 raw = json.loads(r.read().decode("utf-8"))
             out = [{"date": k["day"], "open": float(k["open"]), "close": float(k["close"]),
-                    "high": float(k["high"]), "low": float(k["low"])} for k in raw]
+                    "high": float(k["high"]), "low": float(k["low"]),
+                    "volume": float(k["volume"]) if k.get("volume") not in (None, "") else None}
+                   for k in raw]
             out = _kline_fill_tail(code, out, end)
             _EM_CACHE[code] = out
             return out
@@ -366,7 +368,7 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
     mkt = "1" if code[0] == "6" else "0"
     secid = f"{mkt}.{code}"
     em = (f"https://push2his.eastmoney.com/api/qt/stock/kline/get?"
-          f"secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55&klt=101&fqt=1&beg={beg}&end={end}")
+          f"secid={secid}&fields1=f1&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=1&beg={beg}&end={end}")
     for attempt in range(2):
         try:
             time.sleep(0.4 * attempt)
@@ -379,7 +381,9 @@ def _fetch_kline_live(code: str, beg="2026-06-01", end=None):
             for line in raw:
                 p = line.split(",")
                 out.append({"date": p[0], "open": float(p[1]), "close": float(p[2]),
-                            "high": float(p[3]), "low": float(p[4])})
+                            "high": float(p[3]), "low": float(p[4]),
+                            # 东财 f56 单位是「手」，统一换算为「股」（1 手 = 100 股）
+                            "volume": (float(p[5]) * 100) if len(p) > 5 and p[5] not in (None, "") else None})
             out = _kline_fill_tail(code, out, end)
             _EM_CACHE[code] = out
             return out

@@ -1,0 +1,111 @@
+{
+  "view": "看跌",
+  "special_notes": [],
+  "data_ok": true,
+  "short_term": {
+    "range_chg": -42.32,
+    "days": 10,
+    "hl_pattern": "下移",
+    "state": "下降趋势"
+  },
+  "breakout": {
+    "resistance": 215.0,
+    "status": "未突破",
+    "above_pct": null,
+    "volume": "N/A",
+    "break_day": null
+  },
+  "momentum": {
+    "last3": -13.86,
+    "prev3": -22.86,
+    "judge": "加速"
+  },
+  "ma": {
+    "ma5": 105.07,
+    "ma10": 126.44,
+    "ma20": 151.45,
+    "arrange": "空头排列",
+    "above": [
+      "均未站上"
+    ],
+    "ma20_dev": -37.91,
+    "overheat": false,
+    "cross": "未金叉",
+    "strength": "无（三条均线均未站上）"
+  },
+  "macd": {
+    "dif": -32.91,
+    "dea": -28.82,
+    "hist": -8.19,
+    "cross": "未金叉",
+    "zero": "零轴下方",
+    "pattern": "连续3日放大"
+  },
+  "rsi": {
+    "val": 15.4,
+    "zone": "弱势(<30)",
+    "above50_days": 0,
+    "overbought_note": ""
+  },
+  "kdj": {
+    "k": 4.1,
+    "d": 6.3,
+    "j": -0.3,
+    "cross": "死叉",
+    "j_note": ""
+  },
+  "view_score": -4,
+  "targets": [],
+  "targets_note": "看跌观点下不设上行目标；反弹至关键阻力位附近减仓（见关键价位）。",
+  "trade": {
+    "entry": "N/A",
+    "entry_note": "",
+    "add": "N/A",
+    "add_note": ""
+  },
+  "risk": {
+    "price": 89.72,
+    "rel_pct": -4.58,
+    "rule": "min(MA20, 近5日低点) × 0.97（下方 3% 缓冲）"
+  },
+  "key_levels": {
+    "strong_support": 92.5,
+    "support_note": "近 5 日最低点",
+    "breakout_confirm": 216.07,
+    "target_resistance": 444.0
+  },
+  "exposure": {
+    "pct": 8,
+    "conditions_met": [
+      "MACD 柱持续放大"
+    ],
+    "rule": "满足至少 2 条上调条件才上调敞口（4 条全满 = 20% 上限）",
+    "cap_note": ""
+  },
+  "checks": [
+    "全部数值来自 calc_indicators 真实日K/实时行情，缺口已标 N/A",
+    "风险控制参考位已给出",
+    "无空指标名判断：每个信号均附具体数值",
+    "术语全篇统一（看跌）"
+  ],
+  "_tech": {
+    "close": 94.03,
+    "ma5": 105.07,
+    "ma10": 126.44,
+    "ma20": 151.45,
+    "ma60": 218.15,
+    "rsi6": 7.97,
+    "rsi14": null,
+    "k": 4.11,
+    "d": 6.32,
+    "j": -0.31,
+    "vol_ratio": null
+  },
+  "_meta": {
+    "code": "688668",
+    "name": "鼎通科技",
+    "bars": 137,
+    "last_trade_date": "2026-11-03",
+    "source": "daily_klines（真实日K，未含实时价）"
+  }
+}

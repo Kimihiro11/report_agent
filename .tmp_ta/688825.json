@@ -1,0 +1,109 @@
+{
+  "view": "看跌",
+  "special_notes": [],
+  "data_ok": true,
+  "short_term": {
+    "range_chg": -3.77,
+    "days": 10,
+    "hl_pattern": "抬升",
+    "state": "震荡"
+  },
+  "breakout": {
+    "resistance": 55.85,
+    "status": "未突破",
+    "above_pct": null,
+    "volume": "N/A",
+    "break_day": null
+  },
+  "momentum": {
+    "last3": -9.49,
+    "prev3": 0.49,
+    "judge": "减速"
+  },
+  "ma": {
+    "ma5": 41.91,
+    "ma10": 41.87,
+    "ma20": 44.34,
+    "arrange": "交织",
+    "above": [
+      "均未站上"
+    ],
+    "ma20_dev": -12.5,
+    "overheat": false,
+    "cross": "已金叉（第5日）",
+    "strength": "无（三条均线均未站上）"
+  },
+  "macd": {
+    "dif": -3.16,
+    "dea": -3.15,
+    "hist": -0.02,
+    "cross": "死叉",
+    "zero": "零轴下方",
+    "pattern": "连续2日缩小"
+  },
+  "rsi": {
+    "val": 31.4,
+    "zone": "偏弱(30-50)",
+    "above50_days": 0,
+    "overbought_note": ""
+  },
+  "kdj": {
+    "k": 34.3,
+    "d": 42.2,
+    "j": 18.6,
+    "cross": "死叉",
+    "j_note": ""
+  },
+  "view_score": -6,
+  "targets": [],
+  "targets_note": "看跌观点下不设上行目标；反弹至关键阻力位附近减仓（见关键价位）。",
+  "trade": {
+    "entry": "N/A",
+    "entry_note": "",
+    "add": "N/A",
+    "add_note": ""
+  },
+  "risk": {
+    "price": 37.64,
+    "rel_pct": -2.99,
+    "rule": "min(MA20, 近5日低点) × 0.97（下方 3% 缓冲）"
+  },
+  "key_levels": {
+    "strong_support": 38.8,
+    "support_note": "近 5 日最低点",
+    "breakout_confirm": 56.13,
+    "target_resistance": 61.8
+  },
+  "exposure": {
+    "pct": 8,
+    "conditions_met": [],
+    "rule": "满足至少 2 条上调条件才上调敞口（4 条全满 = 20% 上限）",
+    "cap_note": ""
+  },
+  "checks": [
+    "全部数值来自 calc_indicators 真实日K/实时行情，缺口已标 N/A",
+    "风险控制参考位已给出",
+    "无空指标名判断：每个信号均附具体数值",
+    "术语全篇统一（看跌）"
+  ],
+  "_tech": {
+    "close": 38.8,
+    "ma5": 41.91,
+    "ma10": 41.87,
+    "ma20": 44.34,
+    "ma60": 52.06,
+    "rsi6": 24.5,
+    "rsi14": null,
+    "k": 34.34,
+    "d": 42.23,
+    "j": 18.56,
+    "vol_ratio": null
+  },
+  "_meta": {
+    "code": "688825",
+    "name": "长鑫科技",
+    "bars": 66,
+    "last_trade_date": "2026-11-03",
+    "source": "daily_klines（真实日K，未含实时价）"
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "view": "看跌",
+  "special_notes": [],
+  "data_ok": true,
+  "short_term": {
+    "range_chg": -32.81,
+    "days": 10,
+    "hl_pattern": "下移",
+    "state": "下降趋势"
+  },
+  "breakout": {
+    "resistance": 51.99,
+    "status": "未突破",
+    "above_pct": null,
+    "volume": "N/A",
+    "break_day": null
+  },
+  "momentum": {
+    "last3": -19.07,
+    "prev3": -6.93,
+    "judge": "减速"
+  },
+  "ma": {
+    "ma5": 29.94,
+    "ma10": 32.83,
+    "ma20": 37.9,
+    "arrange": "空头排列",
+    "above": [
+      "均未站上"
+    ],
+    "ma20_dev": -32.35,
+    "overheat": false,
+    "cross": "死叉",
+    "strength": "无（三条均线均未站上）"
+  },
+  "macd": {
+    "dif": -2.78,
+    "dea": -1.08,
+    "hist": -3.4,
+    "cross": "死叉",
+    "zero": "零轴下方",
+    "pattern": "连续5日缩小"
+  },
+  "rsi": {
+    "val": 26.4,
+    "zone": "弱势(<30)",
+    "above50_days": 0,
+    "overbought_note": ""
+  },
+  "kdj": {
+    "k": 5.7,
+    "d": 10.0,
+    "j": -3.0,
+    "cross": "死叉",
+    "j_note": ""
+  },
+  "view_score": -8,
+  "targets": [],
+  "targets_note": "看跌观点下不设上行目标；反弹至关键阻力位附近减仓（见关键价位）。",
+  "trade": {
+    "entry": "N/A",
+    "entry_note": "",
+    "add": "N/A",
+    "add_note": ""
+  },
+  "risk": {
+    "price": 24.85,
+    "rel_pct": -3.08,
+    "rule": "min(MA20, 近5日低点) × 0.97（下方 3% 缓冲）"
+  },
+  "key_levels": {
+    "strong_support": 25.62,
+    "support_note": "近 5 日最低点",
+    "breakout_confirm": 52.25,
+    "target_resistance": 52.58
+  },
+  "exposure": {
+    "pct": 8,
+    "conditions_met": [],
+    "rule": "满足至少 2 条上调条件才上调敞口（4 条全满 = 20% 上限）",
+    "cap_note": ""
+  },
+  "checks": [
+    "全部数值来自 calc_indicators 真实日K/实时行情，缺口已标 N/A",
+    "风险控制参考位已给出",
+    "无空指标名判断：每个信号均附具体数值",
+    "术语全篇统一（看跌）"
+  ],
+  "_tech": {
+    "close": 25.64,
+    "ma5": 29.94,
+    "ma10": 32.83,
+    "ma20": 37.9,
+    "ma60": 35.62,
+    "rsi6": 10.38,
+    "rsi14": null,
+    "k": 5.69,
+    "d": 10.03,
+    "j": -2.99,
+    "vol_ratio": null
+  },
+  "_meta": {
+    "code": "600641",
+    "name": "先导基电",
+    "bars": 137,
+    "last_trade_date": "2026-11-03",
+    "source": "daily_klines（真实日K，未含实时价）"
+  }
+}
