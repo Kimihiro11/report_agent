@@ -36,7 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]   # ra/report/site.py → 项目根
 sys.path.insert(0, str(ROOT))
 
-TYPE_BADGE = {"早报": "b-morning", "盘中": "b-intraday", "晚报": "b-evening", "周报": "b-weekly"}
+TYPE_BADGE = {"早报": "s-b-morning", "盘中": "s-b-intraday", "晚报": "s-b-evening", "周报": "s-b-weekly"}
 TYPE_ORDER = ["早报", "盘中", "晚报", "周报"]
 
 
@@ -112,7 +112,9 @@ def load_dashboard():
     series = {}
     for d, name, price in idx_rows:
         s = series.setdefault(name, [None] * len(dates))
-        if price is not None:
+        # 库内存在 price=0 的坏点（2026-08-31 创业板指），直接画会把折线拽到 0，
+        # 按缺失处理（缺口断线），不猜真实值。
+        if price is not None and float(price) > 0:
             s[pos[d]] = float(price)
 
     wdates = [r[0] for r in width_rows]
@@ -163,17 +165,17 @@ def render_data(dash, reports):
             "y_unit": "亿", "zero_line": True, "width": 880, "plot_h": 200,
         }))
 
-    body = "".join(f'<div class="panel">{c}</div>' for c in charts) or \
-           '<div class="empty">库内数据不足，暂无法绘图</div>'
+    body = "".join(f'<div class="s-panel">{c}</div>' for c in charts) or \
+           '<div class="s-empty">库内数据不足，暂无法绘图</div>'
 
     return f'''<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>数据看板 · A股操作指引</title><style>{SHELL_CSS}</style></head><body>
-<div class="layout">
+<div class="s-layout">
 {_sidebar(reports, page="data")}
-<main><div class="wrapidx">
-<div class="hero"><h2>数据看板</h2>
-<div class="meta">指数 {len(dash["dates"])} 个交易日 ｜ 宽度 {len(dash["wdates"])} 日 ｜ ETF {len(dash["edates"])} 日</div></div>
+<main><div class="s-wrapidx">
+<div class="s-hero"><h2>数据看板</h2>
+<div class="s-meta">指数 {len(dash["dates"])} 个交易日 ｜ 宽度 {len(dash["wdates"])} 日 ｜ ETF {len(dash["edates"])} 日</div></div>
 {body}
 </div></main></div></body></html>'''
 
@@ -232,59 +234,59 @@ SHELL_CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);line-height:1.7}
 a{color:inherit;text-decoration:none}
-.layout{display:flex;min-height:100vh}
-.side{width:264px;flex:0 0 264px;background:#fff;border-right:1px solid var(--line);
+.s-layout{display:flex;min-height:100vh}
+.s-side{width:264px;flex:0 0 264px;background:#fff;border-right:1px solid var(--line);
   padding:20px 0;position:sticky;top:0;height:100vh;overflow-y:auto}
-.side h1{font-size:15px;padding:0 20px 4px;color:var(--brand)}
-.side .sub{font-size:11.5px;color:var(--muted);padding:0 20px 14px;border-bottom:1px solid var(--line);margin-bottom:10px}
-.side .filters{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px}
-.side .filters button{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--line);
+.s-side h1{font-size:15px;padding:0 20px 4px;color:var(--brand)}
+.s-side .s-sub{font-size:11.5px;color:var(--muted);padding:0 20px 14px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.s-side .s-filters{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px}
+.s-side .s-filters button{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--line);
   background:#fff;border-radius:20px;cursor:pointer;color:#4e5969}
-.side .filters button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
-.side .list{padding:0 10px}
-.side .month{font-size:11px;color:var(--muted);padding:10px 10px 4px;letter-spacing:.5px}
-.side .item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;font-size:13px}
-.side .item:hover{background:#f2f3f5}
-.side .item.cur{background:#eef0ff;color:var(--brand);font-weight:600}
-.side .item .d{font-variant-numeric:tabular-nums;color:#4e5969}
-.side .item.cur .d{color:var(--brand)}
-.dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px;background:#c9cdd4}
+.s-side .s-filters button.s-on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.s-side .s-list{padding:0 10px}
+.s-side .s-month{font-size:11px;color:var(--muted);padding:10px 10px 4px;letter-spacing:.5px}
+.s-side .s-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;font-size:13px}
+.s-side .s-item:hover{background:#f2f3f5}
+.s-side .s-item.cur{background:#eef0ff;color:var(--brand);font-weight:600}
+.s-side .s-item .s-d{font-variant-numeric:tabular-nums;color:#4e5969}
+.s-side .s-item.cur .s-d{color:var(--brand)}
+.s-dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px;background:#c9cdd4}
 .b-morning{background:#534AB7}.b-intraday{background:#e67e22}
 .b-evening{background:#2f6fd0}.b-weekly{background:#8a5a2b}
 main{flex:1;min-width:0;padding:0 0 60px}
-.topbar{position:sticky;top:0;z-index:9;background:rgba(244,245,247,.94);
+.s-topbar{position:sticky;top:0;z-index:9;background:rgba(244,245,247,.94);
   backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 26px;
   display:flex;align-items:center;gap:14px;font-size:13px}
-.topbar .nav{display:flex;gap:8px;margin-left:auto}
-.topbar .nav a{padding:4px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#4e5969}
-.topbar .nav a:hover{border-color:var(--brand2);color:var(--brand)}
-.tag{display:inline-block;font-size:11.5px;padding:1px 9px;border-radius:20px;color:#fff;background:#86909c}
-.wrapidx{max-width:1000px;margin:0 auto;padding:0 26px}
-.hero{background:linear-gradient(135deg,#3C3489,#534AB7);color:#fff;border-radius:14px;
+.s-topbar .s-nav{display:flex;gap:8px;margin-left:auto}
+.s-topbar .s-nav a{padding:4px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#4e5969}
+.s-topbar .s-nav a:hover{border-color:var(--brand2);color:var(--brand)}
+.s-tag{display:inline-block;font-size:11.5px;padding:1px 9px;border-radius:20px;color:#fff;background:#86909c}
+.s-wrapidx{max-width:1000px;margin:0 auto;padding:0 26px}
+.s-hero{background:linear-gradient(135deg,#3C3489,#534AB7);color:#fff;border-radius:14px;
   padding:22px 26px;margin:20px 0 18px}
-.hero h2{font-size:19px;margin-bottom:6px}
-.hero .meta{font-size:12.5px;opacity:.88}
-.stats{display:flex;gap:26px;margin-top:14px;flex-wrap:wrap}
-.stats .s{font-size:12px;opacity:.85}
-.stats .s b{display:block;font-size:20px;font-weight:700;opacity:1;margin-top:2px}
-.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px;
+.s-hero h2{font-size:19px;margin-bottom:6px}
+.s-hero .s-meta{font-size:12.5px;opacity:.88}
+.s-stats{display:flex;gap:26px;margin-top:14px;flex-wrap:wrap}
+.s-stats .s{font-size:12px;opacity:.85}
+.s-stats .s b{display:block;font-size:20px;font-weight:700;opacity:1;margin-top:2px}
+.s-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px;
   margin-bottom:10px;display:flex;gap:16px;align-items:flex-start}
-.card:hover{border-color:#c9cdd4;box-shadow:0 2px 10px rgba(0,0,0,.04)}
-.card .date{flex:0 0 88px;font-variant-numeric:tabular-nums}
-.card .date b{font-size:15px;display:block}
-.card .date span{font-size:11.5px;color:var(--muted)}
-.card .body{flex:1;min-width:0}
-.card .body p{font-size:13px;color:#4e5969;margin-top:5px;
+.s-card:hover{border-color:#c9cdd4;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.s-card .s-date{flex:0 0 88px;font-variant-numeric:tabular-nums}
+.s-card .s-date b{font-size:15px;display:block}
+.s-card .s-date span{font-size:11.5px;color:var(--muted)}
+.s-card .s-body{flex:1;min-width:0}
+.s-card .s-body p{font-size:13px;color:#4e5969;margin-top:5px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.card .nums{flex:0 0 128px;text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.up{color:var(--up);font-weight:600}.down{color:var(--down);font-weight:600}
-.empty{color:var(--muted);font-size:13px;padding:40px 0;text-align:center}
-.panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px;overflow-x:auto}
-.side .nav{margin:0 10px 12px;display:flex;gap:6px}
-.side .nav a{flex:1;text-align:center;font-size:12.5px;padding:6px 0;border:1px solid var(--line);border-radius:8px;color:#4e5969}
-.side .nav a.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.s-card .s-nums{flex:0 0 128px;text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.s-up{color:var(--up);font-weight:600}.s-down{color:var(--down);font-weight:600}
+.s-empty{color:var(--muted);font-size:13px;padding:40px 0;text-align:center}
+.s-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px;overflow-x:auto}
+.s-side .s-nav{margin:0 10px 12px;display:flex;gap:6px}
+.s-side .s-nav a{flex:1;text-align:center;font-size:12.5px;padding:6px 0;border:1px solid var(--line);border-radius:8px;color:#4e5969}
+.s-side .s-nav a.s-on{background:var(--brand);color:#fff;border-color:var(--brand)}
 .rp{max-width:1000px;margin:0 auto;padding:0 26px}
-@media(max-width:900px){.side{display:none}.card .nums{display:none}}
+@media(max-width:900px){.s-side{display:none}.s-card .s-nums{display:none}}
 """
 
 
@@ -295,7 +297,7 @@ def _e(s):
 def _fmt_chg(v):
     if v is None:
         return '<span style="color:#86909c">—</span>'
-    cls = "up" if v > 0 else ("down" if v < 0 else "")
+    cls = "s-up" if v > 0 else ("s-down" if v < 0 else "")
     sign = "+" if v > 0 else ""
     return f'<span class="{cls}">{sign}{v:.2f}%</span>'
 
@@ -305,29 +307,29 @@ def _sidebar(reports, cur_key=None, with_filter=False, page="index", prefix=""):
     by_month = {}
     for r in reports:
         by_month.setdefault(str(r["date"])[:7], []).append(r)
-    out = ['<aside class="side">',
+    out = ['<aside class="s-side">',
            '<h1>A股操作指引 · 历史</h1>',
-           f'<div class="sub">{len(reports)} 份报告</div>',
-           '<div class="nav">',
-           f'<a href="{prefix}index.html" class="{"on" if page == "index" else ""}">报告列表</a>',
-           f'<a href="{prefix}data.html" class="{"on" if page == "data" else ""}">数据看板</a>',
+           f'<div class="s-sub">{len(reports)} 份报告</div>',
+           '<div class="s-nav">',
+           f'<a href="{prefix}index.html" class="{"s-on" if page == "index" else ""}">报告列表</a>',
+           f'<a href="{prefix}data.html" class="{"s-on" if page == "data" else ""}">数据看板</a>',
            '</div>']
     if with_filter:
-        out.append('<div class="filters">'
-                   '<button class="on" data-f="all">全部</button>'
+        out.append('<div class="s-filters">'
+                   '<button class="s-on" data-f="all">全部</button>'
                    + "".join(f'<button data-f="{t}">{t}</button>' for t in TYPE_ORDER)
                    + '</div>')
-    out.append('<div class="list">')
+    out.append('<div class="s-list">')
     for month in sorted(by_month, reverse=True):
-        out.append(f'<div class="month">{month}</div>')
+        out.append(f'<div class="s-month">{month}</div>')
         for r in sorted(by_month[month], key=lambda x: (str(x["date"]), x["type"]), reverse=True):
             key = (str(r["date"]), r["type"])
             cur = " cur" if key == cur_key else ""
             href = f'{prefix}r/{r["date"]}-{r["type"]}.html'
             out.append(
-                f'<a class="item{cur}" href="{href}" data-t="{r["type"]}">'
-                f'<i class="dot {TYPE_BADGE.get(r["type"], "")}"></i>'
-                f'<span class="d">{str(r["date"])[5:]}</span>'
+                f'<a class="s-item{cur}" href="{href}" data-t="{r["type"]}">'
+                f'<i class="s-dot {TYPE_BADGE.get(r["type"], "")}"></i>'
+                f'<span class="s-d">{str(r["date"])[5:]}</span>'
                 f'<span>{r["type"]}</span></a>')
     out.append("</div></aside>")
     return "".join(out)
@@ -346,13 +348,13 @@ def render_index(reports, idx, width):
         if w:
             tot = (w[0] + w[1]) or 1
             nums.append(f'宽度 <b>{w[0]}/{w[1]}</b>（{w[0] * 100 // tot}% 涨）')
-        cards.append(f'''<a class="card" href="r/{d}-{r["type"]}.html" data-t="{r["type"]}">
-  <div class="date"><b>{str(d)[5:]}</b><span>{str(d)[:4]}</span></div>
-  <div class="body">
-    <span class="tag {TYPE_BADGE.get(r["type"], "")}">{r["type"]}</span>
+        cards.append(f'''<a class="s-card" href="r/{d}-{r["type"]}.html" data-t="{r["type"]}">
+  <div class="s-date"><b>{str(d)[5:]}</b><span>{str(d)[:4]}</span></div>
+  <div class="s-body">
+    <span class="s-tag {TYPE_BADGE.get(r["type"], "")}">{r["type"]}</span>
     <p>{_e(r["core"] or "（该期无核心结论摘要）")}</p>
   </div>
-  <div class="nums">{"<br>".join(nums) if nums else "—"}</div>
+  <div class="s-nums">{"<br>".join(nums) if nums else "—"}</div>
 </a>''')
 
     dates = [str(r["date"]) for r in reports]
@@ -360,28 +362,28 @@ def render_index(reports, idx, width):
     stat = {}
     for r in reports:
         stat[r["type"]] = stat.get(r["type"], 0) + 1
-    stat_html = "".join(f'<div class="s">{k}<b>{v}</b></div>' for k, v in stat.items())
+    stat_html = "".join(f'<div class="s-stat">{k}<b>{v}</b></div>' for k, v in stat.items())
 
     return f'''<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>A股操作指引 · 历史报告</title><style>{SHELL_CSS}</style></head><body>
-<div class="layout">
+<div class="s-layout">
 {_sidebar(reports, with_filter=True, page="index")}
 <main>
-  <div class="wrapidx">
-    <div class="hero">
+  <div class="s-wrapidx">
+    <div class="s-hero">
       <h2>A股操作指引 · 历史报告</h2>
-      <div class="meta">{_e(span)} ｜ 共 {len(reports)} 份 ｜ 数据源：PostgreSQL daily_reports</div>
-      <div class="stats">{stat_html}</div>
+      <div class="s-meta">{_e(span)} ｜ 共 {len(reports)} 份 ｜ 数据源：PostgreSQL daily_reports</div>
+      <div class="s-stats">{stat_html}</div>
     </div>
-    <div id="list">{"".join(cards) if cards else '<div class="empty">库内暂无报告</div>'}</div>
+    <div id="list">{"".join(cards) if cards else '<div class="s-empty">库内暂无报告</div>'}</div>
   </div>
 </main></div>
 <script>
 document.querySelectorAll('.filters button').forEach(function(b){{
   b.onclick=function(){{
-    document.querySelectorAll('.filters button').forEach(function(x){{x.classList.remove('on')}});
-    b.classList.add('on');
+    document.querySelectorAll('.filters button').forEach(function(x){{x.classList.remove('s-on')}});
+    b.classList.add('s-on');
     var f=b.dataset.f;
     document.querySelectorAll('#list .card').forEach(function(c){{
       c.style.display=(f==='all'||c.dataset.t===f)?'':'none';
@@ -421,13 +423,13 @@ def render_report(rep, reports, prev_r, next_r, idx, width):
 <style>{scope_css(css)}</style>
 <style>.rp{{padding:0 26px}}.rp .wrap{{max-width:none;padding:18px 0 40px;margin:0}}</style>
 </head><body>
-<div class="layout">
+<div class="s-layout">
 {side}
 <main>
-  <div class="topbar">
-    <span class="tag {TYPE_BADGE.get(rep["type"], "")}">{rep["type"]}</span>
+  <div class="s-topbar">
+    <span class="s-tag {TYPE_BADGE.get(rep["type"], "")}">{rep["type"]}</span>
     <span style="color:#4e5969">{" ｜ ".join(_e(x) for x in meta)}</span>
-    <span class="nav">{"".join(nav)}</span>
+    <span class="s-nav">{"".join(nav)}</span>
   </div>
   <div class="rp">{body}</div>
 </main></div></body></html>'''

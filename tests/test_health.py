@@ -931,6 +931,50 @@ class TestDiagnosisAnchoring(unittest.TestCase):
         self.assertEqual([], missing, f"{path.name} 诊断缓存名称缺失: {missing}")
 
 
+class TestSiteClassIsolation(unittest.TestCase):
+    """站点外壳 CSS 必须与报告自身的类名隔离（2026-11-05 修，踩过）。
+
+    ⭐ 实测：外壳用了 `.card{display:flex}` 做时间线卡片，报告正文也用 `.card`
+    做章节卡片 —— 报告 CSS 加了 `.rp` 前缀，外壳却没加，于是两条规则撞车，
+    报告里**每个章节卡片都变成横向 flex**，核心结论被挤成竖排单字。
+    所以外壳类名一律 `s-` 前缀，且不得出现裸 `.card` / `.side` 等选择器。
+    """
+
+    def setUp(self):
+        self.src = (BASE / "ra" / "report" / "site.py").read_text(encoding="utf-8")
+        s = self.src.index('SHELL_CSS = """') + len('SHELL_CSS = """')
+        e = self.src.index('"""', s)
+        self.css = self.src[s:e]
+
+    def test_shell_css_has_no_bare_colliding_selectors(self):
+        import re
+        for bare in ("card", "side", "item", "date", "body", "tag", "nav", "panel"):
+            self.assertIsNone(
+                re.search(r"(?<![\w-])\.%s(?![\w-])" % bare, self.css),
+                f"外壳 CSS 不得有裸 .{bare}（会撞报告同名类）")
+
+    def test_shell_css_namespaced(self):
+        self.assertIn(".s-card{", self.css)
+        self.assertIn(".s-side{", self.css)
+        self.assertIn(".s-item{", self.css)
+
+    def test_html_classes_namespaced(self):
+        import re
+        bad = []
+        for m in re.finditer(r'class="([^"]*)"', self.src):
+            raw = m.group(1)
+            if "{" in raw:          # f-string 拼接，交由运行时
+                continue
+            for tok in raw.split():
+                if not tok.startswith("s-") and tok != "rp":
+                    bad.append(tok)
+        self.assertEqual(bad, [], f"外壳 HTML 出现非 s- 前缀类名: {bad}")
+
+    def test_invalid_price_not_drawn(self):
+        # 库内 2026-08-31 创业板指 price=0.0，必须按缺失处理
+        self.assertIn("float(price) > 0", self.src)
+
+
 class TestReportSite(unittest.TestCase):
     """历史报告站点（2026-11-05 新增）。
 
