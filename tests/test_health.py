@@ -931,6 +931,45 @@ class TestDiagnosisAnchoring(unittest.TestCase):
         self.assertEqual([], missing, f"{path.name} 诊断缓存名称缺失: {missing}")
 
 
+class TestChanSignalOutsideZhongshu(unittest.TestCase):
+    """缠论信号兜底必须区分「中枢上方/下方/内」（2026-11-05 修）。
+
+    ⭐ 实测踩坑：688409 日线中枢 [191.80, 219.80]、价格 121.20、末笔向上且无背驰，
+    旧兜底直接落到 `中枢震荡`，文案写成「价格 121.20 处于中枢 [191.80, 219.80] 内震荡」
+    —— 价格在中枢下方 37%，却报告说在区间内，属硬错。
+    """
+
+    def setUp(self):
+        from ra.analysis.chan_analysis import _classify_signal
+        self.f = _classify_signal
+        self.zs = {"zd": 191.80, "zg": 219.80}
+
+    def test_below_zd_not_called_ranging(self):
+        r = self.f(121.20, self.zs, None, "up", "波段")
+        self.assertNotEqual(r["signal"], "中枢震荡")
+        self.assertIn("下方", r["signal"])
+        self.assertIn("下方", r["text"])
+        # 文案不得声称价格在区间内
+        self.assertNotIn("内震荡", r["text"])
+
+    def test_above_zg_not_called_ranging(self):
+        # 价格在中枢上方 + 出现下跌背驰（不满足三买的「无背驰」前提）→ 走「等回踩」兜底
+        r = self.f(260.0, self.zs, {"dir": "down", "level": "中"}, "up", "短线")
+        self.assertNotEqual(r["signal"], "中枢震荡")
+        self.assertIn("上方", r["signal"])
+        self.assertNotIn("内震荡", r["text"])
+
+    def test_inside_still_ranging(self):
+        r = self.f(205.0, self.zs, None, "down", "短线")
+        self.assertEqual(r["signal"], "中枢震荡")
+
+    def test_three_buy_needs_above_zg(self):
+        r = self.f(260.0, self.zs, None, "up", "短线")
+        self.assertEqual(r["signal"], "三买候选")
+        r2 = self.f(121.20, self.zs, None, "up", "短线")
+        self.assertNotEqual(r2["signal"], "三买候选")
+
+
 class TestChanMultiLevel(unittest.TestCase):
     """缠论三级别联立（2026-09-17 新增）：30分钟 + 5分钟 + 日线，支持起点锚定。
 

@@ -435,6 +435,17 @@ def _classify_signal(price, zs, beichi, last_bi_dir, horizon="短线"):
     if price < zd and last_bi_dir == "down":
         return {"signal": "三卖观察", "cls": "b-green",
                 "text": f"价格 {price:.2f} 跌破中枢下沿 {zd:.2f}；若反抽不收回 {zd:.2f} 则三卖，{horizon}偏空。"}
+    # 兜底必须区分位置：价格已在 ZD 下方却写「处于中枢内震荡」是硬错（2026-11-05 修）。
+    # 实测：688409 日线中枢 [191.80, 219.80]、价格 121.20、末笔向上无背驰 → 旧逻辑落到
+    # 这里输出「121.20 处于中枢 [191.80, 219.80] 内震荡」，与事实完全相反。
+    if price > zg:
+        return {"signal": "中枢上方·等回踩", "cls": "b-blue",
+                "text": f"价格 {price:.2f} 在中枢上沿 {zg:.2f} 上方但未构成三买（末笔向下或力度未确认）；"
+                        f"等回踩不破 {zg:.2f} 再谈介入。"}
+    if price < zd:
+        return {"signal": "中枢下方·等企稳", "cls": "b-green",
+                "text": f"价格 {price:.2f} 在中枢下沿 {zd:.2f} 下方，且未出现下跌背驰；"
+                        f"结构仍在空头一侧，等背驰或收回 {zd:.2f} 再论买点。"}
     return {"signal": "中枢震荡", "cls": "b-blue",
             "text": f"价格 {price:.2f} 处于中枢 [{zd:.2f}, {zg:.2f}] 内震荡，等待方向选择。"}
 
