@@ -299,13 +299,43 @@ class StockAgentDB:
         finally:
             conn.close()
 
-    def save_report(self, report_date, market_state, summary, html_content):
+    def save_report(self, report_date, market_state, summary, html_content,
+                    report_type=None, data_date=None, core_summary=None):
+        """报告入库。
+
+        ⚠️ 2026-11-05 起 `report_type`（早报/盘中/晚报/周报）与 `market_state`（盘前/盘后）
+        **分开存** —— 历史上两者挤在同一列（库内出现 盘前102/周报13/bullish2 混排），
+        导致无法按类型筛选。同日同类型改为**覆盖**（此前每次重跑都新插一行，
+        128 行只对应 58 个日期）。
+        """
         with self._cursor() as cur:
-            cur.execute(
-                "INSERT INTO daily_reports (report_date, market_state, summary, html_content) VALUES (%s,%s,%s,%s)",
-                (report_date, market_state, summary, html_content),
-            )
-        print(f"[DB] 报告入库: {report_date}")
+            if report_type:
+                cur.execute(
+                    """UPDATE daily_reports
+                       SET market_state=%s, summary=%s, html_content=%s,
+                           data_date=COALESCE(%s, data_date),
+                           core_summary=COALESCE(%s, core_summary),
+                           is_superseded=FALSE
+                       WHERE report_date=%s AND report_type=%s""",
+                    (market_state, summary, html_content, data_date, core_summary,
+                     report_date, report_type),
+                )
+                if cur.rowcount == 0:
+                    cur.execute(
+                        """INSERT INTO daily_reports
+                           (report_date, market_state, summary, html_content,
+                            report_type, data_date, core_summary)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                        (report_date, market_state, summary, html_content,
+                         report_type, data_date, core_summary),
+                    )
+            else:
+                cur.execute(
+                    "INSERT INTO daily_reports (report_date, market_state, summary, html_content) "
+                    "VALUES (%s,%s,%s,%s)",
+                    (report_date, market_state, summary, html_content),
+                )
+        print(f"[DB] 报告入库: {report_date} {report_type or ''}".rstrip())
 
     def save_index_quotes(self, quote_date, quotes):
         """指数行情入库（UPSERT：同 quote_date+index_name 覆盖，避免重复累积）。"""
@@ -518,6 +548,14 @@ class StockAgentDB:
             cur.execute("ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS volume BIGINT")
             for col in ["status VARCHAR(10)", "price_source VARCHAR(10)", "note TEXT"]:
                 cur.execute(f"ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS {col}")
+            # 2026-11-05：daily_reports 原本没有报告类型列 —— 类型(早报/晚报/周报)被塞进
+            # market_state（历史上出现 盘前/盘后/周报/bullish 混排），导致库内无法按类型筛选，
+            # 且同日重跑各插一行（128 行只对应 58 天）。补列 + 索引，站点据此翻历史。
+            for col in ["report_type VARCHAR(8)", "data_date DATE",
+                        "core_summary TEXT", "is_superseded BOOLEAN DEFAULT FALSE"]:
+                cur.execute(f"ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS {col}")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_daily_reports_rt "
+                        "ON daily_reports (report_type, report_date DESC)")
 
     def save_backtest_results(self, results):
         """批量写入回测结果（按 judgment_date+stock_code+window_days upsert）"""

@@ -931,6 +931,51 @@ class TestDiagnosisAnchoring(unittest.TestCase):
         self.assertEqual([], missing, f"{path.name} 诊断缓存名称缺失: {missing}")
 
 
+class TestReportSite(unittest.TestCase):
+    """历史报告站点（2026-11-05 新增）。
+
+    ⭐ 站点要按类型翻历史，但 `daily_reports` 原本**没有 report_type** ——
+    类型被塞进 market_state（库内出现 盘前102/周报13/bullish2 混排），
+    且每次重跑都 INSERT（128 行只对应 58 天）。这两条不修，站点无法按类型筛选。
+    """
+
+    def setUp(self):
+        self.site_src = (BASE / "ra" / "report" / "site.py").read_text(encoding="utf-8")
+        self.db_src = (BASE / "ra" / "infra" / "db.py").read_text(encoding="utf-8")
+
+    def test_db_has_report_type_column(self):
+        self.assertIn("report_type VARCHAR(8)", self.db_src)
+        self.assertIn("ADD COLUMN IF NOT EXISTS", self.db_src)
+        self.assertIn("is_superseded", self.db_src)
+
+    def test_save_report_upserts_same_day(self):
+        # 同日同类型必须覆盖，不能再追加（曾 128 行只对应 58 天）
+        self.assertIn("WHERE report_date=%s AND report_type=%s", self.db_src)
+        self.assertIn("if cur.rowcount == 0", self.db_src)
+
+    def test_build_report_passes_type(self):
+        src = (BASE / "ra" / "report" / "build_report.py").read_text(encoding="utf-8")
+        self.assertIn("report_type=REPORT_TYPE", src)
+        self.assertIn("core_summary=_core_summary(html)", src)
+
+    def test_css_scope_isolates_globals(self):
+        """报告 CSS 的 `*`/`body` 不能污染外壳。"""
+        from ra.report.site import scope_css
+        out = scope_css("*{margin:0} body{color:#1d2129} .header{padding:2px}")
+        self.assertIn(".rp *{margin:0}", out)
+        self.assertIn(".rp{color:#1d2129}", out)
+        self.assertIn(".rp .header{padding:2px}", out)
+        self.assertNotIn("body{", out)
+
+    def test_site_records_anchor_to_data_date(self):
+        # 盘前报告 date=今天、行情是上一交易日，指标必须按 data_date 取
+        self.assertIn('r["data_date"] or r["date"]', self.site_src)
+
+    def test_type_filter_rendered(self):
+        self.assertIn("data-f=", self.site_src)
+        self.assertIn("is_superseded IS NOT TRUE", self.site_src)
+
+
 class TestChanSignalOutsideZhongshu(unittest.TestCase):
     """缠论信号兜底必须区分「中枢上方/下方/内」（2026-11-05 修）。
 

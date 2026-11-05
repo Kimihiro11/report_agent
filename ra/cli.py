@@ -59,6 +59,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     # ---- 报告 / 专题 ----
     "chan-report": ("ra/report/chan_report.py",     "缠论推演专题 --date [--run]"),
     "arr":         ("ra/report/arr_report.py",      "中美 AI 资本开支与 ARR 专题 --date"),
+    "site":        ("ra/report/site.py",            "历史报告站点 --out site [--limit N]（含数据看板）"),
     # ---- 基础设施自检 ----
     "charts":      ("ra/infra/charts.py",           "通用图表组件自检（渲染 demo SVG）"),
     "db":          ("ra/infra/db.py",               "数据库连通性与建表自检"),
@@ -110,7 +111,7 @@ def _print_list() -> None:
         ("主流程", ["collect", "report", "backtest"]),
         ("数据源", ["news", "oil", "freight", "momentum"]),
         ("分析", ["focus", "chan", "peak", "weibo"]),
-        ("报告/专题", ["chan-report", "arr"]),
+        ("报告/专题", ["chan-report", "arr", "site"]),
         ("自检", ["charts", "db", "net"]),
         ("运维", ["watchlist", "upload", "archive-dups", "inject-weibo",
                   "inject-news", "close-snapshot", "cookies",

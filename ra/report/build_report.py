@@ -11,7 +11,7 @@ AI 资本开支章节为季度频率内容，默认仅在数据有更新（指�
   - 见顶诊断 stock_diagnosis.run_all(自选股) 或 diagnosis_YYYYMMDD.json
 任何数据缺口均渲染为「实时数据缺失」占位，绝不出现假数据。
 
-import 本模块无副作用（不解析 argv / 不联网 / 不写盘）；执行入口为 main()，
+本模块无副作用（不解析 argv / 不联网 / 不写盘）；执行入口为 main()，
 仅在 `python cli.py report`（__main__）时运行。
 """
 import json
@@ -2728,6 +2728,16 @@ def _render_html():
 </body>
 </html>'''
 
+def _core_summary(html, limit=180):
+    """从生成的 HTML 里抽核心结论首段，供站点时间线展示（纯文本，失败返回空串）。"""
+    m = re.search(r'<div class="cc-body"[^>]*>(.*?)</div>', html, re.S)
+    if not m:
+        return ""
+    txt = re.sub(r"<[^>]+>", "", m.group(1))
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt[:limit]
+
+
 def main():
     load_context()
     html = _render_html()
@@ -2763,8 +2773,19 @@ def main():
                               dbname=dc.get("dbname", "stock_report_agent"))
             td = datetime.strptime(TODAY, "%Y-%m-%d").date()
             _n_sec = 10 if "sec-aicapex" in html else 9
-            db.save_report(td, REPORT_STATE, f"A股操作指引·{_n_sec}章节", html)
+            # 2026-11-05：类型/口径日/可读摘要分开入库，供站点翻历史；
+            # summary 原先只存「A股操作指引·9章节」，检索价值为零。
+            db.save_report(td, REPORT_STATE, f"A股操作指引·{_n_sec}章节", html,
+                           report_type=REPORT_TYPE,
+                           data_date=getattr(VIEW, "data_date", None),
+                           core_summary=_core_summary(html))
             print("[DB] 报告入库完成（舆情数据由数据引擎统一入库，避免重复）")
+            # 站点跟随更新（best-effort：失败不影响报告产出）
+            try:
+                from ra.report import site as _site
+                _site.build("site")
+            except Exception as _e:  # noqa: BLE001
+                print(f"[site] ⚠️ 站点更新跳过: {str(_e)[:80]}")
         else:
             print("[DB] 未配置 database，跳过入库")
     except Exception as e:

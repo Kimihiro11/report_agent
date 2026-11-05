@@ -20,3 +20,6 @@ data/*
 # 妙想/东财查询输出（临时产物，不入库）
 miaoxiang/
 .tmp_*/
+
+# 站点生成物（由 cli.py site 重新生成，7~8MB 不入库）
+site/
