@@ -468,12 +468,38 @@ def build(out_dir="site", limit=0):
     return out
 
 
+def serve(out: Path, port=8765):
+    """起本地 HTTP 服务。
+
+    ⚠️ 为什么需要它：预览面板给每个文件单独的静态根，**相对链接会断**；
+    站点的价值在「能点着翻」，所以用 http 服务提供整站。
+    """
+    import functools
+    import http.server
+    import socketserver
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(out))
+    with socketserver.TCPServer(("127.0.0.1", port), handler) as httpd:
+        print(f"[site] 服务已启动: http://127.0.0.1:{port}/index.html")
+        print("[site] Ctrl+C 结束")
+        httpd.serve_forever()
+
+
 def main():
     ap = argparse.ArgumentParser(description="生成历史报告静态站点")
     ap.add_argument("--out", default="site", help="输出目录，默认 site/")
     ap.add_argument("--limit", type=int, default=0, help="只生成最近 N 份，默认全部")
+    ap.add_argument("--serve", action="store_true", help="生成后起本地服务（相对链接才可点）")
+    ap.add_argument("--port", type=int, default=8765, help="--serve 端口，默认 8765")
+    ap.add_argument("--no-build", action="store_true", help="配合 --serve：不重新生成，直接服务现有站点")
     args = ap.parse_args()
-    build(args.out, args.limit)
+    out = Path(args.out)
+    if not out.is_absolute():
+        out = ROOT / out
+    if not args.no_build:
+        out = build(args.out, args.limit)
+    if args.serve:
+        serve(out, args.port)
 
 
 if __name__ == "__main__":
