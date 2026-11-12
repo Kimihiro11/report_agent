@@ -404,6 +404,41 @@ class TestWeiboLLMCapacity(unittest.TestCase):
                          "禁止先整体 join 再 _esc（会跨条目配对）")
 
 
+class TestConsensusTextCapacity(unittest.TestCase):
+    """`consensus.text` 必须够长且不切断加粗（2026-11-12 修）。
+
+    ⭐ 实测踩坑：原为 `_clip(consensus.get("text"), 180)` —— **硬切 180 字**，
+    而每期实际写 380~450 字，于是报告里的「共识」**永远是半句话**：
+      11-11 断在「⚠️ 昨夜 10 月 CP」、11-10 断在「**纠偏**：「电的问题算电力资」。
+    且 `_clip` 不保证 `**` 配对，截断落在加粗中间会留落单标记。
+    现改为 `_clip_md(..., 420)`，与 summary 对齐。
+    """
+
+    def setUp(self):
+        self.src = (BASE / "ra" / "analysis" / "weibo_llm.py").read_text(encoding="utf-8")
+
+    def test_uses_clip_md_not_hard_cut(self):
+        import re
+        # 不允许出现 `"text": _clip(...)` 这种硬切
+        bad = re.search(r'"text":\s*_clip\(consensus', self.src)
+        self.assertIsNone(bad, "consensus.text 不得用 _clip 硬切（会切断加粗、半句话）")
+        self.assertIn('_clip_md(consensus.get("text"), 420)', self.src)
+
+    def test_capacity_at_least_400(self):
+        import re
+        m = re.search(r'_clip_md\(consensus\.get\("text"\),\s*(\d+)\)', self.src)
+        self.assertIsNotNone(m)
+        self.assertGreaterEqual(int(m.group(1)), 400,
+                                "容量需 ≥400，实测每期共识 380~450 字")
+
+    def test_long_consensus_not_truncated_mid_sentence(self):
+        from ra.analysis.weibo_llm import _clip_md
+        long_text = "**结论**：" + "这是一段很长的共识正文，" * 30 + "**末尾要点**。"
+        cut = _clip_md(long_text, 420)
+        self.assertLessEqual(len(cut), 420)
+        self.assertEqual(cut.count("**") % 2, 0, "截断后 ** 必须成对")
+
+
 class TestIntelFactsRendered(unittest.TestCase):
     """注入层的 `facts` 必须真的渲染出来（2026-11-03 修）。
 

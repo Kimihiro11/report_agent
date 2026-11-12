@@ -128,7 +128,12 @@ def normalize_llm(obj, watchlist=None, date8=""):
         "direction": direction,
         "direction_cls": _DIRECTIONS[direction],
         "label": label,
-        "text": _clip(consensus.get("text"), 180),
+        # ⚠️ 2026-11-12 修：原 `_clip(..., 180)` 是**硬切**，两处缺陷同时存在：
+        # ① 容量 180 装不下结构化共识（实测每期都写 380~450 字），报告里恒为**半句话**
+        #    （11-11 断在「10 月 CP」、11-10 断在「电力资」）；
+        # ② `_clip` 不保证 `**` 配对，截断点落在加粗中间会留下落单标记。
+        # 改用 `_clip_md` 并与 summary 对齐到 420 字。
+        "text": _clip_md(consensus.get("text"), 420),
         "confidence": _confidence(consensus.get("confidence"), 0.5),
     }
 
